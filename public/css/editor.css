@@ -1368,8 +1368,8 @@
 }
 
 .history-item.current {
-  border-color: rgba(59,130,246,0.5);
-  background: rgba(59,130,246,0.06);
+  border-color: rgba(236,72,153,0.5);
+  background: rgba(236,72,153,0.06);
 }
 
 .history-item-header {
@@ -1391,8 +1391,8 @@
   border-radius: 4px;
   font-size: 10px;
   font-weight: 700;
-  background: rgba(59,130,246,0.12);
-  color: #3b82f6;
+  background: rgba(236,72,153,0.12);
+  color: #ec4899;
   text-transform: uppercase;
 }
 
@@ -1420,7 +1420,7 @@
 
 .history-current-label {
   font-size: 11px;
-  color: #3b82f6;
+  color: #ec4899;
   font-weight: 600;
 }
 
