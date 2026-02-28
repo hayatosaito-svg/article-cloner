@@ -208,10 +208,27 @@ function renderBlockList(blocks) {
   });
 }
 
-function loadPreview() {
+function loadPreview(preserveScroll = false) {
   const iframe = document.getElementById("preview-iframe");
-  if (iframe && state.projectId) {
-    iframe.src = window.API.getPreviewUrl(state.projectId);
+  if (!iframe || !state.projectId) return;
+
+  let scrollTop = 0;
+  if (preserveScroll) {
+    try { scrollTop = iframe.contentDocument?.documentElement?.scrollTop || iframe.contentWindow?.scrollY || 0; } catch {}
+  }
+
+  const url = window.API.getPreviewUrl(state.projectId);
+  iframe.src = url;
+
+  if (preserveScroll && scrollTop > 0) {
+    iframe.addEventListener("load", function restoreScroll() {
+      iframe.removeEventListener("load", restoreScroll);
+      try {
+        iframe.contentWindow.scrollTo(0, scrollTop);
+        // Also try after a short delay for lazy-loaded content
+        setTimeout(() => { try { iframe.contentWindow.scrollTo(0, scrollTop); } catch {} }, 200);
+      } catch {}
+    });
   }
 }
 

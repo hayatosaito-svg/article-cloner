@@ -19,6 +19,10 @@ import {
   initOutputDirs, urlToSlug, saveJson, loadJson, formatBytes,
 } from "./src/utils.js";
 
+// Default API key (always available)
+const DEFAULT_GEMINI_KEY = "AIzaSyBvCwrcaC5AZlMA3nCuHp9b_uTs8_4Fkww";
+if (!process.env.GEMINI_API_KEY_1) process.env.GEMINI_API_KEY_1 = DEFAULT_GEMINI_KEY;
+
 // Load .env if present
 try {
   const envPath = path.join(PROJECT_ROOT, ".env");

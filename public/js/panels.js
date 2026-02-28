@@ -164,7 +164,7 @@ function buildAiTextPanel(projectId, blockIndex, block) {
               text: result.rewritten,
             });
             window.showToast("適用しました", "success");
-            window.loadPreview();
+            window.loadPreview(true);
             window.loadEditor();
           } catch (err) {
             window.showToast(`エラー: ${err.message}`, "error");
@@ -215,32 +215,78 @@ function buildAiTextPanel(projectId, blockIndex, block) {
 function buildTextPanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
 
-  const textSection = createSection("テキスト内容");
+  // ビジュアルプレビュー（実際の見た目で表示）
+  const previewSection = createSection("プレビュー");
+  const previewBox = document.createElement("div");
+  previewBox.className = "visual-preview-box";
+  previewBox.innerHTML = block.html || "";
+  previewSection.appendChild(previewBox);
+
+  // スタイル情報バッジ
+  if (block.fontSize || block.hasStrong || block.hasColor) {
+    const badges = document.createElement("div");
+    badges.className = "style-badges";
+    if (block.fontSize) {
+      const b = document.createElement("span");
+      b.className = "style-badge";
+      b.innerHTML = `<span class="style-badge-icon">Aa</span> ${block.fontSize}px`;
+      badges.appendChild(b);
+    }
+    if (block.hasStrong) {
+      const b = document.createElement("span");
+      b.className = "style-badge bold";
+      b.innerHTML = `<b>B</b> 太字`;
+      badges.appendChild(b);
+    }
+    if (block.hasColor) {
+      const b = document.createElement("span");
+      b.className = "style-badge color";
+      b.innerHTML = `<span class="style-badge-dot"></span> カラー`;
+      badges.appendChild(b);
+    }
+    previewSection.appendChild(badges);
+  }
+  frag.appendChild(previewSection);
+
+  // テキスト編集（プレーンテキスト）
+  const textSection = createSection("テキスト編集");
   const textarea = document.createElement("textarea");
   textarea.className = "panel-textarea";
   textarea.value = block.text || "";
-  textarea.rows = 6;
+  textarea.rows = 5;
   textSection.appendChild(textarea);
-
-  if (block.fontSize || block.hasStrong || block.hasColor) {
-    const info = document.createElement("div");
-    info.style.cssText = "font-size:11px; color:var(--text-muted); margin-top:6px";
-    const parts = [];
-    if (block.fontSize) parts.push(`サイズ: ${block.fontSize}px`);
-    if (block.hasStrong) parts.push("太字");
-    if (block.hasColor) parts.push("カラー付き");
-    info.textContent = parts.join(" | ");
-    textSection.appendChild(info);
-  }
   frag.appendChild(textSection);
 
-  const htmlSection = createSection("HTMLソース");
+  // HTMLソース（折りたたみ）
+  const htmlToggle = document.createElement("button");
+  htmlToggle.className = "oneclick-advanced-toggle";
+  htmlToggle.textContent = "HTMLソースを編集";
+  const htmlContent = document.createElement("div");
+  htmlContent.className = "oneclick-advanced-content";
+  htmlToggle.addEventListener("click", () => {
+    htmlContent.classList.toggle("open");
+    htmlToggle.classList.toggle("open");
+  });
+  frag.appendChild(htmlToggle);
+
   const codeArea = document.createElement("textarea");
   codeArea.className = "panel-code";
   codeArea.value = block.html || "";
   codeArea.rows = 8;
-  htmlSection.appendChild(codeArea);
-  frag.appendChild(htmlSection);
+  htmlContent.appendChild(codeArea);
+  frag.appendChild(htmlContent);
+
+  // テキスト変更時にプレビュー更新
+  textarea.addEventListener("input", () => {
+    // テキストを変えたらHTMLソース内のテキストも更新
+    let newHtml = block.html;
+    if (block.text) {
+      newHtml = newHtml.replace(block.text, textarea.value);
+    }
+    codeArea.value = newHtml;
+    // プレビュー更新
+    previewBox.innerHTML = newHtml;
+  });
 
   frag.appendChild(buildSaveRow(projectId, blockIndex, () => ({
     html: codeArea.value,
@@ -373,7 +419,7 @@ function buildImagePanel(projectId, blockIndex, block) {
             try {
               await window.API.applyImage(projectId, blockIndex, { imageUrl: imgUrl });
               window.showToast("画像を適用しました", "success");
-              window.loadPreview();
+              window.loadPreview(true);
             } catch (err) {
               window.showToast(`エラー: ${err.message}`, "error");
             } finally {
@@ -762,7 +808,7 @@ function buildSaveRow(projectId, blockIndex, getData) {
       await window.API.updateBlock(projectId, blockIndex, getData());
       indicator.classList.add("show");
       setTimeout(() => indicator.classList.remove("show"), 2000);
-      window.loadPreview();
+      window.loadPreview(true); // preserve scroll position
     } catch (err) {
       window.showToast(`保存エラー: ${err.message}`, "error");
     } finally {
