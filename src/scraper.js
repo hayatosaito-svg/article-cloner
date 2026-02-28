@@ -57,7 +57,7 @@ export async function scrape(url, options = {}) {
     // ページ読み込み
     console.log("[scraper] Loading page...");
     await page.goto(url, { waitUntil: "networkidle", timeout: 60000 });
-    await sleep(2000);
+    await sleep(500);
 
     // スクロールしてlazy loadを完全展開
     console.log(`[scraper] Scrolling to load lazy content (${scrollIterations} iterations)...`);
@@ -71,10 +71,10 @@ export async function scrape(url, options = {}) {
     }
     // 最後にページ末端まで
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await sleep(1500);
+    await sleep(800);
     // トップに戻す
     await page.evaluate(() => window.scrollTo(0, 0));
-    await sleep(500);
+    await sleep(300);
 
     // innerHTML取得（body配下 or article-body配下）
     console.log("[scraper] Extracting HTML...");

@@ -4,6 +4,20 @@
 
 let currentMode = "manual"; // "manual" | "ai"
 
+// ── Debounce付き自動保存 ─────────────────────────────────
+let _autoSaveTimer = null;
+function autoSave(projectId, blockIndex, getData, delay = 600) {
+  if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(async () => {
+    try {
+      await window.API.updateBlock(projectId, blockIndex, getData());
+      window.loadPreview(true);
+    } catch (err) {
+      window.showToast(`自動保存エラー: ${err.message}`, "error");
+    }
+  }, delay);
+}
+
 // モード切替ボタン
 document.querySelectorAll(".mode-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -474,6 +488,12 @@ function buildTextPanel(projectId, blockIndex, block) {
     currentText = textarea.value;
     codeArea.value = html;
     previewBox.innerHTML = html;
+
+    // リアルタイム自動保存
+    autoSave(projectId, blockIndex, () => ({
+      html: currentHtml,
+      text: currentText,
+    }));
   }
 
   // イベント接続
@@ -947,6 +967,14 @@ function buildCtaPanel(projectId, blockIndex, block) {
   codeArea.rows = 6;
   htmlContent.appendChild(codeArea);
   frag.appendChild(htmlContent);
+
+  // CTA URLリアルタイム保存
+  urlInput.addEventListener("input", () => {
+    autoSave(projectId, blockIndex, () => ({
+      html: codeArea.value,
+      href: urlInput.value.trim(),
+    }));
+  });
 
   frag.appendChild(buildSaveRow(projectId, blockIndex, () => ({
     html: codeArea.value,

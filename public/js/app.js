@@ -85,10 +85,12 @@ async function startClone() {
   showScreen("loading");
   document.getElementById("loading-url").textContent = url;
   resetProgress();
+  addLogEntry("プロジェクト作成中...");
 
   try {
     const result = await window.API.createProject(url);
     state.projectId = result.id;
+    addLogEntry("SSE接続中...");
     setSegmentActive("scrape");
     state.sseConnection = window.API.connectSSE(result.id, {
       onProgress: handleProgress,
