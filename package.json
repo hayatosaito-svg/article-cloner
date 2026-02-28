@@ -1,0 +1,17 @@
+{
+  "name": "article-cloner",
+  "version": "1.0.0",
+  "description": "競合記事LP自動クローンシステム - Squad Beyond互換HTML出力",
+  "type": "module",
+  "scripts": {
+    "scrape": "node src/scraper.js",
+    "parse": "node src/parser.js",
+    "build": "node src/html-builder.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "node-fetch": "^3.3.2",
+    "playwright": "^1.49.0",
+    "sharp": "^0.33.2"
+  }
+}

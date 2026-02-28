@@ -1,0 +1,6 @@
+node_modules/
+output/scraped/
+output/analysis/
+output/images/
+output/final/
+.env

@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Article Cloner - LP自動クローンシステム</title>
+<style>
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --accent: #f59e0b;
+  --bg: #0f172a;
+  --bg-card: #1e293b;
+  --bg-card-hover: #334155;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --border: #334155;
+  --success: #22c55e;
+  --danger: #ef4444;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  min-height: 100vh;
+}
+
+.container { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+
+/* Header */
+header {
+  padding: 60px 0 40px;
+  text-align: center;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-bottom: 1px solid var(--border);
+}
+header h1 {
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 12px;
+}
+header h1 span { color: var(--primary); }
+header p {
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+.badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 99px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.badge-blue { background: rgba(37,99,235,0.15); color: var(--primary); border: 1px solid rgba(37,99,235,0.3); }
+
+/* Workflow */
+.workflow {
+  padding: 60px 0;
+}
+.workflow h2 {
+  font-size: 1.5rem;
+  margin-bottom: 40px;
+  text-align: center;
+}
+.phases {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.phase {
+  display: flex;
+  gap: 20px;
+  padding: 24px;
+  background: var(--bg-card);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  transition: border-color 0.2s;
+  cursor: default;
+}
+.phase:hover { border-color: var(--primary); }
+.phase-num {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.1rem;
+  border-radius: 12px;
+}
+.phase-content h3 { font-size: 1.05rem; margin-bottom: 4px; }
+.phase-content p { color: var(--text-muted); font-size: 0.9rem; }
+.phase-time {
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+/* Tech Stack */
+.tech {
+  padding: 40px 0 60px;
+}
+.tech h2 { font-size: 1.5rem; margin-bottom: 24px; text-align: center; }
+.tech-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.tech-item {
+  padding: 20px 16px;
+  background: var(--bg-card);
+  border-radius: 10px;
+  text-align: center;
+  border: 1px solid var(--border);
+}
+.tech-item .icon { font-size: 1.8rem; margin-bottom: 8px; }
+.tech-item .name { font-weight: 600; font-size: 0.9rem; }
+.tech-item .desc { color: var(--text-muted); font-size: 0.75rem; margin-top: 4px; }
+
+/* Demo Section */
+.demo {
+  padding: 60px 0;
+  border-top: 1px solid var(--border);
+}
+.demo h2 { font-size: 1.5rem; margin-bottom: 12px; text-align: center; }
+.demo > p { color: var(--text-muted); text-align: center; margin-bottom: 32px; font-size: 0.95rem; }
+
+.demo-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  background: var(--bg-card);
+  border-radius: 10px;
+  padding: 4px;
+}
+.demo-tab {
+  flex: 1;
+  padding: 10px 16px;
+  background: none;
+  color: var(--text-muted);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+.demo-tab.active { background: var(--primary); color: #fff; }
+.demo-tab:hover:not(.active) { color: var(--text); }
+
+.demo-panel { display: none; }
+.demo-panel.active { display: block; }
+
+/* Demo: Replace */
+.replace-form {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 40px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+.form-row .arrow { text-align: center; color: var(--primary); font-size: 1.2rem; }
+.form-input {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  outline: none;
+}
+.form-input:focus { border-color: var(--primary); }
+.form-input::placeholder { color: var(--text-muted); }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-sm { padding: 8px 16px; font-size: 0.8rem; }
+
+/* Result area */
+.result-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  margin-top: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.result-box .highlight { background: rgba(245,158,11,0.2); color: var(--accent); padding: 1px 4px; border-radius: 3px; }
+
+/* Demo: Structure */
+.structure-vis {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.block-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--bg-card);
+  border-radius: 8px;
+  border-left: 4px solid;
+  font-size: 0.82rem;
+  cursor: default;
+  transition: background 0.15s;
+}
+.block-bar:hover { background: var(--bg-card-hover); }
+.block-bar .type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  min-width: 60px;
+  text-align: center;
+}
+.block-bar .content { flex: 1; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.type-image { border-color: #8b5cf6; }
+.type-image .type-badge { background: rgba(139,92,246,0.15); color: #8b5cf6; }
+.type-video { border-color: #ec4899; }
+.type-video .type-badge { background: rgba(236,72,153,0.15); color: #ec4899; }
+.type-text { border-color: #22c55e; }
+.type-text .type-badge { background: rgba(34,197,94,0.15); color: #22c55e; }
+.type-heading { border-color: #f59e0b; }
+.type-heading .type-badge { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.type-widget { border-color: #06b6d4; }
+.type-widget .type-badge { background: rgba(6,182,212,0.15); color: #06b6d4; }
+.type-spacer { border-color: #475569; }
+.type-spacer .type-badge { background: rgba(71,85,105,0.15); color: #64748b; }
+.type-cta { border-color: #ef4444; }
+.type-cta .type-badge { background: rgba(239,68,68,0.15); color: #ef4444; }
+
+/* Stats */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.stat {
+  background: var(--bg-card);
+  border-radius: 10px;
+  padding: 16px;
+  text-align: center;
+  border: 1px solid var(--border);
+}
+.stat .num { font-size: 1.8rem; font-weight: 800; color: var(--primary); }
+.stat .label { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+
+/* Validation */
+.validation {
+  padding: 20px;
+  background: var(--bg-card);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  margin-top: 16px;
+}
+.validation h4 { margin-bottom: 12px; font-size: 0.95rem; }
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 0.85rem;
+}
+.check-pass { color: var(--success); }
+.check-fail { color: var(--danger); }
+
+/* Footer */
+footer {
+  padding: 40px 0;
+  text-align: center;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+/* Section divider */
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+.section-divider::before, .section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+@media (max-width: 600px) {
+  header h1 { font-size: 1.6rem; }
+  .form-row { grid-template-columns: 1fr; }
+  .form-row .arrow { transform: rotate(90deg); }
+  .phase { flex-direction: column; gap: 12px; }
+  .demo-tabs { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <div class="badge badge-blue">Internal Tool</div>
+    <h1><span>Article Cloner</span><br>LP自動クローンシステム</h1>
+    <p>競合アフィリエイト記事LPをスクレイピングし、テキスト差し替え＋AI画像生成でSquad Beyond互換HTMLを出力。10分で1記事クローン。</p>
+  </div>
+</header>
+
+<section class="workflow">
+  <div class="container">
+    <h2>5-Phase ワークフロー</h2>
+    <div class="phases">
+      <div class="phase">
+        <div class="phase-num">1</div>
+        <div class="phase-content">
+          <h3>スクレイプ</h3>
+          <p>Playwright (モバイルVP 412x915) でページ全体をスクロール、lazy load完全展開後にHTML＋全画像/動画をダウンロード。</p>
+          <div class="phase-time">~30秒 / 自動</div>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="phase-num">2</div>
+        <div class="phase-content">
+          <h3>構造解析</h3>
+          <p>CheerioでフラットなDiv列をimage/video/text/widget/spacer/cta_link/headingに分類。セクション境界を検出しアセットカタログを生成。</p>
+          <div class="phase-time">~5秒 / 自動</div>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="phase-num">3</div>
+        <div class="phase-content">
+          <h3>差し替え設定</h3>
+          <p>構造サマリーを提示し、商品名・会社名・CTA URL等のヒアリング。replacement-config.jsonを生成。画像プロンプトを承認。</p>
+          <div class="phase-time">~3分 / 対話</div>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="phase-num">4</div>
+        <div class="phase-content">
+          <h3>AI生成</h3>
+          <p>Gemini API（3キーローテーション）で画像生成。テキストは直接置換＋フレーズ書き換え。inline styleを完全保持。</p>
+          <div class="phase-time">~5分 / 自動</div>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="phase-num">5</div>
+        <div class="phase-content">
+          <h3>組み立て＆検証</h3>
+          <p>SB互換HTML構築。sb-part ID再生成、スコープドCSS更新、lazyload属性確認、video margin reset追加。バリデーション実行。</p>
+          <div class="phase-time">~10秒 / 自動</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="tech">
+  <div class="container">
+    <h2>技術スタック</h2>
+    <div class="tech-grid">
+      <div class="tech-item">
+        <div class="icon">🎭</div>
+        <div class="name">Playwright</div>
+        <div class="desc">Headless Chrome<br>モバイルVP</div>
+      </div>
+      <div class="tech-item">
+        <div class="icon">🔍</div>
+        <div class="name">Cheerio</div>
+        <div class="desc">HTML構造解析<br>テキスト操作</div>
+      </div>
+      <div class="tech-item">
+        <div class="icon">🤖</div>
+        <div class="name">Gemini API</div>
+        <div class="desc">画像生成<br>3キーローテ</div>
+      </div>
+      <div class="tech-item">
+        <div class="icon">🖼</div>
+        <div class="name">Sharp</div>
+        <div class="desc">画像リサイズ<br>フォーマット変換</div>
+      </div>
+      <div class="tech-item">
+        <div class="icon">🧠</div>
+        <div class="name">Claude Code</div>
+        <div class="desc">対話型操作<br>フレーズ書き換え</div>
+      </div>
+      <div class="tech-item">
+        <div class="icon">📦</div>
+        <div class="name">Squad Beyond</div>
+        <div class="desc">互換HTML出力<br>直接貼り付け可</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="demo">
+  <div class="container">
+    <h2>インタラクティブデモ</h2>
+    <p>実際のクローン処理をシミュレーション</p>
+
+    <div class="demo-tabs">
+      <button class="demo-tab active" onclick="switchTab('structure')">構造解析</button>
+      <button class="demo-tab" onclick="switchTab('replace')">テキスト差し替え</button>
+      <button class="demo-tab" onclick="switchTab('validate')">SBバリデーション</button>
+    </div>
+
+    <!-- Structure Tab -->
+    <div class="demo-panel active" id="panel-structure">
+      <div class="stats" id="stats">
+        <div class="stat"><div class="num">343</div><div class="label">ブロック</div></div>
+        <div class="stat"><div class="num">31</div><div class="label">セクション</div></div>
+        <div class="stat"><div class="num">50</div><div class="label">画像</div></div>
+        <div class="stat"><div class="num">17</div><div class="label">動画</div></div>
+        <div class="stat"><div class="num">18</div><div class="label">ウィジェット</div></div>
+      </div>
+
+      <div class="section-divider">Section 1: イントロ</div>
+      <div class="structure-vis" id="structure-vis">
+        <!-- Generated by JS -->
+      </div>
+    </div>
+
+    <!-- Replace Tab -->
+    <div class="demo-panel" id="panel-replace">
+      <div class="replace-form">
+        <div class="form-row">
+          <input class="form-input" id="old1" value="プロキオン" placeholder="元のテキスト">
+          <div class="arrow">&rarr;</div>
+          <input class="form-input" id="new1" placeholder="差し替え先テキスト">
+        </div>
+        <div class="form-row">
+          <input class="form-input" id="old2" value="京福堂" placeholder="元のテキスト">
+          <div class="arrow">&rarr;</div>
+          <input class="form-input" id="new2" placeholder="差し替え先テキスト">
+        </div>
+        <div class="form-row">
+          <input class="form-input" id="old3" value="指定医薬部外品" placeholder="元のテキスト">
+          <div class="arrow">&rarr;</div>
+          <input class="form-input" id="new3" placeholder="差し替え先テキスト">
+        </div>
+        <div class="form-row">
+          <input class="form-input" id="old-cta" value="https://kyoufukudou.com/lp?u=..." placeholder="元のCTA URL" readonly>
+          <div class="arrow">&rarr;</div>
+          <input class="form-input" id="new-cta" placeholder="新しいCTA URL">
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="runReplace()">差し替え実行</button>
+      <div class="result-box" id="replace-result" style="display:none;"></div>
+    </div>
+
+    <!-- Validate Tab -->
+    <div class="demo-panel" id="panel-validate">
+      <div class="validation">
+        <h4>SB互換チェック結果</h4>
+        <div class="check-item check-pass">&#10003; &lt;html&gt;/&lt;body&gt;タグなし</div>
+        <div class="check-item check-pass">&#10003; 全img要素にlazyloadクラス (56個)</div>
+        <div class="check-item check-pass">&#10003; 全img要素にdata-src属性</div>
+        <div class="check-item check-pass">&#10003; 全video要素にql-video + lazyloadクラス</div>
+        <div class="check-item check-pass">&#10003; 全video source要素にdata-src属性</div>
+        <div class="check-item check-pass">&#10003; sb-part IDが一意に再生成済み</div>
+        <div class="check-item check-pass">&#10003; スコープドCSS セレクタ更新済み</div>
+        <div class="check-item check-pass">&#10003; video margin resetウィジェット末尾配置</div>
+        <div class="check-item check-pass">&#10003; CTA URL差し替え完了 (2箇所)</div>
+        <div class="check-item check-pass">&#10003; フッター法的リンク保持</div>
+      </div>
+
+      <div style="margin-top: 24px; padding: 20px; background: var(--bg-card); border-radius: 10px; border: 1px solid var(--border);">
+        <h4 style="margin-bottom: 12px; font-size: 0.95rem;">SB貼り付け手順</h4>
+        <ol style="color: var(--text-muted); font-size: 0.85rem; padding-left: 20px; line-height: 2;">
+          <li>生成された <code>cloned-lp.html</code> の内容を全選択コピー</li>
+          <li>SB記事エディタの「HTML編集モード」で貼り付け</li>
+          <li>プレビューでレイアウト・画像・動画を確認</li>
+          <li>CTAリンクのクリック動作を確認</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p>Article Cloner v1.0 &mdash; Squad Beyond互換LP自動生成ツール</p>
+    <p style="margin-top: 8px;">Claude Code + Node.js で構築</p>
+  </div>
+</footer>
+
+<script>
+// Tab switching
+function switchTab(tabName) {
+  document.querySelectorAll('.demo-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.demo-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
+  document.getElementById(`panel-${tabName}`).classList.add('active');
+}
+
+// Structure visualization
+const sampleBlocks = [
+  { type: 'text', content: 'PR：株式会社京福堂', section: 1 },
+  { type: 'image', content: 'ヘッダー画像 (571x342)', section: 1 },
+  { type: 'image', content: 'メインビジュアル (570x298)', section: 1 },
+  { type: 'image', content: '商品画像 (580x538)', section: 1 },
+  { type: 'image', content: '訴求画像 (571x299)', section: 1 },
+  { type: 'widget', content: 'SBウィジェット: disclaimer "※画像はイメージ"', section: 1 },
+  { type: 'image', content: '成分解説 (580x514)', section: 1 },
+  { type: 'image', content: '効果説明 (580x716)', section: 1 },
+  { type: 'spacer', content: '', section: 1 },
+  { type: 'text', content: '実は、', section: 2 },
+  { type: 'heading', content: '俺らのような中年男性は活力が足りず、2人に1人が悩んでいる', section: 2 },
+  { type: 'image', content: 'データグラフ (571x504)', section: 2 },
+  { type: 'text', content: '※【データ引用】白井勝文...', section: 2 },
+  { type: 'heading', content: 'そんなある日', section: 3 },
+  { type: 'image', content: 'ストーリー画像 (580x808)', section: 3 },
+  { type: 'text', content: 'アレとは…', section: 3 },
+  { type: 'heading', content: '今TVで話題になっている活力製剤らしい！', section: 3 },
+  { type: 'video', content: 'TV紹介映像 (500x350, MP4)', section: 3 },
+  { type: 'text', content: 'あの名俳優 西岡德馬さんも愛用', section: 3 },
+  { type: 'widget', content: 'SBウィジェット: flash_text "ついに一般解禁！"', section: 4 },
+  { type: 'video', content: '商品紹介動画 (581x327, MP4)', section: 4 },
+  { type: 'heading', content: '業界に激震が走ったほどの活力製剤で', section: 4 },
+  { type: 'video', content: 'ドラッグストア映像 (580x213, MP4)', section: 4 },
+  { type: 'widget', content: 'SBウィジェット: testimonial "試してみてよかった！"', section: 5 },
+  { type: 'widget', content: 'SBウィジェット: testimonial "指定医薬部外品はすごい"', section: 5 },
+  { type: 'widget', content: 'SBウィジェット: testimonial "夫婦で飲んでます（笑）"', section: 5 },
+  { type: 'cta', content: 'CTAボタン画像リンク → kyoufukudou.com/lp', section: 6 },
+  { type: 'text', content: '特定商取引法に関する表記／企業情報／プライバシーポリシー', section: 6 },
+  { type: 'widget', content: 'SBウィジェット: video_margin_reset', section: 6 },
+];
+
+const vis = document.getElementById('structure-vis');
+let currentSection = 0;
+sampleBlocks.forEach(block => {
+  if (block.section !== currentSection && block.section > 1) {
+    currentSection = block.section;
+    const divider = document.createElement('div');
+    divider.className = 'section-divider';
+    divider.textContent = `Section ${currentSection}`;
+    vis.appendChild(divider);
+  }
+  const bar = document.createElement('div');
+  const typeClass = block.type === 'cta' ? 'type-cta' : `type-${block.type}`;
+  bar.className = `block-bar ${typeClass}`;
+  const label = block.type === 'cta' ? 'CTA' : block.type;
+  bar.innerHTML = `<span class="type-badge">${label}</span><span class="content">${block.content || '&nbsp;'}</span>`;
+  vis.appendChild(bar);
+});
+
+// Replace demo
+function runReplace() {
+  const replacements = [];
+  for (let i = 1; i <= 3; i++) {
+    const old = document.getElementById(`old${i}`).value;
+    const nw = document.getElementById(`new${i}`).value;
+    if (old && nw) replacements.push([old, nw]);
+  }
+  const newCta = document.getElementById('new-cta').value;
+
+  if (replacements.length === 0 && !newCta) {
+    alert('差し替え先テキストを入力してください');
+    return;
+  }
+
+  const sampleTexts = [
+    '<div style="text-align: right; color: rgb(169, 169, 169);">PR：株式会社京福堂</div>',
+    '<strong style="font-size: 19px; color: rgb(255, 0, 0);">指定医薬部外品</strong><span style="font-size: 19px;">を使っていたのか！</span>',
+    '<strong style="background-color: rgb(255, 255, 0); color: rgb(255, 0, 0); font-size: 19px;">指定医薬部外品</strong><span style="font-size: 19px;">だった。</span>',
+    '<span style="font-size: 19px;">『プロキオン』飲んでみた結果は</span>',
+    '<a href="https://kyoufukudou.com/lp?u=pro_lp_7a_new_209">【CTA画像リンク】</a>',
+  ];
+
+  let output = '=== テキスト差し替え結果 ===\n\n';
+  sampleTexts.forEach((text, i) => {
+    let modified = text;
+    replacements.forEach(([old, nw]) => {
+      modified = modified.split(old).join(nw);
+    });
+    if (newCta && modified.includes('kyoufukudou.com')) {
+      modified = modified.replace(/https:\/\/kyoufukudou\.com\/[^"]+/, newCta);
+    }
+
+    output += `[${i + 1}] Before:\n${text}\n\n`;
+    output += `    After:\n${modified}\n`;
+
+    // Highlight changes
+    if (modified !== text) {
+      output += `    ✓ 変更あり\n`;
+    }
+    output += '\n---\n\n';
+  });
+
+  output += `置換ルール: ${replacements.length}件\n`;
+  output += `CTA URL: ${newCta || '(変更なし)'}\n`;
+  output += `\n※ inline style (font-size, color, background等) は完全保持`;
+
+  const box = document.getElementById('replace-result');
+  box.textContent = output;
+  box.style.display = 'block';
+}
+</script>
+</body>
+</html>
