@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Article Cloner</title>
+<link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/editor.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Screen 1: URL Input (Landing)
+     ═══════════════════════════════════════════════════════════ -->
+<div id="screen-landing" class="screen active">
+  <div class="landing-bg"></div>
+  <div class="landing-content">
+    <div class="landing-logo">
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+        <rect width="40" height="40" rx="10" fill="url(#g1)"/>
+        <path d="M12 14h16v2H12zm0 5h12v2H12zm0 5h14v2H12z" fill="#fff" opacity="0.9"/>
+        <defs><linearGradient id="g1" x1="0" y1="0" x2="40" y2="40"><stop stop-color="#3B82F6"/><stop offset="1" stop-color="#8B5CF6"/></linearGradient></defs>
+      </svg>
+      <h1>Article Cloner</h1>
+    </div>
+    <p class="landing-subtitle">LP記事をスクレイプ → 編集 → Squad Beyond互換HTMLに変換</p>
+    <div class="url-input-card">
+      <div class="url-input-wrapper">
+        <svg class="url-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M8.5 13.5l-1.414 1.414a3 3 0 01-4.243-4.243l3-3a3 3 0 014.243 0M11.5 6.5l1.414-1.414a3 3 0 014.243 4.243l-3 3a3 3 0 01-4.243 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <input type="url" id="url-input" placeholder="URLを入力 or ペースト..." autocomplete="off" spellcheck="false">
+        <button id="btn-start" class="btn-primary" disabled>
+          <span>クローン開始</span>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10m-4-4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="landing-features">
+      <div class="feature-chip">
+        <span class="feature-dot" style="background:#3B82F6"></span>
+        自動スクレイプ
+      </div>
+      <div class="feature-chip">
+        <span class="feature-dot" style="background:#8B5CF6"></span>
+        ブロック編集
+      </div>
+      <div class="feature-chip">
+        <span class="feature-dot" style="background:#EC4899"></span>
+        AI画像生成
+      </div>
+      <div class="feature-chip">
+        <span class="feature-dot" style="background:#10B981"></span>
+        SB互換出力
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Screen 2: Loading (Scrape Progress)
+     ═══════════════════════════════════════════════════════════ -->
+<div id="screen-loading" class="screen">
+  <div class="loading-content">
+    <h2 class="loading-title">クローン処理中...</h2>
+    <p class="loading-url" id="loading-url"></p>
+
+    <div class="progress-segments">
+      <div class="segment" id="seg-scrape">
+        <div class="segment-bar"><div class="segment-fill"></div></div>
+        <span class="segment-label">Scrape</span>
+      </div>
+      <div class="segment-arrow">→</div>
+      <div class="segment" id="seg-parse">
+        <div class="segment-bar"><div class="segment-fill"></div></div>
+        <span class="segment-label">Parse</span>
+      </div>
+      <div class="segment-arrow">→</div>
+      <div class="segment" id="seg-ready">
+        <div class="segment-bar"><div class="segment-fill"></div></div>
+        <span class="segment-label">Ready</span>
+      </div>
+    </div>
+
+    <div class="live-counters">
+      <div class="counter-item">
+        <span class="counter-value" id="counter-assets">-</span>
+        <span class="counter-label">Assets</span>
+      </div>
+      <div class="counter-item">
+        <span class="counter-value" id="counter-blocks">-</span>
+        <span class="counter-label">Blocks</span>
+      </div>
+      <div class="counter-item">
+        <span class="counter-value" id="counter-sections">-</span>
+        <span class="counter-label">Sections</span>
+      </div>
+    </div>
+
+    <div class="log-panel" id="log-panel">
+      <div class="log-entries" id="log-entries"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Screen 3: Main Editor (Split Pane)
+     ═══════════════════════════════════════════════════════════ -->
+<div id="screen-editor" class="screen">
+  <!-- Toolbar -->
+  <div class="editor-toolbar">
+    <div class="toolbar-left">
+      <button class="toolbar-btn" id="btn-back" title="戻る">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <span class="toolbar-title" id="toolbar-title">Editor</span>
+      <span class="toolbar-badge" id="toolbar-block-count"></span>
+    </div>
+    <div class="toolbar-center">
+      <button class="toolbar-btn" id="btn-text-modify" title="一括テキスト差し替え">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>テキスト差し替え</span>
+      </button>
+    </div>
+    <div class="toolbar-right">
+      <button class="toolbar-btn btn-accent" id="btn-build" title="Build SB HTML">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8l3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Build</span>
+      </button>
+      <button class="toolbar-btn" id="btn-export" title="Export" disabled>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m-3-3l3 3 3-3M3 12v1h10v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Export</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Split Pane -->
+  <div class="split-pane">
+    <!-- Left: Block list / Code -->
+    <div class="pane pane-left" id="pane-left">
+      <div class="pane-header">
+        <div class="pane-tabs">
+          <button class="pane-tab active" data-tab="blocks">Blocks</button>
+          <button class="pane-tab" data-tab="code">HTML</button>
+        </div>
+      </div>
+      <div class="pane-body">
+        <div class="tab-content active" id="tab-blocks">
+          <div class="block-list" id="block-list"></div>
+        </div>
+        <div class="tab-content" id="tab-code">
+          <div class="code-editor" id="code-editor"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Divider -->
+    <div class="split-divider" id="split-divider">
+      <div class="divider-handle"></div>
+    </div>
+
+    <!-- Right: Preview -->
+    <div class="pane pane-right" id="pane-right">
+      <div class="pane-header">
+        <span class="pane-label">Preview</span>
+        <span class="preview-viewport">412px</span>
+      </div>
+      <div class="preview-container">
+        <iframe id="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Screen 4: Block Edit Panel (slide-out)
+     ═══════════════════════════════════════════════════════════ -->
+<div id="edit-panel" class="edit-panel">
+  <div class="edit-panel-header">
+    <div class="edit-panel-title">
+      <span class="edit-panel-type" id="edit-panel-type">text</span>
+      <span>Block <span id="edit-panel-index">0</span></span>
+    </div>
+    <button class="edit-panel-close" id="edit-panel-close">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div class="edit-panel-body" id="edit-panel-body">
+    <!-- Dynamically populated by panels.js -->
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Screen 5: Text Modify Modal
+     ═══════════════════════════════════════════════════════════ -->
+<div id="modal-text-modify" class="modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content modal-lg">
+    <div class="modal-header">
+      <h3>一括テキスト差し替え</h3>
+      <button class="modal-close" data-close-modal="modal-text-modify">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-section">
+        <label class="form-label">直接置換 (旧テキスト → 新テキスト)</label>
+        <div id="replacements-list" class="replacements-list">
+          <div class="replacement-row">
+            <input type="text" placeholder="旧テキスト" class="input-old">
+            <span class="arrow">→</span>
+            <input type="text" placeholder="新テキスト" class="input-new">
+            <button class="btn-remove-row" title="削除">×</button>
+          </div>
+        </div>
+        <button class="btn-add-row" id="btn-add-replacement">+ 行を追加</button>
+      </div>
+      <div class="form-section">
+        <label class="form-label">CTA URL差し替え</label>
+        <input type="url" id="cta-url-input" class="form-input" placeholder="https://...">
+      </div>
+      <div class="form-section">
+        <label class="form-label">検出された頻出語</label>
+        <div id="frequent-terms" class="frequent-terms"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close-modal="modal-text-modify">キャンセル</button>
+      <button class="btn-primary" id="btn-apply-text-modify">適用</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Export Modal
+     ═══════════════════════════════════════════════════════════ -->
+<div id="modal-export" class="modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Export</h3>
+      <button class="modal-close" data-close-modal="modal-export">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="validation-section" id="validation-section">
+        <h4>Validation</h4>
+        <div id="validation-results"></div>
+      </div>
+      <div class="export-stats" id="export-stats"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" id="btn-copy-html">Copy to Clipboard</button>
+      <button class="btn-primary" id="btn-download-html">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m-3-3l3 3 3-3M3 12v1h10v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Download HTML
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container" class="toast-container"></div>
+
+<script type="module" src="/js/api.js"></script>
+<script type="module" src="/js/panels.js"></script>
+<script type="module" src="/js/editor.js"></script>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
