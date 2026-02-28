@@ -11,7 +11,7 @@ import { writeFile, readFile } from "fs/promises";
 import path from "path";
 import { sleep } from "./utils.js";
 
-const GEMINI_MODEL = "gemini-2.0-flash-exp";
+const GEMINI_MODEL = "gemini-2.0-flash";
 const GEMINI_IMAGE_MODEL = "imagen-3.0-generate-002";
 
 /**
@@ -322,6 +322,7 @@ export async function generateImageFromReference(imagePath, options = {}) {
   const height = options.height || 580;
   const nuance = options.nuance || "same";
   const style = options.style || "photo";
+  const designRequirements = options.designRequirements || "";
 
   // 元画像をbase64エンコード
   const imageData = await readFile(imagePath);
@@ -350,7 +351,8 @@ export async function generateImageFromReference(imagePath, options = {}) {
     flat: "フラットデザインのスタイルで、シンプルで洗練されたグラフィックに仕上げてください。",
   };
 
-  const prompt = `${nuancePrompts[nuance] || nuancePrompts.same}\n${styleModifiers[style] || styleModifiers.photo}\n画像内にテキストや文字は一切含めないでください。日本の商品広告LP用の画像として適切な品質にしてください。`;
+  const designContext = designRequirements ? `\nデザイン要件: ${designRequirements}` : "";
+  const prompt = `${nuancePrompts[nuance] || nuancePrompts.same}\n${styleModifiers[style] || styleModifiers.photo}${designContext}\n画像内にテキストや文字は一切含めないでください。日本の商品広告LP用の画像として適切な品質にしてください。`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
 

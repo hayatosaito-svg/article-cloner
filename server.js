@@ -19,9 +19,7 @@ import {
   initOutputDirs, urlToSlug, saveJson, loadJson, formatBytes,
 } from "./src/utils.js";
 
-// Default API key (always available)
-const DEFAULT_GEMINI_KEY = "AIzaSyBvCwrcaC5AZlMA3nCuHp9b_uTs8_4Fkww";
-if (!process.env.GEMINI_API_KEY_1) process.env.GEMINI_API_KEY_1 = DEFAULT_GEMINI_KEY;
+// API key is set via .env or UI (no hardcoded default)
 
 // Load .env if present
 try {
@@ -792,7 +790,7 @@ app.post("/api/projects/:id/one-click-image/:idx", async (req, res) => {
     return res.status(400).json({ error: "Asset file not found on disk" });
   }
 
-  const { nuance = "same", style = "photo" } = req.body;
+  const { nuance = "same", style = "photo", designRequirements = "" } = req.body;
   const width = asset.width || 580;
   const height = asset.height || 580;
 
@@ -804,7 +802,7 @@ app.post("/api/projects/:id/one-click-image/:idx", async (req, res) => {
         `block_${idx}_oneclick_${i}_${Date.now()}.jpg`
       );
       await generateImageFromReference(assetEntry.localPath, {
-        nuance, style, width, height, outputPath,
+        nuance, style, width, height, outputPath, designRequirements,
       });
       results.push(`/api/projects/${project.id}/generated-images/${path.basename(outputPath)}`);
       // Delay between generations for rate limiting
@@ -1038,7 +1036,7 @@ app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
   const block = project.blocks[idx];
   if (!block) return res.status(404).json({ error: "Block not found" });
 
-  const { instruction, text } = req.body;
+  const { instruction, text, designRequirements } = req.body;
   if (!instruction) return res.status(400).json({ error: "instruction is required" });
 
   const sourceText = text || block.text || "";
@@ -1054,8 +1052,9 @@ app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
   if (keys.length === 0) return res.status(400).json({ error: "GEMINI_API_KEY が未設定です。.envファイルに追加してください。" });
 
   const key = keys[Math.floor(Math.random() * keys.length)];
+  const designContext = designRequirements ? `\nデザイン要件: ${designRequirements}\n上記のトーン・雰囲気に合わせて書き換えてください。` : "";
   const prompt = `以下のテキストを指示に従って書き換えてください。HTMLのインラインスタイル（font-size, color, strong等）は必ず保持してください。書き換え後のテキストのみを返してください。余計な説明は不要です。
-
+${designContext}
 指示: ${instruction}
 
 元テキスト:
@@ -1063,7 +1062,7 @@ ${sourceText}`;
 
   try {
     const apiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${key}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

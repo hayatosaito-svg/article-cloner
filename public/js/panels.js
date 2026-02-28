@@ -97,6 +97,52 @@ document.getElementById("edit-panel-close")?.addEventListener("click", () => {
 function buildAiTextPanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
 
+  // AIプロバイダー選択
+  const providerSection = createSection("AIプロバイダー");
+  const providerRow = document.createElement("div");
+  providerRow.style.cssText = "display:flex;gap:6px";
+  const providerGemini = document.createElement("button");
+  providerGemini.className = "panel-btn primary";
+  providerGemini.textContent = "Gemini";
+  providerGemini.dataset.provider = "gemini";
+  const providerPixai = document.createElement("button");
+  providerPixai.className = "panel-btn";
+  providerPixai.textContent = "PixAI";
+  providerPixai.dataset.provider = "pixai";
+  providerPixai.style.opacity = "0.5";
+  providerPixai.title = "準備中 — APIキー設定後に利用可能";
+  let selectedProvider = "gemini";
+  providerGemini.addEventListener("click", () => {
+    selectedProvider = "gemini";
+    providerGemini.className = "panel-btn primary";
+    providerPixai.className = "panel-btn";
+    providerPixai.style.opacity = "0.5";
+  });
+  providerPixai.addEventListener("click", () => {
+    window.showToast("PixAI連携は準備中です。APIキーが設定され次第利用できます。", "info");
+  });
+  providerRow.appendChild(providerGemini);
+  providerRow.appendChild(providerPixai);
+  providerSection.appendChild(providerRow);
+  frag.appendChild(providerSection);
+
+  // デザイン要件
+  const designSection = createSection("デザイン要件（AI共通指示）");
+  const designArea = document.createElement("textarea");
+  designArea.className = "panel-textarea";
+  designArea.placeholder = "例：大人女性向け高級感のあるトーン / ポップで明るい雰囲気 / 医療系の信頼感...";
+  designArea.rows = 2;
+  designArea.value = window._designRequirements || "";
+  designArea.addEventListener("input", () => {
+    window._designRequirements = designArea.value;
+  });
+  designSection.appendChild(designArea);
+  const designHint = document.createElement("div");
+  designHint.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:4px";
+  designHint.textContent = "ここに書いた内容がAI書き換え・画像生成の全指示に反映されます";
+  designSection.appendChild(designHint);
+  frag.appendChild(designSection);
+
   // 現在のテキスト表示
   const currentSection = createSection("現在のテキスト");
   const currentText = document.createElement("div");
@@ -143,6 +189,7 @@ function buildAiTextPanel(projectId, blockIndex, block) {
       const result = await window.API.aiRewrite(projectId, blockIndex, {
         instruction,
         text: block.text,
+        designRequirements: window._designRequirements || "",
       });
 
       if (result.ok) {
@@ -550,6 +597,48 @@ function buildImagePanel(projectId, blockIndex, block) {
   }
   frag.appendChild(previewSection);
 
+  // ── AIプロバイダー選択（画像） ──
+  const imgProviderSection = createSection("AIプロバイダー");
+  const imgProviderRow = document.createElement("div");
+  imgProviderRow.style.cssText = "display:flex;gap:6px";
+  const imgProviderGemini = document.createElement("button");
+  imgProviderGemini.className = "panel-btn primary";
+  imgProviderGemini.textContent = "Gemini";
+  const imgProviderPixai = document.createElement("button");
+  imgProviderPixai.className = "panel-btn";
+  imgProviderPixai.textContent = "PixAI";
+  imgProviderPixai.style.opacity = "0.5";
+  imgProviderPixai.title = "準備中 — APIキー設定後に利用可能";
+  imgProviderGemini.addEventListener("click", () => {
+    imgProviderGemini.className = "panel-btn primary";
+    imgProviderPixai.className = "panel-btn";
+    imgProviderPixai.style.opacity = "0.5";
+  });
+  imgProviderPixai.addEventListener("click", () => {
+    window.showToast("PixAI連携は準備中です。APIキーが設定され次第利用できます。", "info");
+  });
+  imgProviderRow.appendChild(imgProviderGemini);
+  imgProviderRow.appendChild(imgProviderPixai);
+  imgProviderSection.appendChild(imgProviderRow);
+  frag.appendChild(imgProviderSection);
+
+  // ── デザイン要件（画像AI共通） ──
+  const imgDesignSection = createSection("デザイン要件（AI共通指示）");
+  const imgDesignArea = document.createElement("textarea");
+  imgDesignArea.className = "panel-textarea";
+  imgDesignArea.placeholder = "例：大人女性向け高級感のあるトーン / ポップで明るい雰囲気...";
+  imgDesignArea.rows = 2;
+  imgDesignArea.value = window._designRequirements || "";
+  imgDesignArea.addEventListener("input", () => {
+    window._designRequirements = imgDesignArea.value;
+  });
+  imgDesignSection.appendChild(imgDesignArea);
+  const imgDesignHint = document.createElement("div");
+  imgDesignHint.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:4px";
+  imgDesignHint.textContent = "テキスト編集AIとも共有されます";
+  imgDesignSection.appendChild(imgDesignHint);
+  frag.appendChild(imgDesignSection);
+
   // ── ワンクリックAI画像生成 ──
   const oneClickSection = document.createElement("div");
   oneClickSection.className = "panel-section oneclick-section";
@@ -623,7 +712,7 @@ function buildImagePanel(projectId, blockIndex, block) {
     resultGrid.innerHTML = "";
 
     try {
-      const result = await window.API.oneClickImage(projectId, blockIndex, { nuance, style });
+      const result = await window.API.oneClickImage(projectId, blockIndex, { nuance, style, designRequirements: window._designRequirements || "" });
       if (result.ok && result.images) {
         window.showToast(`${result.images.length}パターン生成しました`, "success");
         resultGrid.innerHTML = "";
