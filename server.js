@@ -975,8 +975,74 @@ app.get("/api/status", (req, res) => {
   res.json({
     gemini: keys.length > 0,
     geminiKeyCount: keys.length,
-    version: "1.0.0",
+    version: "1.1.0",
   });
+});
+
+// POST /api/set-key - Save Gemini API key at runtime
+app.post("/api/set-key", async (req, res) => {
+  const { key } = req.body;
+  if (!key || typeof key !== "string" || key.trim().length < 10) {
+    return res.status(400).json({ error: "有効なAPIキーを入力してください" });
+  }
+
+  const trimmedKey = key.trim();
+
+  // Quick validation: try a simple API call
+  try {
+    const testRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${trimmedKey}`
+    );
+    if (!testRes.ok) {
+      return res.status(400).json({ error: "APIキーが無効です。Google AI Studioで正しいキーを確認してください。" });
+    }
+  } catch {
+    return res.status(400).json({ error: "APIキーの検証に失敗しました。ネットワークを確認してください。" });
+  }
+
+  // Set in process.env (runtime)
+  // Find first empty slot or use GEMINI_API_KEY
+  let saved = false;
+  for (let i = 1; i <= 3; i++) {
+    if (!process.env[`GEMINI_API_KEY_${i}`]) {
+      process.env[`GEMINI_API_KEY_${i}`] = trimmedKey;
+      saved = true;
+      break;
+    }
+  }
+  if (!saved) {
+    process.env.GEMINI_API_KEY = trimmedKey;
+  }
+
+  // Also persist to .env file if possible
+  try {
+    const envPath = path.join(PROJECT_ROOT, ".env");
+    let envContent = "";
+    if (existsSync(envPath)) {
+      envContent = await readFile(envPath, "utf-8");
+    }
+    // Add or update key
+    if (envContent.includes("GEMINI_API_KEY_1=")) {
+      // Already has keys, check if this specific key is already there
+      if (!envContent.includes(trimmedKey)) {
+        // Find empty slot
+        for (let i = 1; i <= 3; i++) {
+          const pattern = `GEMINI_API_KEY_${i}=`;
+          if (!envContent.includes(pattern) || envContent.match(new RegExp(`${pattern}\\s*$`, 'm'))) {
+            envContent += `\nGEMINI_API_KEY_${i}=${trimmedKey}`;
+            break;
+          }
+        }
+      }
+    } else {
+      envContent += `\nGEMINI_API_KEY_1=${trimmedKey}`;
+    }
+    await writeFile(envPath, envContent.trim() + "\n", "utf-8");
+  } catch {
+    // File write failed - that's ok, runtime env is already set
+  }
+
+  res.json({ ok: true, message: "APIキーを保存しました" });
 });
 
 // SPA fallback

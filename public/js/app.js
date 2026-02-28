@@ -678,35 +678,89 @@ window.loadPreview = loadPreview;
 window.loadEditor = loadEditor;
 window.state = state;
 
-// ── Status Check ──────────────────────────────────────────
+// ── API Key Setup ────────────────────────────────────────
 
 async function checkStatus() {
   try {
     const res = await fetch("/api/status");
     const data = await res.json();
-    const geminiEl = document.getElementById("status-gemini");
+    const statusEl = document.getElementById("api-key-status");
+    const card = document.getElementById("api-key-card");
+    const body = document.getElementById("api-key-body");
+    const hint = document.getElementById("api-key-hint");
+
     if (data.gemini) {
-      geminiEl.classList.add("connected");
-      geminiEl.classList.remove("disconnected");
-      geminiEl.querySelector(".status-value").textContent = `接続済 (${data.geminiKeyCount}キー)`;
+      statusEl.classList.add("connected");
+      statusEl.classList.remove("disconnected");
+      statusEl.querySelector(".api-key-status-text").textContent = `接続済 (${data.geminiKeyCount}キー)`;
+      card.classList.add("connected");
+      body.classList.add("collapsed");
+      hint.innerHTML = '<span style="color:var(--green)">AI機能が使えます。</span> キーを追加したい場合は下の入力欄を使ってください。';
     } else {
-      geminiEl.classList.add("disconnected");
-      geminiEl.classList.remove("connected");
-      geminiEl.querySelector(".status-value").textContent = "未設定";
+      statusEl.classList.add("disconnected");
+      statusEl.classList.remove("connected");
+      statusEl.querySelector(".api-key-status-text").textContent = "未設定";
+      card.classList.remove("connected");
+      body.classList.remove("collapsed");
+      hint.innerHTML = '';
     }
   } catch {
-    const geminiEl = document.getElementById("status-gemini");
-    if (geminiEl) {
-      geminiEl.classList.add("disconnected");
-      geminiEl.querySelector(".status-value").textContent = "接続エラー";
+    const statusEl = document.getElementById("api-key-status");
+    if (statusEl) {
+      statusEl.classList.add("disconnected");
+      statusEl.querySelector(".api-key-status-text").textContent = "接続エラー";
     }
   }
 }
 
-// ── Setup Guide ───────────────────────────────────────────
+// Toggle collapsed body on header click
+document.getElementById("api-key-header")?.addEventListener("click", () => {
+  document.getElementById("api-key-body")?.classList.toggle("collapsed");
+});
 
-document.getElementById("btn-setup-guide")?.addEventListener("click", () => {
-  openModal("modal-setup");
+// Save API key
+document.getElementById("btn-save-key")?.addEventListener("click", async () => {
+  const input = document.getElementById("api-key-input");
+  const btn = document.getElementById("btn-save-key");
+  const hint = document.getElementById("api-key-hint");
+  const key = input.value.trim();
+
+  if (!key) {
+    hint.innerHTML = '<span style="color:var(--red)">APIキーを入力してください</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "確認中...";
+  hint.innerHTML = '<span style="color:var(--text-muted)">APIキーを検証しています...</span>';
+
+  try {
+    const res = await fetch("/api/set-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key }),
+    });
+    const data = await res.json();
+
+    if (res.ok && data.ok) {
+      hint.innerHTML = '<span style="color:var(--green)">APIキーを保存しました! AI機能が使えます。</span>';
+      input.value = "";
+      showToast("Gemini APIキーを設定しました", "success");
+      await checkStatus();
+    } else {
+      hint.innerHTML = `<span style="color:var(--red)">${escapeHtml(data.error || "保存に失敗しました")}</span>`;
+    }
+  } catch (err) {
+    hint.innerHTML = `<span style="color:var(--red)">エラー: ${escapeHtml(err.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "保存";
+  }
+});
+
+// Enter key to save
+document.getElementById("api-key-input")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("btn-save-key")?.click();
 });
 
 // Init

@@ -40,17 +40,27 @@
       <div class="feature-chip"><span class="feature-dot" style="background:#EC4899"></span>AI画像生成</div>
       <div class="feature-chip"><span class="feature-dot" style="background:#10B981"></span>SB互換出力</div>
     </div>
-    <div class="landing-status" id="landing-status">
-      <div class="status-item" id="status-gemini">
-        <span class="status-dot"></span>
-        <span class="status-label">Gemini API</span>
-        <span class="status-value">確認中...</span>
+    <!-- Gemini APIキー設定カード -->
+    <div class="api-key-card" id="api-key-card">
+      <div class="api-key-header">
+        <div class="api-key-status" id="api-key-status">
+          <span class="status-dot"></span>
+          <span class="api-key-status-text">確認中...</span>
+        </div>
+        <span class="api-key-label">Gemini API</span>
+      </div>
+      <div class="api-key-body" id="api-key-body">
+        <p class="api-key-desc">AI画像生成・テキスト書き換えに必要です。<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="api-key-link">Google AI Studio</a> で無料で取得できます。</p>
+        <div class="api-key-input-row">
+          <input type="password" id="api-key-input" class="api-key-input" placeholder="APIキーをペースト..." autocomplete="off" spellcheck="false">
+          <button id="btn-save-key" class="btn-save-key">保存</button>
+        </div>
+        <div class="api-key-hint" id="api-key-hint"></div>
       </div>
     </div>
+
     <div class="landing-footer">
-      <button class="footer-link" id="btn-setup-guide">セットアップガイド</button>
-      <span class="footer-sep">|</span>
-      <span class="footer-version">v1.0.0</span>
+      <span class="footer-version">v1.1.0</span>
     </div>
   </div>
 </div>
