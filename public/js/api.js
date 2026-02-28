@@ -46,6 +46,13 @@ export const API = {
     });
   },
 
+  async aiRewrite(projectId, idx, data) {
+    return fetchJson(`/api/projects/${projectId}/ai-rewrite/${idx}`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
   async build(projectId, config = {}) {
     return fetchJson(`/api/projects/${projectId}/build`, {
       method: "POST",

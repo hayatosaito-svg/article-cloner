@@ -391,10 +391,76 @@
 }
 .edit-panel-close:hover { color: var(--text-primary); }
 
+.edit-mode-toggle {
+  display: flex;
+  padding: 8px 16px;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-tertiary);
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 7px 12px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.mode-btn:hover { color: var(--text-secondary); }
+.mode-btn.active {
+  background: var(--bg-secondary);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+.mode-btn[data-mode="ai"].active {
+  background: rgba(139, 92, 246, 0.12);
+  border-color: rgba(139, 92, 246, 0.3);
+  color: #a78bfa;
+}
+
 .edit-panel-body {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
+}
+
+/* AI mode prompt area */
+.ai-prompt-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: rgba(139, 92, 246, 0.06);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  border-radius: var(--radius-sm);
+}
+
+.ai-prompt-section .panel-section-title {
+  color: #a78bfa;
+}
+
+.ai-result-preview {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.ai-result-preview .diff-added {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--green);
+  padding: 0 2px;
+  border-radius: 2px;
 }
 
 /* ── Edit Panel Content Types ────────────────────────────── */

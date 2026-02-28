@@ -1,6 +1,23 @@
 /**
- * panels.js - Block edit panels (text/image/cta/widget/video)
+ * panels.js - ブロック編集パネル（手動モード / AIモード対応）
  */
+
+let currentMode = "manual"; // "manual" | "ai"
+
+// モード切替ボタン
+document.querySelectorAll(".mode-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".mode-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentMode = btn.dataset.mode;
+    // Re-render current panel if open
+    const panel = document.getElementById("edit-panel");
+    if (panel.classList.contains("open") && window._currentPanelData) {
+      const { projectId, blockIndex, blockType } = window._currentPanelData;
+      openEditPanel(projectId, blockIndex, blockType);
+    }
+  });
+});
 
 async function openEditPanel(projectId, blockIndex, blockType) {
   const panel = document.getElementById("edit-panel");
@@ -9,42 +26,47 @@ async function openEditPanel(projectId, blockIndex, blockType) {
   const indexEl = document.getElementById("edit-panel-index");
 
   typeEl.textContent = blockType;
-  typeEl.className = "edit-panel-type";
   indexEl.textContent = blockIndex;
+
+  window._currentPanelData = { projectId, blockIndex, blockType };
 
   let block;
   try {
     block = await window.API.getBlock(projectId, blockIndex);
   } catch (err) {
-    body.innerHTML = `<p style="color:var(--red)">Error: ${err.message}</p>`;
+    body.innerHTML = `<p style="color:var(--red)">読み込みエラー: ${err.message}</p>`;
     panel.classList.add("open");
     return;
   }
 
   body.innerHTML = "";
 
-  switch (blockType) {
-    case "text":
-    case "heading":
-      body.appendChild(buildTextPanel(projectId, blockIndex, block));
-      break;
-    case "image":
-      body.appendChild(buildImagePanel(projectId, blockIndex, block));
-      break;
-    case "cta_link":
-      body.appendChild(buildCtaPanel(projectId, blockIndex, block));
-      break;
-    case "video":
-      body.appendChild(buildVideoPanel(projectId, blockIndex, block));
-      break;
-    case "widget":
-      body.appendChild(buildWidgetPanel(projectId, blockIndex, block));
-      break;
-    case "spacer":
-      body.appendChild(buildSpacerPanel(block));
-      break;
-    default:
-      body.innerHTML = `<div class="panel-section"><p>Block type: ${blockType}</p></div>`;
+  if (currentMode === "ai" && (blockType === "text" || blockType === "heading")) {
+    body.appendChild(buildAiTextPanel(projectId, blockIndex, block));
+  } else {
+    switch (blockType) {
+      case "text":
+      case "heading":
+        body.appendChild(buildTextPanel(projectId, blockIndex, block));
+        break;
+      case "image":
+        body.appendChild(buildImagePanel(projectId, blockIndex, block));
+        break;
+      case "cta_link":
+        body.appendChild(buildCtaPanel(projectId, blockIndex, block));
+        break;
+      case "video":
+        body.appendChild(buildVideoPanel(projectId, blockIndex, block));
+        break;
+      case "widget":
+        body.appendChild(buildWidgetPanel(projectId, blockIndex, block));
+        break;
+      case "spacer":
+        body.appendChild(buildSpacerPanel(block));
+        break;
+      default:
+        body.innerHTML = `<div class="panel-section"><p>タイプ: ${blockType}</p></div>`;
+    }
   }
 
   panel.classList.add("open");
@@ -56,21 +78,144 @@ document.getElementById("edit-panel-close")?.addEventListener("click", () => {
   document.getElementById("edit-panel").classList.remove("open");
 });
 
-// ── Resolve asset URL ──────────────────────────────────────
+// ── AI テキスト編集パネル ──────────────────────────────────
 
-function assetUrl(projectId, asset) {
-  if (!asset) return "";
-  // If asset has a localFile via the project's asset catalog, use the API route
-  // Otherwise use the original src
-  return asset.src || asset.webpSrc || "";
+function buildAiTextPanel(projectId, blockIndex, block) {
+  const frag = document.createDocumentFragment();
+
+  // 現在のテキスト表示
+  const currentSection = createSection("現在のテキスト");
+  const currentText = document.createElement("div");
+  currentText.className = "ai-result-preview";
+  currentText.textContent = block.text || "(テキストなし)";
+  currentSection.appendChild(currentText);
+  frag.appendChild(currentSection);
+
+  // AI指示入力
+  const aiSection = document.createElement("div");
+  aiSection.className = "ai-prompt-section";
+  const aiTitle = document.createElement("div");
+  aiTitle.className = "panel-section-title";
+  aiTitle.textContent = "AI書き換え指示";
+  aiSection.appendChild(aiTitle);
+
+  const aiInput = document.createElement("textarea");
+  aiInput.className = "panel-textarea";
+  aiInput.placeholder = "例：トンマナを変えて大人っぽくして / もっと煽りを強めて / 文章を短くして / 別商品に差し替えて...";
+  aiInput.rows = 3;
+  aiSection.appendChild(aiInput);
+
+  const aiBtnRow = document.createElement("div");
+  aiBtnRow.className = "panel-btn-row";
+  const aiBtn = document.createElement("button");
+  aiBtn.className = "panel-btn primary";
+  aiBtn.textContent = "AIで書き換え";
+
+  // 結果表示エリア
+  const resultArea = document.createElement("div");
+  resultArea.style.marginTop = "12px";
+
+  aiBtn.addEventListener("click", async () => {
+    const instruction = aiInput.value.trim();
+    if (!instruction) {
+      window.showToast("書き換え指示を入力してください", "error");
+      return;
+    }
+
+    aiBtn.disabled = true;
+    aiBtn.innerHTML = '<span class="spinner"></span> AI処理中...';
+
+    try {
+      const result = await window.API.aiRewrite(projectId, blockIndex, {
+        instruction,
+        text: block.text,
+      });
+
+      if (result.ok) {
+        resultArea.innerHTML = "";
+
+        const previewTitle = document.createElement("div");
+        previewTitle.className = "panel-section-title";
+        previewTitle.textContent = "書き換え結果";
+        resultArea.appendChild(previewTitle);
+
+        const preview = document.createElement("div");
+        preview.className = "ai-result-preview";
+        preview.textContent = result.rewritten;
+        resultArea.appendChild(preview);
+
+        // 適用ボタン
+        const applyRow = document.createElement("div");
+        applyRow.className = "panel-btn-row";
+
+        const applyBtn = document.createElement("button");
+        applyBtn.className = "panel-btn primary";
+        applyBtn.textContent = "この内容で適用";
+        applyBtn.addEventListener("click", async () => {
+          applyBtn.disabled = true;
+          try {
+            // block.html内のテキストを書き換え
+            let newHtml = block.html;
+            if (block.text && result.rewritten) {
+              newHtml = newHtml.replace(block.text, result.rewritten);
+            }
+            await window.API.updateBlock(projectId, blockIndex, {
+              html: newHtml,
+              text: result.rewritten,
+            });
+            window.showToast("適用しました", "success");
+            window.loadPreview();
+            window.loadEditor();
+          } catch (err) {
+            window.showToast(`エラー: ${err.message}`, "error");
+          } finally {
+            applyBtn.disabled = false;
+          }
+        });
+
+        const retryBtn = document.createElement("button");
+        retryBtn.className = "panel-btn";
+        retryBtn.textContent = "やり直す";
+        retryBtn.addEventListener("click", () => {
+          resultArea.innerHTML = "";
+        });
+
+        applyRow.appendChild(applyBtn);
+        applyRow.appendChild(retryBtn);
+        resultArea.appendChild(applyRow);
+      }
+    } catch (err) {
+      window.showToast(`AIエラー: ${err.message}`, "error");
+    } finally {
+      aiBtn.disabled = false;
+      aiBtn.textContent = "AIで書き換え";
+    }
+  });
+
+  aiBtnRow.appendChild(aiBtn);
+  aiSection.appendChild(aiBtnRow);
+  aiSection.appendChild(resultArea);
+  frag.appendChild(aiSection);
+
+  // HTMLソース（参考用）
+  const htmlSection = createSection("HTMLソース");
+  const codeArea = document.createElement("textarea");
+  codeArea.className = "panel-code";
+  codeArea.value = block.html || "";
+  codeArea.rows = 6;
+  codeArea.readOnly = true;
+  htmlSection.appendChild(codeArea);
+  frag.appendChild(htmlSection);
+
+  return frag;
 }
 
-// ── Text Panel ─────────────────────────────────────────────
+// ── 手動テキスト編集パネル ─────────────────────────────────
 
 function buildTextPanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
 
-  const textSection = createSection("Content");
+  const textSection = createSection("テキスト内容");
   const textarea = document.createElement("textarea");
   textarea.className = "panel-textarea";
   textarea.value = block.text || "";
@@ -81,15 +226,15 @@ function buildTextPanel(projectId, blockIndex, block) {
     const info = document.createElement("div");
     info.style.cssText = "font-size:11px; color:var(--text-muted); margin-top:6px";
     const parts = [];
-    if (block.fontSize) parts.push(`font-size: ${block.fontSize}px`);
-    if (block.hasStrong) parts.push("bold");
-    if (block.hasColor) parts.push("colored");
+    if (block.fontSize) parts.push(`サイズ: ${block.fontSize}px`);
+    if (block.hasStrong) parts.push("太字");
+    if (block.hasColor) parts.push("カラー付き");
     info.textContent = parts.join(" | ");
     textSection.appendChild(info);
   }
   frag.appendChild(textSection);
 
-  const htmlSection = createSection("HTML Source");
+  const htmlSection = createSection("HTMLソース");
   const codeArea = document.createElement("textarea");
   codeArea.className = "panel-code";
   codeArea.value = block.html || "";
@@ -105,23 +250,21 @@ function buildTextPanel(projectId, blockIndex, block) {
   return frag;
 }
 
-// ── Image Panel ────────────────────────────────────────────
+// ── 画像パネル ─────────────────────────────────────────────
 
 function buildImagePanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
   const asset = block.assets?.[0];
 
-  // Original image
-  const previewSection = createSection("Original Image");
+  const previewSection = createSection("元画像");
   if (asset) {
     const box = document.createElement("div");
     box.className = "image-preview-box";
     const img = document.createElement("img");
-    img.src = assetUrl(projectId, asset);
-    img.alt = "Original";
+    img.src = asset.src || asset.webpSrc || "";
+    img.alt = "元画像";
     img.onerror = () => { img.style.display = "none"; };
     box.appendChild(img);
-
     if (asset.width && asset.height) {
       const dims = document.createElement("div");
       dims.style.cssText = "font-size:11px; color:var(--text-muted); padding:6px; text-align:center";
@@ -132,11 +275,11 @@ function buildImagePanel(projectId, blockIndex, block) {
   }
   frag.appendChild(previewSection);
 
-  // AI Description
-  const descSection = createSection("AI Image Description");
+  // AI画像説明
+  const descSection = createSection("AI画像説明");
   const descArea = document.createElement("textarea");
   descArea.className = "panel-textarea";
-  descArea.placeholder = "Click 'Describe' to auto-generate...";
+  descArea.placeholder = "「説明を取得」ボタンで元画像をAI分析...";
   descArea.rows = 3;
   descSection.appendChild(descArea);
 
@@ -144,29 +287,29 @@ function buildImagePanel(projectId, blockIndex, block) {
   descBtnRow.className = "panel-btn-row";
   const descBtn = document.createElement("button");
   descBtn.className = "panel-btn";
-  descBtn.textContent = "Describe";
+  descBtn.textContent = "説明を取得";
   descBtn.addEventListener("click", async () => {
     descBtn.disabled = true;
-    descBtn.innerHTML = '<span class="spinner"></span> Analyzing...';
+    descBtn.innerHTML = '<span class="spinner"></span> 分析中...';
     try {
       const result = await window.API.describeImage(projectId, blockIndex);
       descArea.value = result.description;
     } catch (err) {
-      window.showToast(`Error: ${err.message}`, "error");
+      window.showToast(`エラー: ${err.message}`, "error");
     } finally {
       descBtn.disabled = false;
-      descBtn.textContent = "Describe";
+      descBtn.textContent = "説明を取得";
     }
   });
   descBtnRow.appendChild(descBtn);
   descSection.appendChild(descBtnRow);
   frag.appendChild(descSection);
 
-  // Generation prompt
-  const promptSection = createSection("Generation Prompt");
+  // 画像生成
+  const promptSection = createSection("画像生成プロンプト");
   const promptArea = document.createElement("textarea");
   promptArea.className = "panel-textarea";
-  promptArea.placeholder = "Enter prompt for new image generation...";
+  promptArea.placeholder = "生成したい画像の指示を入力...";
   promptArea.rows = 4;
   promptSection.appendChild(promptArea);
 
@@ -174,7 +317,7 @@ function buildImagePanel(projectId, blockIndex, block) {
   genBtnRow.className = "panel-btn-row";
   const genBtn = document.createElement("button");
   genBtn.className = "panel-btn primary";
-  genBtn.textContent = "Generate Image";
+  genBtn.textContent = "画像を生成";
 
   const genContainer = document.createElement("div");
   genContainer.style.marginTop = "12px";
@@ -183,31 +326,31 @@ function buildImagePanel(projectId, blockIndex, block) {
     const prompt = promptArea.value.trim();
     const desc = descArea.value.trim();
     if (!prompt && !desc) {
-      window.showToast("Enter a prompt or describe the image first", "error");
+      window.showToast("プロンプトを入力するか、先に画像説明を取得してください", "error");
       return;
     }
     genBtn.disabled = true;
-    genBtn.innerHTML = '<span class="spinner"></span> Generating...';
+    genBtn.innerHTML = '<span class="spinner"></span> 生成中...';
     try {
       const result = await window.API.generateImage(projectId, blockIndex, {
         prompt: prompt || undefined,
         description: desc || undefined,
       });
       if (result.ok) {
-        window.showToast("Image generated!", "success");
+        window.showToast("画像を生成しました", "success");
         genContainer.innerHTML = "";
         const compare = document.createElement("div");
         compare.className = "image-compare";
 
         const beforeDiv = document.createElement("div");
-        beforeDiv.innerHTML = '<div class="image-compare-label">Before</div>';
+        beforeDiv.innerHTML = '<div class="image-compare-label">変更前</div>';
         const beforeImg = document.createElement("img");
-        beforeImg.src = assetUrl(projectId, asset);
+        beforeImg.src = asset?.src || asset?.webpSrc || "";
         beforeImg.style.cssText = "width:100%; border-radius:4px";
         beforeDiv.appendChild(beforeImg);
 
         const afterDiv = document.createElement("div");
-        afterDiv.innerHTML = '<div class="image-compare-label">After</div>';
+        afterDiv.innerHTML = '<div class="image-compare-label">変更後</div>';
         const afterImg = document.createElement("img");
         afterImg.src = result.imageUrl;
         afterImg.style.cssText = "width:100%; border-radius:4px";
@@ -218,10 +361,10 @@ function buildImagePanel(projectId, blockIndex, block) {
         genContainer.appendChild(compare);
       }
     } catch (err) {
-      window.showToast(`Error: ${err.message}`, "error");
+      window.showToast(`エラー: ${err.message}`, "error");
     } finally {
       genBtn.disabled = false;
-      genBtn.textContent = "Generate Image";
+      genBtn.textContent = "画像を生成";
     }
   });
 
@@ -230,8 +373,8 @@ function buildImagePanel(projectId, blockIndex, block) {
   promptSection.appendChild(genContainer);
   frag.appendChild(promptSection);
 
-  // HTML source
-  const htmlSection = createSection("HTML Source");
+  // HTMLソース
+  const htmlSection = createSection("HTMLソース");
   const codeArea = document.createElement("textarea");
   codeArea.className = "panel-code";
   codeArea.value = block.html || "";
@@ -239,41 +382,38 @@ function buildImagePanel(projectId, blockIndex, block) {
   htmlSection.appendChild(codeArea);
   frag.appendChild(htmlSection);
 
-  frag.appendChild(buildSaveRow(projectId, blockIndex, () => ({
-    html: codeArea.value,
-  })));
+  frag.appendChild(buildSaveRow(projectId, blockIndex, () => ({ html: codeArea.value })));
 
   return frag;
 }
 
-// ── CTA Panel ──────────────────────────────────────────────
+// ── CTAパネル ──────────────────────────────────────────────
 
 function buildCtaPanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
 
-  const urlSection = createSection("CTA URL");
+  const urlSection = createSection("遷移先URL");
   const preview = document.createElement("div");
   preview.className = "cta-preview";
-  preview.textContent = block.href || "No URL";
+  preview.textContent = block.href || "未設定";
   urlSection.appendChild(preview);
 
   const urlInput = document.createElement("input");
   urlInput.type = "url";
   urlInput.className = "form-input";
   urlInput.value = block.href || "";
-  urlInput.placeholder = "https://...";
+  urlInput.placeholder = "新しい遷移先URLを入力...";
   urlInput.style.marginTop = "8px";
   urlSection.appendChild(urlInput);
   frag.appendChild(urlSection);
 
-  // CTA image
   const asset = block.assets?.[0];
   if (asset) {
-    const imgSection = createSection("CTA Image");
+    const imgSection = createSection("CTA画像");
     const box = document.createElement("div");
     box.className = "image-preview-box";
     const img = document.createElement("img");
-    img.src = assetUrl(projectId, asset);
+    img.src = asset.src || asset.webpSrc || "";
     img.alt = "CTA";
     img.onerror = () => { img.style.display = "none"; };
     box.appendChild(img);
@@ -281,8 +421,7 @@ function buildCtaPanel(projectId, blockIndex, block) {
     frag.appendChild(imgSection);
   }
 
-  // HTML source
-  const htmlSection = createSection("HTML Source");
+  const htmlSection = createSection("HTMLソース");
   const codeArea = document.createElement("textarea");
   codeArea.className = "panel-code";
   codeArea.value = block.html || "";
@@ -298,15 +437,15 @@ function buildCtaPanel(projectId, blockIndex, block) {
   return frag;
 }
 
-// ── Video Panel ────────────────────────────────────────────
+// ── 動画パネル ─────────────────────────────────────────────
 
 function buildVideoPanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
 
-  const infoSection = createSection("Video Source");
+  const infoSection = createSection("動画ソース");
   const info = document.createElement("div");
   info.style.cssText = "font-size:12px; color:var(--text-secondary); word-break:break-all";
-  info.textContent = block.videoSrc || "No video source";
+  info.textContent = block.videoSrc || "ソースなし";
   infoSection.appendChild(info);
 
   if (block.width && block.height) {
@@ -318,7 +457,7 @@ function buildVideoPanel(projectId, blockIndex, block) {
   frag.appendChild(infoSection);
 
   if (block.videoSrc) {
-    const playerSection = createSection("Preview");
+    const playerSection = createSection("プレビュー");
     const video = document.createElement("video");
     video.src = block.videoSrc;
     video.controls = true;
@@ -329,7 +468,7 @@ function buildVideoPanel(projectId, blockIndex, block) {
     frag.appendChild(playerSection);
   }
 
-  const htmlSection = createSection("HTML Source");
+  const htmlSection = createSection("HTMLソース");
   const codeArea = document.createElement("textarea");
   codeArea.className = "panel-code";
   codeArea.value = block.html || "";
@@ -337,22 +476,20 @@ function buildVideoPanel(projectId, blockIndex, block) {
   htmlSection.appendChild(codeArea);
   frag.appendChild(htmlSection);
 
-  frag.appendChild(buildSaveRow(projectId, blockIndex, () => ({
-    html: codeArea.value,
-  })));
+  frag.appendChild(buildSaveRow(projectId, blockIndex, () => ({ html: codeArea.value })));
 
   return frag;
 }
 
-// ── Widget Panel ───────────────────────────────────────────
+// ── ウィジェットパネル ─────────────────────────────────────
 
 function buildWidgetPanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
 
-  const typeSection = createSection("Widget Type");
+  const typeSection = createSection("ウィジェット種別");
   const badge = document.createElement("span");
   badge.className = "widget-type-badge";
-  badge.textContent = block.widgetType || "custom";
+  badge.textContent = block.widgetType || "カスタム";
   typeSection.appendChild(badge);
 
   if (block.sbPartId) {
@@ -364,7 +501,7 @@ function buildWidgetPanel(projectId, blockIndex, block) {
   frag.appendChild(typeSection);
 
   if (block.styles?.length > 0) {
-    const cssSection = createSection("Widget CSS");
+    const cssSection = createSection("ウィジェットCSS");
     const cssArea = document.createElement("textarea");
     cssArea.className = "panel-code";
     cssArea.value = block.styles.join("\n\n");
@@ -374,7 +511,7 @@ function buildWidgetPanel(projectId, blockIndex, block) {
   }
 
   if (block.text) {
-    const textSection = createSection("Text Content");
+    const textSection = createSection("テキスト内容");
     const textarea = document.createElement("textarea");
     textarea.className = "panel-textarea";
     textarea.value = block.text;
@@ -383,7 +520,7 @@ function buildWidgetPanel(projectId, blockIndex, block) {
     frag.appendChild(textSection);
   }
 
-  const htmlSection = createSection("HTML Source");
+  const htmlSection = createSection("HTMLソース");
   const codeArea = document.createElement("textarea");
   codeArea.className = "panel-code";
   codeArea.value = block.html || "";
@@ -391,22 +528,20 @@ function buildWidgetPanel(projectId, blockIndex, block) {
   htmlSection.appendChild(codeArea);
   frag.appendChild(htmlSection);
 
-  frag.appendChild(buildSaveRow(projectId, blockIndex, () => ({
-    html: codeArea.value,
-  })));
+  frag.appendChild(buildSaveRow(projectId, blockIndex, () => ({ html: codeArea.value })));
 
   return frag;
 }
 
-// ── Spacer Panel ───────────────────────────────────────────
+// ── スペーサーパネル ───────────────────────────────────────
 
 function buildSpacerPanel(block) {
   const frag = document.createDocumentFragment();
 
-  const section = createSection("Spacer Block");
+  const section = createSection("スペーサー");
   const info = document.createElement("div");
   info.style.cssText = "font-size:13px; color:var(--text-muted)";
-  info.textContent = "Empty spacer / line break";
+  info.textContent = "空行・改行要素";
   section.appendChild(info);
   frag.appendChild(section);
 
@@ -422,7 +557,7 @@ function buildSpacerPanel(block) {
   return frag;
 }
 
-// ── Helpers ────────────────────────────────────────────────
+// ── ヘルパー ───────────────────────────────────────────────
 
 function createSection(title) {
   const section = document.createElement("div");
@@ -440,11 +575,11 @@ function buildSaveRow(projectId, blockIndex, getData) {
 
   const btn = document.createElement("button");
   btn.className = "panel-btn primary";
-  btn.textContent = "Save";
+  btn.textContent = "保存";
 
   const indicator = document.createElement("span");
   indicator.className = "save-indicator";
-  indicator.textContent = "Saved!";
+  indicator.textContent = "保存しました";
 
   btn.addEventListener("click", async () => {
     btn.disabled = true;
@@ -455,10 +590,10 @@ function buildSaveRow(projectId, blockIndex, getData) {
       setTimeout(() => indicator.classList.remove("show"), 2000);
       window.loadPreview();
     } catch (err) {
-      window.showToast(`Save error: ${err.message}`, "error");
+      window.showToast(`保存エラー: ${err.message}`, "error");
     } finally {
       btn.disabled = false;
-      btn.textContent = "Save";
+      btn.textContent = "保存";
     }
   });
 

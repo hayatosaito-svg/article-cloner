@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: article-cloner
+    runtime: docker
+    plan: free
+    envVars:
+      - key: GEMINI_API_KEY_1
+        sync: false
+      - key: GEMINI_API_KEY_2
+        sync: false
+      - key: GEMINI_API_KEY_3
+        sync: false

@@ -8,6 +8,7 @@ import express from "express";
 import path from "path";
 import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
+import fetch from "node-fetch";
 import { scrape } from "./src/scraper.js";
 import { parseHtml } from "./src/parser.js";
 import { applyTextModifications, analyzeForReplacement } from "./src/text-modifier.js";
@@ -17,6 +18,24 @@ import {
   PROJECT_ROOT, SCRAPED_DIR, ANALYSIS_DIR, IMAGES_DIR, FINAL_DIR,
   initOutputDirs, urlToSlug, saveJson, loadJson, formatBytes,
 } from "./src/utils.js";
+
+// Load .env if present
+try {
+  const envPath = path.join(PROJECT_ROOT, ".env");
+  if (existsSync(envPath)) {
+    const envContent = await readFile(envPath, "utf-8");
+    for (const line of envContent.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx > 0) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "");
+        if (!process.env[key]) process.env[key] = val;
+      }
+    }
+  }
+} catch {}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -568,9 +587,79 @@ app.get("/api/projects/:id/export", (req, res) => {
   res.send(html);
 });
 
+// POST /api/projects/:id/ai-rewrite/:idx - AI text rewrite
+app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const idx = parseInt(req.params.idx, 10);
+  const block = project.blocks[idx];
+  if (!block) return res.status(404).json({ error: "Block not found" });
+
+  const { instruction, text } = req.body;
+  if (!instruction) return res.status(400).json({ error: "instruction is required" });
+
+  const sourceText = text || block.text || "";
+  if (!sourceText) return res.status(400).json({ error: "No text to rewrite" });
+
+  // Use Gemini API for text rewriting
+  const keys = [];
+  for (let i = 1; i <= 3; i++) {
+    const k = process.env[`GEMINI_API_KEY_${i}`];
+    if (k) keys.push(k);
+  }
+  if (keys.length === 0 && process.env.GEMINI_API_KEY) keys.push(process.env.GEMINI_API_KEY);
+  if (keys.length === 0) return res.status(400).json({ error: "GEMINI_API_KEY が未設定です。.envファイルに追加してください。" });
+
+  const key = keys[Math.floor(Math.random() * keys.length)];
+  const prompt = `以下のテキストを指示に従って書き換えてください。HTMLのインラインスタイル（font-size, color, strong等）は必ず保持してください。書き換え後のテキストのみを返してください。余計な説明は不要です。
+
+指示: ${instruction}
+
+元テキスト:
+${sourceText}`;
+
+  try {
+    const apiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${key}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+        }),
+      }
+    );
+
+    if (!apiRes.ok) throw new Error(`Gemini API error: ${apiRes.status}`);
+
+    const data = await apiRes.json();
+    const rewritten = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+    res.json({ ok: true, original: sourceText, rewritten });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, projects: projects.size, uptime: process.uptime() });
+});
+
+// Status check - API key configuration
+app.get("/api/status", (req, res) => {
+  const keys = [];
+  for (let i = 1; i <= 3; i++) {
+    const k = process.env[`GEMINI_API_KEY_${i}`];
+    if (k) keys.push(i);
+  }
+  if (keys.length === 0 && process.env.GEMINI_API_KEY) keys.push(0);
+  res.json({
+    gemini: keys.length > 0,
+    geminiKeyCount: keys.length,
+    version: "1.0.0",
+  });
 });
 
 // SPA fallback

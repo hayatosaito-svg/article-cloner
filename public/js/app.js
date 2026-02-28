@@ -96,7 +96,7 @@ async function startClone() {
       onError: handleError,
     });
   } catch (err) {
-    showToast(`Error: ${err.message}`, "error");
+    showToast(`エラー: ${err.message}`, "error");
     showScreen("landing");
   }
 }
@@ -146,13 +146,13 @@ async function handleReady(data) {
   setSegmentDone("ready");
   document.getElementById("counter-blocks").textContent = data.blockCount;
   document.getElementById("counter-assets").textContent = data.assetCount;
-  addLogEntry("Ready!");
+  addLogEntry("準備完了!");
   await new Promise((r) => setTimeout(r, 600));
   await loadEditor();
 }
 
 function handleError(data) {
-  addLogEntry(`ERROR: ${data.message}`);
+  addLogEntry(`エラー: ${data.message}`);
   showToast(`Error: ${data.message}`, "error");
 }
 
@@ -163,12 +163,12 @@ async function loadEditor() {
     state.projectData = await window.API.getProject(state.projectId);
     showScreen("editor");
     document.getElementById("toolbar-title").textContent = state.projectData.slug;
-    document.getElementById("toolbar-block-count").textContent = `${state.projectData.blockCount} blocks`;
+    document.getElementById("toolbar-block-count").textContent = `${state.projectData.blockCount} ブロック`;
     renderBlockList(state.projectData.blocks);
     loadPreview();
     document.getElementById("btn-export").disabled = state.projectData.status !== "done";
   } catch (err) {
-    showToast(`Error: ${err.message}`, "error");
+    showToast(`エラー: ${err.message}`, "error");
   }
 }
 
@@ -282,21 +282,21 @@ document.getElementById("btn-build").addEventListener("click", async () => {
   if (!state.projectId) return;
   const btn = document.getElementById("btn-build");
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Building...';
+  btn.innerHTML = '<span class="spinner"></span> ビルド中...';
   try {
     const result = await window.API.build(state.projectId);
     if (result.ok) {
-      showToast("Build完了!", "success");
+      showToast("ビルド完了!", "success");
       document.getElementById("btn-export").disabled = false;
       openExportModal(result);
     } else {
-      showToast(`Build error: ${result.error}`, "error");
+      showToast(`ビルドエラー: ${result.error}`, "error");
     }
   } catch (err) {
-    showToast(`Build error: ${err.message}`, "error");
+    showToast(`ビルドエラー: ${err.message}`, "error");
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8l3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Build</span>';
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8l3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>ビルド</span>';
   }
 });
 
@@ -307,7 +307,7 @@ document.getElementById("btn-export").addEventListener("click", async () => {
       const result = await window.API.build(state.projectId);
       openExportModal(result);
     } catch (err) {
-      showToast(`Error: ${err.message}`, "error");
+      showToast(`エラー: ${err.message}`, "error");
     }
   } else {
     openExportModal(null);
@@ -371,14 +371,14 @@ document.getElementById("btn-apply-text-modify").addEventListener("click", async
   try {
     const result = await window.API.textModify(state.projectId, config);
     if (result.ok) {
-      showToast(`差し替え完了 (${result.blockCount} blocks)`, "success");
+      showToast(`差し替え完了 (${result.blockCount} ブロック)`, "success");
       closeModal("modal-text-modify");
       await loadEditor();
     } else {
       showToast(`Error: ${result.error}`, "error");
     }
   } catch (err) {
-    showToast(`Error: ${err.message}`, "error");
+    showToast(`エラー: ${err.message}`, "error");
   }
 });
 
@@ -395,17 +395,17 @@ function openExportModal(buildResult) {
     const checks = [];
 
     if (buildResult.valid) {
-      checks.push({ label: "SB Fragment format valid", pass: true });
+      checks.push({ label: "SBフラグメント形式: 正常", pass: true });
     }
     if (buildResult.errors?.length) {
       buildResult.errors.forEach((e) => checks.push({ label: e, pass: false }));
     } else {
-      checks.push({ label: "No validation errors", pass: true });
+      checks.push({ label: "バリデーションエラーなし", pass: true });
     }
     buildResult.warnings?.forEach((w) => checks.push({ label: w, pass: true, warn: true }));
 
     if (!buildResult.errors?.length && !buildResult.warnings?.length) {
-      checks.push({ label: "All checks passed", pass: true });
+      checks.push({ label: "全チェック通過", pass: true });
     }
 
     checks.forEach((c) => {
@@ -418,8 +418,8 @@ function openExportModal(buildResult) {
     });
 
     stats.innerHTML = `
-      <div class="stat-card"><div class="stat-value">${buildResult.sizeFormatted || "-"}</div><div class="stat-label">File Size</div></div>
-      <div class="stat-card"><div class="stat-value">${buildResult.blockCount || "-"}</div><div class="stat-label">Blocks</div></div>`;
+      <div class="stat-card"><div class="stat-value">${buildResult.sizeFormatted || "-"}</div><div class="stat-label">ファイルサイズ</div></div>
+      <div class="stat-card"><div class="stat-value">${buildResult.blockCount || "-"}</div><div class="stat-label">ブロック数</div></div>`;
   }
 }
 
@@ -433,9 +433,9 @@ document.getElementById("btn-copy-html").addEventListener("click", async () => {
     const res = await fetch(window.API.getExportUrl(state.projectId));
     const html = await res.text();
     await navigator.clipboard.writeText(html);
-    showToast("Copied!", "success");
+    showToast("クリップボードにコピーしました", "success");
   } catch {
-    showToast("Copy failed", "error");
+    showToast("コピーに失敗しました", "error");
   }
 });
 
@@ -456,5 +456,37 @@ window.loadPreview = loadPreview;
 window.loadEditor = loadEditor;
 window.state = state;
 
+// ── Status Check ──────────────────────────────────────────
+
+async function checkStatus() {
+  try {
+    const res = await fetch("/api/status");
+    const data = await res.json();
+    const geminiEl = document.getElementById("status-gemini");
+    if (data.gemini) {
+      geminiEl.classList.add("connected");
+      geminiEl.classList.remove("disconnected");
+      geminiEl.querySelector(".status-value").textContent = `接続済 (${data.geminiKeyCount}キー)`;
+    } else {
+      geminiEl.classList.add("disconnected");
+      geminiEl.classList.remove("connected");
+      geminiEl.querySelector(".status-value").textContent = "未設定";
+    }
+  } catch {
+    const geminiEl = document.getElementById("status-gemini");
+    if (geminiEl) {
+      geminiEl.classList.add("disconnected");
+      geminiEl.querySelector(".status-value").textContent = "接続エラー";
+    }
+  }
+}
+
+// ── Setup Guide ───────────────────────────────────────────
+
+document.getElementById("btn-setup-guide")?.addEventListener("click", () => {
+  openModal("modal-setup");
+});
+
 // Init
+checkStatus();
 urlInput.focus();
