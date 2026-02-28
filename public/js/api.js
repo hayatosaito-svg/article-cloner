@@ -105,6 +105,24 @@ export const API = {
     });
   },
 
+  async publish(projectId) {
+    return fetchJson(`/api/projects/${projectId}/publish`, {
+      method: "POST",
+      timeout: 60000,
+    });
+  },
+
+  async setCloudflareConfig(data) {
+    return fetchJson("/api/set-cloudflare", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getCloudflareStatus() {
+    return fetchJson("/api/cloudflare-status");
+  },
+
   getExportUrl(projectId) {
     return `/api/projects/${projectId}/export`;
   },

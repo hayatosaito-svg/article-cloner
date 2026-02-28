@@ -194,6 +194,10 @@ GEMINI_API_KEY_1=your_key_here<br><br>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m-3-3l3 3 3-3M3 12v1h10v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>書き出し</span>
       </button>
+      <button class="toolbar-btn btn-accent" id="btn-publish" title="Cloudflare Pagesに公開">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v6m0 0l2.5-2.5M8 7L5.5 4.5M2 10v3h12v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>公開</span>
+      </button>
     </div>
   </div>
 
@@ -346,6 +350,59 @@ GEMINI_API_KEY_1=your_key_here<br><br>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m-3-3l3 3 3-3M3 12v1h10v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         HTMLをダウンロード
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- Cloudflare設定モーダル -->
+<div id="modal-cloudflare" class="modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content" style="max-width:480px">
+    <div class="modal-header">
+      <h3>Cloudflare Pages 設定</h3>
+      <button class="modal-close" data-close-modal="modal-cloudflare">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="panel-section">
+        <div class="panel-section-title">Cloudflare Account ID</div>
+        <input type="text" id="cf-account-id" class="panel-input" placeholder="例: a1b2c3d4e5f6...">
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
+          Workers & Pages → 右サイドバーの「アカウントID」からコピー
+        </div>
+      </div>
+      <div class="panel-section">
+        <div class="panel-section-title">Cloudflare API Token</div>
+        <input type="password" id="cf-api-token" class="panel-input" placeholder="Cloudflare API トークン">
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
+          My Profile → API Tokens →「Cloudflare Pages: Edit」権限で作成
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close-modal="modal-cloudflare">キャンセル</button>
+      <button class="btn-primary" id="btn-save-cloudflare">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 公開結果モーダル -->
+<div id="modal-publish-result" class="modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content" style="max-width:480px">
+    <div class="modal-header">
+      <h3>公開完了</h3>
+      <button class="modal-close" data-close-modal="modal-publish-result">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div id="publish-result-body"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close-modal="modal-publish-result">閉じる</button>
+      <a href="#" id="btn-open-published" class="btn-primary" target="_blank" rel="noopener">サイトを開く</a>
     </div>
   </div>
 </div>

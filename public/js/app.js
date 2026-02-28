@@ -833,6 +833,96 @@ document.getElementById("btn-copy-html").addEventListener("click", async () => {
   }
 });
 
+// ── Cloudflare Pages 公開 ────────────────────────────────
+
+document.getElementById("btn-publish").addEventListener("click", async () => {
+  if (!state.projectId) return;
+
+  // Check if Cloudflare is configured
+  try {
+    const cfStatus = await window.API.getCloudflareStatus();
+    if (!cfStatus.configured) {
+      openModal("modal-cloudflare");
+      return;
+    }
+  } catch {
+    openModal("modal-cloudflare");
+    return;
+  }
+
+  // Publish
+  const btn = document.getElementById("btn-publish");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 公開中...';
+
+  try {
+    // Build first if needed
+    if (state.projectData?.status !== "done") {
+      await window.API.build(state.projectId);
+    }
+
+    const result = await window.API.publish(state.projectId);
+    if (result.ok) {
+      showToast("公開しました!", "success");
+      // Show result modal
+      const body = document.getElementById("publish-result-body");
+      body.innerHTML = `
+        <div class="panel-section">
+          <div class="panel-section-title">公開URL</div>
+          <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:12px;word-break:break-all;font-family:monospace;font-size:13px">
+            <a href="${escapeHtml(result.url)}" target="_blank" rel="noopener" style="color:var(--accent)">${escapeHtml(result.url)}</a>
+          </div>
+        </div>
+        <div class="panel-section">
+          <div class="panel-section-title">Pages.dev URL（永続）</div>
+          <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:12px;word-break:break-all;font-family:monospace;font-size:13px">
+            <a href="${escapeHtml(result.pagesDevUrl)}" target="_blank" rel="noopener" style="color:var(--accent)">${escapeHtml(result.pagesDevUrl)}</a>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">
+            Cloudflareダッシュボードからカスタムドメインを紐付けられます
+          </div>
+        </div>`;
+      document.getElementById("btn-open-published").href = result.pagesDevUrl;
+      openModal("modal-publish-result");
+    }
+  } catch (err) {
+    showToast(`公開エラー: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v6m0 0l2.5-2.5M8 7L5.5 4.5M2 10v3h12v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>公開</span>';
+  }
+});
+
+// Save Cloudflare config
+document.getElementById("btn-save-cloudflare").addEventListener("click", async () => {
+  const accountId = document.getElementById("cf-account-id").value.trim();
+  const apiToken = document.getElementById("cf-api-token").value.trim();
+
+  if (!accountId || !apiToken) {
+    showToast("両方の項目を入力してください", "error");
+    return;
+  }
+
+  const btn = document.getElementById("btn-save-cloudflare");
+  btn.disabled = true;
+  btn.textContent = "検証中...";
+
+  try {
+    const result = await window.API.setCloudflareConfig({ accountId, apiToken });
+    if (result.ok) {
+      showToast("Cloudflare設定を保存しました", "success");
+      closeModal("modal-cloudflare");
+      // Trigger publish now
+      document.getElementById("btn-publish").click();
+    }
+  } catch (err) {
+    showToast(`設定エラー: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "保存";
+  }
+});
+
 // ── Helpers ────────────────────────────────────────────────
 
 function escapeHtml(str) {

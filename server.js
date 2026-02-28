@@ -1169,6 +1169,168 @@ app.post("/api/set-key", async (req, res) => {
   res.json({ ok: true, message: "APIキーを保存しました" });
 });
 
+// ── Cloudflare Pages 公開 ─────────────────────────────────
+
+// POST /api/set-cloudflare - Save Cloudflare credentials
+app.post("/api/set-cloudflare", async (req, res) => {
+  const { apiToken, accountId } = req.body;
+  if (!apiToken || !accountId) {
+    return res.status(400).json({ error: "APIトークンとアカウントIDが必要です" });
+  }
+
+  // Validate token
+  try {
+    const testRes = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify", {
+      headers: { Authorization: `Bearer ${apiToken}` },
+    });
+    const testData = await testRes.json();
+    if (!testData.success) {
+      return res.status(400).json({ error: "Cloudflare APIトークンが無効です" });
+    }
+  } catch {
+    return res.status(400).json({ error: "Cloudflare API接続に失敗しました" });
+  }
+
+  process.env.CLOUDFLARE_API_TOKEN = apiToken;
+  process.env.CLOUDFLARE_ACCOUNT_ID = accountId;
+
+  // Persist to .env
+  try {
+    const envPath = path.join(PROJECT_ROOT, ".env");
+    let envContent = existsSync(envPath) ? await readFile(envPath, "utf-8") : "";
+    // Remove old entries
+    envContent = envContent.replace(/^CLOUDFLARE_API_TOKEN=.*$/m, "").replace(/^CLOUDFLARE_ACCOUNT_ID=.*$/m, "");
+    envContent = envContent.trim() + `\nCLOUDFLARE_API_TOKEN=${apiToken}\nCLOUDFLARE_ACCOUNT_ID=${accountId}\n`;
+    await writeFile(envPath, envContent, "utf-8");
+  } catch {}
+
+  res.json({ ok: true, message: "Cloudflare設定を保存しました" });
+});
+
+// GET /api/cloudflare-status
+app.get("/api/cloudflare-status", (req, res) => {
+  res.json({
+    configured: !!(process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ACCOUNT_ID),
+  });
+});
+
+// POST /api/projects/:id/publish - Deploy to Cloudflare Pages
+app.post("/api/projects/:id/publish", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const cfToken = process.env.CLOUDFLARE_API_TOKEN;
+  const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  if (!cfToken || !cfAccountId) {
+    return res.status(400).json({ error: "Cloudflare APIトークンが未設定です。先に設定してください。" });
+  }
+
+  // Build if not already built
+  let html = project.buildResult;
+  if (!html) {
+    const sourceHtml = project.modifiedHtml || project.html;
+    if (!sourceHtml) return res.status(400).json({ error: "公開するHTMLがありません" });
+    html = buildSbHtml(sourceHtml, {});
+    project.buildResult = html;
+  }
+
+  // Wrap in a full HTML page for standalone viewing
+  const fullHtml = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${project.slug || "LP"}</title>
+<style>body{margin:0;padding:0;}</style>
+</head>
+<body>
+${html}
+</body>
+</html>`;
+
+  const projectName = `lp-${project.slug || project.id}`.replace(/[^a-z0-9-]/g, "-").slice(0, 50);
+
+  try {
+    // 1. Ensure Pages project exists (create if needed)
+    const listRes = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/pages/projects/${projectName}`,
+      { headers: { Authorization: `Bearer ${cfToken}` } }
+    );
+
+    if (!listRes.ok) {
+      // Create project
+      const createRes = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/pages/projects`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${cfToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: projectName,
+            production_branch: "main",
+          }),
+        }
+      );
+      const createData = await createRes.json();
+      if (!createData.success) {
+        const errMsg = createData.errors?.[0]?.message || "プロジェクト作成失敗";
+        // If project already exists with different casing, that's fine
+        if (!errMsg.includes("already exists")) {
+          return res.status(500).json({ error: errMsg });
+        }
+      }
+    }
+
+    // 2. Direct Upload deployment using form data
+    // Create a deployment with the HTML file
+    const FormData = (await import("form-data")).default;
+    const form = new FormData();
+    form.append("index.html", Buffer.from(fullHtml, "utf-8"), {
+      filename: "index.html",
+      contentType: "text/html",
+    });
+
+    const deployRes = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/pages/projects/${projectName}/deployments`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${cfToken}`,
+          ...form.getHeaders(),
+        },
+        body: form,
+      }
+    );
+
+    const deployData = await deployRes.json();
+
+    if (!deployData.success) {
+      const errMsg = deployData.errors?.[0]?.message || "デプロイ失敗";
+      return res.status(500).json({ error: errMsg });
+    }
+
+    const deployment = deployData.result;
+    const liveUrl = deployment.url || `https://${projectName}.pages.dev`;
+
+    // Store publish info on project
+    project.publishedUrl = liveUrl;
+    project.publishedAt = new Date().toISOString();
+    project.cfProjectName = projectName;
+
+    res.json({
+      ok: true,
+      url: liveUrl,
+      pagesDevUrl: `https://${projectName}.pages.dev`,
+      projectName,
+      deploymentId: deployment.id,
+    });
+  } catch (err) {
+    res.status(500).json({ error: `公開エラー: ${err.message}` });
+  }
+});
+
 // SPA fallback
 app.get("*", (req, res) => {
   res.sendFile(path.join(PROJECT_ROOT, "public", "index.html"));
