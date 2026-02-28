@@ -15,24 +15,31 @@ const GEMINI_MODEL = "gemini-2.0-flash-exp";
 const GEMINI_IMAGE_MODEL = "imagen-3.0-generate-002";
 
 /**
- * Gemini APIキーをローテーション
+ * Gemini APIキーをローテーション（遅延読み込み対応）
  */
 class KeyRotator {
   constructor() {
     this.keys = [];
-    for (let i = 1; i <= 3; i++) {
-      const key = process.env[`GEMINI_API_KEY_${i}`];
-      if (key) this.keys.push(key);
-    }
-    // フォールバック: 単一キー
-    if (this.keys.length === 0 && process.env.GEMINI_API_KEY) {
-      this.keys.push(process.env.GEMINI_API_KEY);
-    }
     this.index = 0;
     this.errorCounts = new Map();
+    this.disabledKeys = new Set();
+  }
+
+  _loadKeys() {
+    this.keys = [];
+    for (let i = 1; i <= 3; i++) {
+      const key = process.env[`GEMINI_API_KEY_${i}`];
+      if (key && !this.disabledKeys.has(key)) this.keys.push(key);
+    }
+    if (this.keys.length === 0 && process.env.GEMINI_API_KEY) {
+      const k = process.env.GEMINI_API_KEY;
+      if (!this.disabledKeys.has(k)) this.keys.push(k);
+    }
   }
 
   getKey() {
+    // 毎回envから再読み込み（起動後にキーが追加されるケースに対応）
+    this._loadKeys();
     if (this.keys.length === 0) {
       throw new Error(
         "No GEMINI_API_KEY set. Set GEMINI_API_KEY_1, GEMINI_API_KEY_2, GEMINI_API_KEY_3"
@@ -47,12 +54,14 @@ class KeyRotator {
     const count = (this.errorCounts.get(key) || 0) + 1;
     this.errorCounts.set(key, count);
     if (count >= 3) {
+      this.disabledKeys.add(key);
       this.keys = this.keys.filter((k) => k !== key);
       console.warn(`[image-gen] Key removed due to errors. Remaining: ${this.keys.length}`);
     }
   }
 
   get available() {
+    this._loadKeys();
     return this.keys.length > 0;
   }
 }
