@@ -785,6 +785,49 @@ app.put("/api/projects/:id/apply-image/:idx", (req, res) => {
   res.json({ ok: true });
 });
 
+// POST /api/projects/:id/upload-image/:idx - Upload local image and apply to block
+app.post("/api/projects/:id/upload-image/:idx", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
+
+  const idx = parseInt(req.params.idx, 10);
+  const block = project.blocks[idx];
+  if (!block) return res.status(404).json({ error: "Block not found" });
+
+  const { imageData, fileName } = req.body;
+  if (!imageData) return res.status(400).json({ error: "imageData is required" });
+
+  try {
+    // imageData is base64 data URL: "data:image/jpeg;base64,/9j/..."
+    const matches = imageData.match(/^data:image\/(\w+);base64,(.+)$/);
+    if (!matches) return res.status(400).json({ error: "Invalid image data format" });
+
+    const ext = matches[1] === "jpeg" ? "jpg" : matches[1];
+    const buffer = Buffer.from(matches[2], "base64");
+
+    // Resize with sharp (maintain aspect, max quality)
+    const asset = block.assets?.[0];
+    const width = asset?.width || 580;
+    const height = asset?.height || 580;
+
+    const { default: sharp } = await import("sharp");
+    const resized = await sharp(buffer)
+      .resize(width, height, { fit: "cover" })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+
+    const outFile = `block_${idx}_upload_${Date.now()}.jpg`;
+    const outputPath = path.join(project.dirs.images, outFile);
+    await writeFile(outputPath, resized);
+
+    const imageUrl = `/api/projects/${project.id}/generated-images/${outFile}`;
+    res.json({ ok: true, imageUrl, width, height });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Serve generated images
 app.get("/api/projects/:id/generated-images/:file", (req, res) => {
   const project = projects.get(req.params.id);

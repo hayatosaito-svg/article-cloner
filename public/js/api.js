@@ -64,6 +64,13 @@ export const API = {
     return fetchJson(`/api/projects/${projectId}/text-blocks`);
   },
 
+  async uploadImage(projectId, idx, data) {
+    return fetchJson(`/api/projects/${projectId}/upload-image/${idx}`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
   async aiRewrite(projectId, idx, data) {
     return fetchJson(`/api/projects/${projectId}/ai-rewrite/${idx}`, {
       method: "POST",

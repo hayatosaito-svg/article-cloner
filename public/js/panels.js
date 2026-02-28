@@ -212,50 +212,229 @@ function buildAiTextPanel(projectId, blockIndex, block) {
 
 // ── 手動テキスト編集パネル ─────────────────────────────────
 
+// HTMLからスタイル情報を抽出するヘルパー
+function extractStyles(html) {
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  const el = tmp.querySelector("[style]") || tmp.firstElementChild || tmp;
+  const cs = el.style || {};
+  // font-sizeを探す（ネストされた要素も含めて）
+  let fontSize = "";
+  let color = "";
+  let bgColor = "";
+  let bold = false;
+
+  function walk(node) {
+    if (!node) return;
+    if (node.style) {
+      if (node.style.fontSize && !fontSize) fontSize = node.style.fontSize;
+      if (node.style.color && !color) color = node.style.color;
+      if (node.style.backgroundColor && !bgColor) bgColor = node.style.backgroundColor;
+    }
+    if (node.tagName === "STRONG" || node.tagName === "B" ||
+        (node.style && (node.style.fontWeight === "bold" || node.style.fontWeight >= 700))) {
+      bold = true;
+    }
+    // font color属性
+    if (node.tagName === "FONT" && node.getAttribute("color") && !color) {
+      color = node.getAttribute("color");
+    }
+    for (const child of (node.children || [])) walk(child);
+  }
+  walk(tmp);
+  return { fontSize, color, bgColor, bold };
+}
+
+// rgbをhexに変換
+function rgbToHex(rgb) {
+  if (!rgb) return "";
+  if (rgb.startsWith("#")) return rgb;
+  const match = rgb.match(/(\d+),\s*(\d+),\s*(\d+)/);
+  if (!match) return rgb;
+  return "#" + [match[1], match[2], match[3]].map(x => parseInt(x).toString(16).padStart(2, "0")).join("");
+}
+
+// HTMLのルート要素にスタイルを適用
+function applyStylesToHtml(html, styles) {
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  // ルート要素（またはスタイルを持つ最初の要素）を取得
+  const root = tmp.firstElementChild || tmp;
+  // 既存のstyleを更新
+  if (styles.fontSize) root.style.fontSize = styles.fontSize;
+  if (styles.color) root.style.color = styles.color;
+  if (styles.bgColor) root.style.backgroundColor = styles.bgColor;
+  if (styles.bold === true && root.style.fontWeight !== "bold") root.style.fontWeight = "bold";
+  if (styles.bold === false && root.style.fontWeight) root.style.fontWeight = "";
+  return tmp.innerHTML;
+}
+
 function buildTextPanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
+  const styles = extractStyles(block.html || "");
+  // 編集中のHTML状態を保持
+  let currentHtml = block.html || "";
+  let currentText = block.text || "";
 
-  // ビジュアルプレビュー（実際の見た目で表示）
+  // ビジュアルプレビュー
   const previewSection = createSection("プレビュー");
   const previewBox = document.createElement("div");
   previewBox.className = "visual-preview-box";
-  previewBox.innerHTML = block.html || "";
+  previewBox.innerHTML = currentHtml;
   previewSection.appendChild(previewBox);
-
-  // スタイル情報バッジ
-  if (block.fontSize || block.hasStrong || block.hasColor) {
-    const badges = document.createElement("div");
-    badges.className = "style-badges";
-    if (block.fontSize) {
-      const b = document.createElement("span");
-      b.className = "style-badge";
-      b.innerHTML = `<span class="style-badge-icon">Aa</span> ${block.fontSize}px`;
-      badges.appendChild(b);
-    }
-    if (block.hasStrong) {
-      const b = document.createElement("span");
-      b.className = "style-badge bold";
-      b.innerHTML = `<b>B</b> 太字`;
-      badges.appendChild(b);
-    }
-    if (block.hasColor) {
-      const b = document.createElement("span");
-      b.className = "style-badge color";
-      b.innerHTML = `<span class="style-badge-dot"></span> カラー`;
-      badges.appendChild(b);
-    }
-    previewSection.appendChild(badges);
-  }
   frag.appendChild(previewSection);
 
-  // テキスト編集（プレーンテキスト）
-  const textSection = createSection("テキスト編集");
+  // テキスト編集
+  const textSection = createSection("テキスト内容");
   const textarea = document.createElement("textarea");
   textarea.className = "panel-textarea";
-  textarea.value = block.text || "";
-  textarea.rows = 5;
+  textarea.value = currentText;
+  textarea.rows = 4;
   textSection.appendChild(textarea);
   frag.appendChild(textSection);
+
+  // ── スタイル編集コントロール ──
+  const styleSection = document.createElement("div");
+  styleSection.className = "panel-section style-controls";
+  const styleTitle = document.createElement("div");
+  styleTitle.className = "panel-section-title";
+  styleTitle.textContent = "スタイル";
+  styleSection.appendChild(styleTitle);
+
+  // 文字サイズ
+  const sizeRow = document.createElement("div");
+  sizeRow.className = "style-control-row";
+  sizeRow.innerHTML = '<label class="style-control-label">文字サイズ</label>';
+  const sizeInputWrap = document.createElement("div");
+  sizeInputWrap.className = "style-control-input-wrap";
+  const sizeInput = document.createElement("input");
+  sizeInput.type = "number";
+  sizeInput.className = "style-control-number";
+  sizeInput.value = parseInt(styles.fontSize) || "";
+  sizeInput.placeholder = "例: 16";
+  sizeInput.min = "8";
+  sizeInput.max = "80";
+  const sizeUnit = document.createElement("span");
+  sizeUnit.className = "style-control-unit";
+  sizeUnit.textContent = "px";
+  sizeInputWrap.appendChild(sizeInput);
+  sizeInputWrap.appendChild(sizeUnit);
+  // プリセットボタン
+  const sizePresets = document.createElement("div");
+  sizePresets.className = "style-presets";
+  [12, 14, 16, 20, 24, 32].forEach(sz => {
+    const btn = document.createElement("button");
+    btn.className = "style-preset-btn" + (parseInt(styles.fontSize) === sz ? " active" : "");
+    btn.textContent = sz;
+    btn.addEventListener("click", () => {
+      sizeInput.value = sz;
+      sizePresets.querySelectorAll(".style-preset-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      sizeInput.dispatchEvent(new Event("input"));
+    });
+    sizePresets.appendChild(btn);
+  });
+  sizeRow.appendChild(sizeInputWrap);
+  sizeRow.appendChild(sizePresets);
+  styleSection.appendChild(sizeRow);
+
+  // 文字色
+  const colorRow = document.createElement("div");
+  colorRow.className = "style-control-row";
+  colorRow.innerHTML = '<label class="style-control-label">文字色</label>';
+  const colorWrap = document.createElement("div");
+  colorWrap.className = "style-control-color-wrap";
+  const colorPicker = document.createElement("input");
+  colorPicker.type = "color";
+  colorPicker.className = "style-color-picker";
+  colorPicker.value = rgbToHex(styles.color) || "#000000";
+  const colorText = document.createElement("input");
+  colorText.type = "text";
+  colorText.className = "style-color-text";
+  colorText.value = rgbToHex(styles.color) || "";
+  colorText.placeholder = "例: #ff0000 / red";
+  colorWrap.appendChild(colorPicker);
+  colorWrap.appendChild(colorText);
+  // プリセット色
+  const colorPresets = document.createElement("div");
+  colorPresets.className = "style-presets";
+  ["#000000", "#ff0000", "#0066ff", "#ff6600", "#008800", "#ffffff"].forEach(c => {
+    const btn = document.createElement("button");
+    btn.className = "style-preset-color";
+    btn.style.backgroundColor = c;
+    if (c === "#ffffff") btn.style.border = "1px solid var(--border)";
+    btn.addEventListener("click", () => {
+      colorPicker.value = c;
+      colorText.value = c;
+      colorPicker.dispatchEvent(new Event("input"));
+    });
+    colorPresets.appendChild(btn);
+  });
+  colorRow.appendChild(colorWrap);
+  colorRow.appendChild(colorPresets);
+  styleSection.appendChild(colorRow);
+
+  // 背景色（アンダーカラー）
+  const bgRow = document.createElement("div");
+  bgRow.className = "style-control-row";
+  bgRow.innerHTML = '<label class="style-control-label">背景色 / アンダーカラー</label>';
+  const bgWrap = document.createElement("div");
+  bgWrap.className = "style-control-color-wrap";
+  const bgPicker = document.createElement("input");
+  bgPicker.type = "color";
+  bgPicker.className = "style-color-picker";
+  bgPicker.value = rgbToHex(styles.bgColor) || "#ffff00";
+  const bgText = document.createElement("input");
+  bgText.type = "text";
+  bgText.className = "style-color-text";
+  bgText.value = rgbToHex(styles.bgColor) || "";
+  bgText.placeholder = "例: #ffff00 / yellow";
+  bgWrap.appendChild(bgPicker);
+  bgWrap.appendChild(bgText);
+  const bgPresets = document.createElement("div");
+  bgPresets.className = "style-presets";
+  ["#ffff00", "#ffcccc", "#ccffcc", "#cce5ff", "#ffe0cc", "transparent"].forEach(c => {
+    const btn = document.createElement("button");
+    btn.className = "style-preset-color";
+    if (c === "transparent") {
+      btn.style.background = "linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%), linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%)";
+      btn.style.backgroundSize = "8px 8px";
+      btn.style.backgroundPosition = "0 0, 4px 4px";
+      btn.title = "なし";
+    } else {
+      btn.style.backgroundColor = c;
+    }
+    btn.addEventListener("click", () => {
+      if (c === "transparent") {
+        bgPicker.value = "#ffffff";
+        bgText.value = "";
+      } else {
+        bgPicker.value = c;
+        bgText.value = c;
+      }
+      bgPicker.dispatchEvent(new Event("input"));
+    });
+    bgPresets.appendChild(btn);
+  });
+  bgRow.appendChild(bgWrap);
+  bgRow.appendChild(bgPresets);
+  styleSection.appendChild(bgRow);
+
+  // 太字トグル
+  const boldRow = document.createElement("div");
+  boldRow.className = "style-control-row";
+  boldRow.innerHTML = '<label class="style-control-label">太字</label>';
+  const boldBtn = document.createElement("button");
+  boldBtn.className = "style-bold-toggle" + (styles.bold ? " active" : "");
+  boldBtn.innerHTML = "<b>B</b> 太字";
+  boldBtn.addEventListener("click", () => {
+    boldBtn.classList.toggle("active");
+    rebuildPreview();
+  });
+  boldRow.appendChild(boldBtn);
+  styleSection.appendChild(boldRow);
+
+  frag.appendChild(styleSection);
 
   // HTMLソース（折りたたみ）
   const htmlToggle = document.createElement("button");
@@ -271,21 +450,49 @@ function buildTextPanel(projectId, blockIndex, block) {
 
   const codeArea = document.createElement("textarea");
   codeArea.className = "panel-code";
-  codeArea.value = block.html || "";
+  codeArea.value = currentHtml;
   codeArea.rows = 8;
   htmlContent.appendChild(codeArea);
   frag.appendChild(htmlContent);
 
-  // テキスト変更時にプレビュー更新
-  textarea.addEventListener("input", () => {
-    // テキストを変えたらHTMLソース内のテキストも更新
-    let newHtml = block.html;
-    if (block.text) {
-      newHtml = newHtml.replace(block.text, textarea.value);
+  // ── プレビュー再構築関数 ──
+  function rebuildPreview() {
+    // テキスト更新
+    let html = block.html || "";
+    if (block.text && textarea.value !== block.text) {
+      html = html.replace(block.text, textarea.value);
     }
-    codeArea.value = newHtml;
-    // プレビュー更新
-    previewBox.innerHTML = newHtml;
+    // スタイル適用
+    const newStyles = {};
+    if (sizeInput.value) newStyles.fontSize = sizeInput.value + "px";
+    if (colorText.value) newStyles.color = colorText.value;
+    if (bgText.value) newStyles.bgColor = bgText.value;
+    newStyles.bold = boldBtn.classList.contains("active");
+    html = applyStylesToHtml(html, newStyles);
+
+    currentHtml = html;
+    currentText = textarea.value;
+    codeArea.value = html;
+    previewBox.innerHTML = html;
+  }
+
+  // イベント接続
+  textarea.addEventListener("input", rebuildPreview);
+  sizeInput.addEventListener("input", () => {
+    sizePresets.querySelectorAll(".style-preset-btn").forEach(b => {
+      b.classList.toggle("active", b.textContent === sizeInput.value);
+    });
+    rebuildPreview();
+  });
+  colorPicker.addEventListener("input", () => { colorText.value = colorPicker.value; rebuildPreview(); });
+  colorText.addEventListener("input", () => {
+    try { colorPicker.value = colorText.value; } catch {}
+    rebuildPreview();
+  });
+  bgPicker.addEventListener("input", () => { bgText.value = bgPicker.value; rebuildPreview(); });
+  bgText.addEventListener("input", () => {
+    try { bgPicker.value = bgText.value; } catch {}
+    rebuildPreview();
   });
 
   frag.appendChild(buildSaveRow(projectId, blockIndex, () => ({
@@ -445,39 +652,81 @@ function buildImagePanel(projectId, blockIndex, block) {
 
   // ── 手持ち画像アップロード ──
   const uploadSection = createSection("手持ち画像で差し替え");
+  const uploadZone = document.createElement("div");
+  uploadZone.className = "upload-drop-zone";
+  uploadZone.innerHTML = '<div class="upload-drop-icon">📁</div><div class="upload-drop-text">画像をドラッグ＆ドロップ<br>またはクリックして選択</div>';
   const uploadInput = document.createElement("input");
   uploadInput.type = "file";
   uploadInput.accept = "image/*";
-  uploadInput.className = "oneclick-file-input";
-  uploadInput.addEventListener("change", async () => {
-    const file = uploadInput.files?.[0];
-    if (!file) return;
+  uploadInput.style.display = "none";
+  uploadZone.appendChild(uploadInput);
+  uploadZone.addEventListener("click", () => uploadInput.click());
+  uploadZone.addEventListener("dragover", (e) => { e.preventDefault(); uploadZone.classList.add("dragover"); });
+  uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("dragover"));
+  uploadZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove("dragover");
+    const file = e.dataTransfer?.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      handleUploadFile(file);
+    }
+  });
+
+  const uploadPreview = document.createElement("div");
+  uploadPreview.className = "upload-preview-area";
+
+  function handleUploadFile(file) {
     const reader = new FileReader();
-    reader.onload = async () => {
+    reader.onload = () => {
       const dataUrl = reader.result;
-      try {
-        // For now, just show a preview - actual upload would need a separate endpoint
-        window.showToast("画像をプレビュー中...", "info");
-        // We can use the data URL directly for preview, but for apply we need server-side handling
-        // For simplicity, show preview with apply option
-        resultGrid.innerHTML = "";
-        const card = document.createElement("div");
-        card.className = "oneclick-variant-card";
-        const img = document.createElement("img");
-        img.src = dataUrl;
-        card.appendChild(img);
-        const label = document.createElement("div");
-        label.style.cssText = "font-size:11px; color:var(--text-muted); text-align:center; padding:4px";
-        label.textContent = file.name;
-        card.appendChild(label);
-        resultGrid.appendChild(card);
-      } catch (err) {
-        window.showToast(`エラー: ${err.message}`, "error");
-      }
+      uploadPreview.innerHTML = "";
+
+      const card = document.createElement("div");
+      card.className = "oneclick-variant-card";
+      const img = document.createElement("img");
+      img.src = dataUrl;
+      card.appendChild(img);
+      const label = document.createElement("div");
+      label.style.cssText = "font-size:11px; color:var(--text-muted); text-align:center; padding:4px";
+      label.textContent = file.name;
+      card.appendChild(label);
+
+      const applyBtn = document.createElement("button");
+      applyBtn.className = "oneclick-apply-btn";
+      applyBtn.textContent = "この画像を適用";
+      applyBtn.addEventListener("click", async () => {
+        applyBtn.disabled = true;
+        applyBtn.innerHTML = '<span class="spinner"></span> アップロード中...';
+        try {
+          const uploadResult = await window.API.uploadImage(projectId, blockIndex, {
+            imageData: dataUrl,
+            fileName: file.name,
+          });
+          if (uploadResult.ok) {
+            await window.API.applyImage(projectId, blockIndex, { imageUrl: uploadResult.imageUrl });
+            window.showToast("画像を適用しました", "success");
+            window.loadPreview(true);
+          }
+        } catch (err) {
+          window.showToast(`エラー: ${err.message}`, "error");
+        } finally {
+          applyBtn.disabled = false;
+          applyBtn.textContent = "この画像を適用";
+        }
+      });
+      card.appendChild(applyBtn);
+      uploadPreview.appendChild(card);
     };
     reader.readAsDataURL(file);
+  }
+
+  uploadInput.addEventListener("change", () => {
+    const file = uploadInput.files?.[0];
+    if (file) handleUploadFile(file);
   });
-  uploadSection.appendChild(uploadInput);
+
+  uploadSection.appendChild(uploadZone);
+  uploadSection.appendChild(uploadPreview);
   frag.appendChild(uploadSection);
 
   // ── 詳細設定（折りたたみ） ──
@@ -612,21 +861,49 @@ function buildImagePanel(projectId, blockIndex, block) {
 function buildCtaPanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
 
-  const urlSection = createSection("遷移先URL");
-  const preview = document.createElement("div");
-  preview.className = "cta-preview";
-  preview.textContent = block.href || "未設定";
-  urlSection.appendChild(preview);
+  // リンク挿入ボックス
+  const urlSection = document.createElement("div");
+  urlSection.className = "panel-section link-insert-section";
+  const urlTitle = document.createElement("div");
+  urlTitle.className = "panel-section-title";
+  urlTitle.textContent = "リンク挿入";
+  urlSection.appendChild(urlTitle);
 
+  const linkBox = document.createElement("div");
+  linkBox.className = "link-insert-box";
+
+  const linkIcon = document.createElement("div");
+  linkIcon.className = "link-insert-icon";
+  linkIcon.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M8.5 11.5a4 4 0 005.66 0l2.82-2.83a4 4 0 00-5.66-5.65l-1.41 1.41" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M11.5 8.5a4 4 0 00-5.66 0L3.02 11.33a4 4 0 005.66 5.65l1.41-1.41" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+
+  const linkInputWrap = document.createElement("div");
+  linkInputWrap.className = "link-insert-input-wrap";
   const urlInput = document.createElement("input");
   urlInput.type = "url";
-  urlInput.className = "form-input";
+  urlInput.className = "link-insert-input";
   urlInput.value = block.href || "";
-  urlInput.placeholder = "新しい遷移先URLを入力...";
-  urlInput.style.marginTop = "8px";
-  urlSection.appendChild(urlInput);
+  urlInput.placeholder = "https://example.com/your-link";
+  linkInputWrap.appendChild(urlInput);
+
+  if (block.href) {
+    const currentLink = document.createElement("div");
+    currentLink.className = "link-current";
+    currentLink.innerHTML = `<span class="link-current-label">現在のリンク:</span> <a href="${block.href}" target="_blank" rel="noopener">${block.href.length > 50 ? block.href.slice(0, 50) + "..." : block.href}</a>`;
+    linkInputWrap.appendChild(currentLink);
+  }
+
+  linkBox.appendChild(linkIcon);
+  linkBox.appendChild(linkInputWrap);
+  urlSection.appendChild(linkBox);
+
+  // クイック設定ヒント
+  const hint = document.createElement("div");
+  hint.className = "link-insert-hint";
+  hint.textContent = "遷移先URLを入力して保存ボタンを押してください";
+  urlSection.appendChild(hint);
   frag.appendChild(urlSection);
 
+  // CTA画像プレビュー
   const asset = block.assets?.[0];
   if (asset) {
     const imgSection = createSection("CTA画像");
@@ -641,13 +918,35 @@ function buildCtaPanel(projectId, blockIndex, block) {
     frag.appendChild(imgSection);
   }
 
-  const htmlSection = createSection("HTMLソース");
+  // テキスト内容（CTAにテキストがある場合）
+  if (block.text) {
+    const textSection = createSection("ボタンテキスト");
+    const textarea = document.createElement("textarea");
+    textarea.className = "panel-textarea";
+    textarea.value = block.text;
+    textarea.rows = 2;
+    textSection.appendChild(textarea);
+    frag.appendChild(textSection);
+  }
+
+  // HTMLソース（折りたたみ）
+  const htmlToggle = document.createElement("button");
+  htmlToggle.className = "oneclick-advanced-toggle";
+  htmlToggle.textContent = "HTMLソースを編集";
+  const htmlContent = document.createElement("div");
+  htmlContent.className = "oneclick-advanced-content";
+  htmlToggle.addEventListener("click", () => {
+    htmlContent.classList.toggle("open");
+    htmlToggle.classList.toggle("open");
+  });
+  frag.appendChild(htmlToggle);
+
   const codeArea = document.createElement("textarea");
   codeArea.className = "panel-code";
   codeArea.value = block.html || "";
   codeArea.rows = 6;
-  htmlSection.appendChild(codeArea);
-  frag.appendChild(htmlSection);
+  htmlContent.appendChild(codeArea);
+  frag.appendChild(htmlContent);
 
   frag.appendChild(buildSaveRow(projectId, blockIndex, () => ({
     html: codeArea.value,
