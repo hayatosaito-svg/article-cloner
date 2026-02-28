@@ -340,6 +340,159 @@ document.getElementById("btn-back").addEventListener("click", () => {
 
 document.getElementById("btn-text-modify").addEventListener("click", openTextModifyModal);
 
+// Refresh preview
+document.getElementById("btn-refresh").addEventListener("click", () => {
+  loadPreview(true);
+  showToast("プレビューを更新しました", "info");
+});
+
+// Viewport toggle
+const viewportSizes = [412, 768, -1]; // -1 = 100%
+let viewportIdx = 0;
+document.getElementById("btn-viewport").addEventListener("click", () => {
+  viewportIdx = (viewportIdx + 1) % viewportSizes.length;
+  const size = viewportSizes[viewportIdx];
+  const iframe = document.getElementById("preview-iframe");
+  const label = document.querySelector("#btn-viewport span");
+  const vpLabel = document.querySelector(".preview-viewport");
+  if (size === -1) {
+    iframe.style.width = "100%";
+    label.textContent = "100%";
+    if (vpLabel) vpLabel.textContent = "100%";
+  } else {
+    iframe.style.width = size + "px";
+    label.textContent = size + "px";
+    if (vpLabel) vpLabel.textContent = size + "px";
+  }
+});
+
+// +Block modal
+document.getElementById("btn-add-block").addEventListener("click", () => {
+  openAddBlockModal();
+});
+
+function openAddBlockModal() {
+  const select = document.getElementById("add-block-position");
+  select.innerHTML = '<option value="end">末尾に追加</option>';
+  if (state.projectData?.blocks) {
+    state.projectData.blocks.forEach((b) => {
+      const opt = document.createElement("option");
+      opt.value = b.index;
+      opt.textContent = `ブロック ${b.index} (${b.type}) の後`;
+      select.appendChild(opt);
+    });
+  }
+  document.getElementById("add-block-html").value = "";
+  openModal("modal-add-block");
+}
+
+document.getElementById("btn-insert-block")?.addEventListener("click", async () => {
+  const html = document.getElementById("add-block-html").value.trim();
+  if (!html) {
+    showToast("HTMLを入力してください", "error");
+    return;
+  }
+  const posVal = document.getElementById("add-block-position").value;
+  const afterIndex = posVal === "end" ? null : parseInt(posVal, 10);
+  try {
+    const result = await window.API.insertBlock(state.projectId, {
+      afterIndex,
+      html,
+      type: "widget",
+    });
+    if (result.ok) {
+      showToast(`ブロック ${result.insertedIndex} に挿入しました`, "success");
+      closeModal("modal-add-block");
+      await loadEditor();
+    }
+  } catch (err) {
+    showToast(`エラー: ${err.message}`, "error");
+  }
+});
+
+// Widget sidebar
+document.getElementById("btn-open-widgets")?.addEventListener("click", () => {
+  openWidgetSidebar();
+});
+
+document.getElementById("widget-sidebar-close")?.addEventListener("click", () => {
+  document.getElementById("widget-sidebar")?.classList.remove("open");
+});
+
+function openWidgetSidebar() {
+  // Close edit panel if open (but not widget sidebar itself)
+  document.getElementById("edit-panel")?.classList.remove("open");
+
+  // Populate position select
+  const select = document.getElementById("widget-insert-position");
+  select.innerHTML = '<option value="end">末尾に追加</option>';
+  if (state.projectData?.blocks) {
+    state.projectData.blocks.forEach((b) => {
+      const opt = document.createElement("option");
+      opt.value = b.index;
+      opt.textContent = `ブロック ${b.index} (${b.type}) の後`;
+      select.appendChild(opt);
+    });
+  }
+
+  // Populate widget list
+  const list = document.getElementById("widget-list");
+  list.innerHTML = "";
+  const templates = window.WIDGET_TEMPLATES || [];
+  templates.forEach((tmpl) => {
+    const card = document.createElement("div");
+    card.className = "widget-card";
+
+    const icon = document.createElement("div");
+    icon.className = "widget-card-icon";
+    icon.textContent = tmpl.icon;
+
+    const info = document.createElement("div");
+    info.className = "widget-card-info";
+    info.innerHTML = `
+      <div class="widget-card-name">${escapeHtml(tmpl.name)}</div>
+      <div class="widget-card-desc">${escapeHtml(tmpl.description)}</div>
+      <span class="widget-card-category">${escapeHtml(tmpl.category)}</span>`;
+
+    const btn = document.createElement("button");
+    btn.className = "widget-card-btn";
+    btn.textContent = "挿入";
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "挿入中...";
+      try {
+        const generated = tmpl.generate();
+        const posVal = document.getElementById("widget-insert-position").value;
+        const afterIndex = posVal === "end" ? null : parseInt(posVal, 10);
+        const result = await window.API.insertBlock(state.projectId, {
+          afterIndex,
+          html: generated.html,
+          type: generated.type,
+          widgetType: generated.widgetType,
+        });
+        if (result.ok) {
+          showToast(`${tmpl.name} を挿入しました`, "success");
+          await loadEditor();
+        }
+      } catch (err) {
+        showToast(`エラー: ${err.message}`, "error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "挿入";
+      }
+    });
+
+    card.appendChild(icon);
+    card.appendChild(info);
+    card.appendChild(btn);
+    list.appendChild(card);
+  });
+
+  document.getElementById("widget-sidebar")?.classList.add("open");
+}
+
+// Note: modal close listeners for modal-add-block are handled by the generic data-close-modal handler above
+
 document.getElementById("btn-build").addEventListener("click", async () => {
   if (!state.projectId) return;
   const btn = document.getElementById("btn-build");
@@ -687,6 +840,7 @@ function escapeHtml(str) {
 
 function closeEditPanel() {
   document.getElementById("edit-panel")?.classList.remove("open");
+  document.getElementById("widget-sidebar")?.classList.remove("open");
 }
 
 window.escapeHtml = escapeHtml;

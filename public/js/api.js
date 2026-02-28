@@ -71,6 +71,26 @@ export const API = {
     });
   },
 
+  async insertBlock(projectId, data) {
+    return fetchJson(`/api/projects/${projectId}/blocks/insert`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteBlock(projectId, idx) {
+    return fetchJson(`/api/projects/${projectId}/blocks/${idx}`, {
+      method: "DELETE",
+    });
+  },
+
+  async reorderBlock(projectId, data) {
+    return fetchJson(`/api/projects/${projectId}/blocks/reorder`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
   async aiRewrite(projectId, idx, data) {
     return fetchJson(`/api/projects/${projectId}/ai-rewrite/${idx}`, {
       method: "POST",

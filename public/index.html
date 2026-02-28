@@ -17,7 +17,7 @@
       <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
         <rect width="40" height="40" rx="10" fill="url(#g1)"/>
         <path d="M12 14h16v2H12zm0 5h12v2H12zm0 5h14v2H12z" fill="#fff" opacity="0.9"/>
-        <defs><linearGradient id="g1" x1="0" y1="0" x2="40" y2="40"><stop stop-color="#3B82F6"/><stop offset="1" stop-color="#8B5CF6"/></linearGradient></defs>
+        <defs><linearGradient id="g1" x1="0" y1="0" x2="40" y2="40"><stop stop-color="#ec4899"/><stop offset="1" stop-color="#f472b6"/></linearGradient></defs>
       </svg>
       <h1>Article Cloner</h1>
     </div>
@@ -35,9 +35,9 @@
       </div>
     </div>
     <div class="landing-features">
-      <div class="feature-chip"><span class="feature-dot" style="background:#3B82F6"></span>自動スクレイプ</div>
-      <div class="feature-chip"><span class="feature-dot" style="background:#8B5CF6"></span>ブロック編集</div>
-      <div class="feature-chip"><span class="feature-dot" style="background:#EC4899"></span>AI画像生成</div>
+      <div class="feature-chip"><span class="feature-dot" style="background:#ec4899"></span>自動スクレイプ</div>
+      <div class="feature-chip"><span class="feature-dot" style="background:#f472b6"></span>ブロック編集</div>
+      <div class="feature-chip"><span class="feature-dot" style="background:#db2777"></span>AI画像生成</div>
       <div class="feature-chip"><span class="feature-dot" style="background:#10B981"></span>SB互換出力</div>
     </div>
     <!-- Gemini APIキー設定カード -->
@@ -164,12 +164,28 @@ GEMINI_API_KEY_1=your_key_here<br><br>
       <span class="toolbar-badge" id="toolbar-block-count"></span>
     </div>
     <div class="toolbar-center">
+      <button class="toolbar-btn" id="btn-refresh" title="プレビュー更新">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8a6 6 0 0111.5-2.3M14 8a6 6 0 01-11.5 2.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M13 2v4h-4M3 14v-4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>更新</span>
+      </button>
+      <button class="toolbar-btn" id="btn-add-block" title="ブロック追加">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>+ブロック</span>
+      </button>
       <button class="toolbar-btn" id="btn-text-modify" title="一括テキスト差し替え">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        <span>テキスト一括差し替え</span>
+        <span>リンク差替</span>
+      </button>
+      <button class="toolbar-btn" id="btn-open-widgets" title="ウィジェット挿入">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span>Widget</span>
       </button>
     </div>
     <div class="toolbar-right">
+      <button class="toolbar-btn" id="btn-viewport" title="プレビュー幅切替">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="12" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 12h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>412px</span>
+      </button>
       <button class="toolbar-btn btn-accent" id="btn-build" title="SB互換HTMLを生成">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8l3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>ビルド</span>
@@ -334,8 +350,60 @@ GEMINI_API_KEY_1=your_key_here<br><br>
   </div>
 </div>
 
+<!-- ウィジェット選択サイドバー -->
+<div id="widget-sidebar" class="widget-sidebar">
+  <div class="edit-panel-header">
+    <div class="edit-panel-title">
+      <span class="edit-panel-type">Widget</span>
+      <span>ウィジェット挿入</span>
+    </div>
+    <button class="edit-panel-close" id="widget-sidebar-close">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div class="widget-sidebar-body">
+    <div class="widget-insert-pos">
+      <label class="form-label">挿入位置</label>
+      <select id="widget-insert-position" class="form-input">
+        <option value="end">末尾に追加</option>
+      </select>
+    </div>
+    <div id="widget-list" class="widget-list"></div>
+  </div>
+</div>
+
+<!-- +ブロック追加モーダル -->
+<div id="modal-add-block" class="modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content modal-lg">
+    <div class="modal-header">
+      <h3>ブロック追加</h3>
+      <button class="modal-close" data-close-modal="modal-add-block">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-section">
+        <label class="form-label">挿入位置</label>
+        <select id="add-block-position" class="form-input">
+          <option value="end">末尾に追加</option>
+        </select>
+      </div>
+      <div class="form-section">
+        <label class="form-label">HTML</label>
+        <textarea id="add-block-html" class="panel-code" rows="10" placeholder="挿入するHTMLを貼り付け..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close-modal="modal-add-block">キャンセル</button>
+      <button class="btn-primary" id="btn-insert-block">挿入</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container" class="toast-container"></div>
 
+<script type="module" src="/js/widgets.js"></script>
 <script type="module" src="/js/api.js"></script>
 <script type="module" src="/js/panels.js"></script>
 <script type="module" src="/js/editor.js"></script>

@@ -286,6 +286,84 @@ app.put("/api/projects/:id/blocks/:idx", (req, res) => {
   res.json({ ok: true, block: { index: block.index, type: block.type } });
 });
 
+// POST /api/projects/:id/blocks/insert - Insert a new block
+app.post("/api/projects/:id/blocks/insert", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const { afterIndex, html, type, widgetType } = req.body;
+  if (!html) return res.status(400).json({ error: "html is required" });
+
+  const insertAt = (afterIndex != null && afterIndex >= 0)
+    ? Math.min(afterIndex + 1, project.blocks.length)
+    : project.blocks.length;
+
+  const newBlock = {
+    index: insertAt,
+    type: type || "widget",
+    widgetType: widgetType || null,
+    html,
+    text: null,
+    assets: [],
+  };
+
+  project.blocks.splice(insertAt, 0, newBlock);
+
+  // Re-index all blocks
+  project.blocks.forEach((b, i) => { b.index = i; });
+
+  // Rebuild modifiedHtml
+  project.modifiedHtml = project.blocks.map((b) => b.html).join("\n");
+
+  res.json({ ok: true, insertedIndex: insertAt, blockCount: project.blocks.length });
+});
+
+// DELETE /api/projects/:id/blocks/:idx - Delete a block
+app.delete("/api/projects/:id/blocks/:idx", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const idx = parseInt(req.params.idx, 10);
+  if (idx < 0 || idx >= project.blocks.length) {
+    return res.status(404).json({ error: "Block not found" });
+  }
+
+  project.blocks.splice(idx, 1);
+
+  // Re-index all blocks
+  project.blocks.forEach((b, i) => { b.index = i; });
+
+  // Rebuild modifiedHtml
+  project.modifiedHtml = project.blocks.map((b) => b.html).join("\n");
+
+  res.json({ ok: true, blockCount: project.blocks.length });
+});
+
+// POST /api/projects/:id/blocks/reorder - Reorder blocks
+app.post("/api/projects/:id/blocks/reorder", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const { fromIndex, toIndex } = req.body;
+  if (fromIndex == null || toIndex == null) {
+    return res.status(400).json({ error: "fromIndex and toIndex are required" });
+  }
+  if (fromIndex < 0 || fromIndex >= project.blocks.length || toIndex < 0 || toIndex >= project.blocks.length) {
+    return res.status(400).json({ error: "Index out of range" });
+  }
+
+  const [moved] = project.blocks.splice(fromIndex, 1);
+  project.blocks.splice(toIndex, 0, moved);
+
+  // Re-index all blocks
+  project.blocks.forEach((b, i) => { b.index = i; });
+
+  // Rebuild modifiedHtml
+  project.modifiedHtml = project.blocks.map((b) => b.html).join("\n");
+
+  res.json({ ok: true, blockCount: project.blocks.length });
+});
+
 // GET /api/projects/:id/preview - Preview HTML for iframe
 app.get("/api/projects/:id/preview", (req, res) => {
   const project = projects.get(req.params.id);
@@ -322,12 +400,12 @@ app.get("/api/projects/:id/preview", (req, res) => {
     cursor: pointer;
   }
   .block-wrapper:hover .block-overlay {
-    background: rgba(59, 130, 246, 0.06);
-    box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.4);
+    background: rgba(236, 72, 153, 0.06);
+    box-shadow: inset 0 0 0 2px rgba(236, 72, 153, 0.4);
   }
   .block-wrapper.active .block-overlay {
-    background: rgba(59, 130, 246, 0.10);
-    box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.7);
+    background: rgba(236, 72, 153, 0.10);
+    box-shadow: inset 0 0 0 2px rgba(236, 72, 153, 0.7);
   }
   .block-type-badge {
     position: absolute;
@@ -335,7 +413,7 @@ app.get("/api/projects/:id/preview", (req, res) => {
     font-size: 10px;
     padding: 2px 7px;
     border-radius: 4px;
-    background: rgba(59, 130, 246, 0.85);
+    background: rgba(236, 72, 153, 0.85);
     color: #fff;
     font-weight: 600;
     font-family: -apple-system, sans-serif;
@@ -352,7 +430,7 @@ app.get("/api/projects/:id/preview", (req, res) => {
   .block-wrapper.editing .block-overlay { display: none; }
   .block-wrapper.editing .block-type-badge { display: none; }
   .block-wrapper.editing {
-    outline: 2px solid rgba(59, 130, 246, 0.6);
+    outline: 2px solid rgba(236, 72, 153, 0.6);
     outline-offset: 2px;
     cursor: text;
   }
