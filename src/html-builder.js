@@ -59,6 +59,37 @@ export function buildSbHtml(html, config = {}) {
   // <html><head><body>が自動付与される場合は除去
   output = stripHtmlWrapper(output);
 
+  // Tag settings injection
+  const ts = config.tagSettings || {};
+  let prefix = "";
+  let suffix = "";
+
+  if (ts.masterCss) {
+    prefix += `<style>${ts.masterCss}</style>\n`;
+  }
+  if (ts.noindex) {
+    prefix += '<meta name="robots" content="noindex">\n';
+  }
+  if (ts.headTags) {
+    prefix += ts.headTags + "\n";
+  }
+  if (ts.jsHead) {
+    prefix += `<script>${ts.jsHead}<\/script>\n`;
+  }
+  if (ts.bodyTags) {
+    suffix += ts.bodyTags + "\n";
+  }
+  if (ts.jsBody) {
+    suffix += `<script>${ts.jsBody}<\/script>\n`;
+  }
+
+  // Exit popup injection
+  if (config.exitPopup?.enabled && config.exitPopupHtml) {
+    suffix += config.exitPopupHtml + "\n";
+  }
+
+  output = prefix + output + suffix;
+
   // video margin resetを末尾に追加（既存がなければ）
   if (!output.includes("article-body video")) {
     output += "\n" + videoResetWidget;

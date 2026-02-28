@@ -9,6 +9,172 @@ const state = {
   sseConnection: null,
 };
 
+// ── Undo/Redo History ─────────────────────────────────────
+
+const history = { entries: [], currentIndex: -1, maxEntries: 100 };
+
+async function pushHistory(action, description) {
+  if (!state.projectId) return;
+  try {
+    const snapshot = await window.API.getSnapshot(state.projectId);
+    // Trim any redo entries after current
+    if (history.currentIndex < history.entries.length - 1) {
+      history.entries = history.entries.slice(0, history.currentIndex + 1);
+    }
+    history.entries.push({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      timestamp: Date.now(),
+      action,
+      description,
+      snapshot,
+    });
+    // Enforce max entries
+    if (history.entries.length > history.maxEntries) {
+      history.entries.shift();
+    }
+    history.currentIndex = history.entries.length - 1;
+    updateUndoRedoButtons();
+  } catch (err) {
+    console.warn("pushHistory failed:", err);
+  }
+}
+
+async function undo() {
+  if (history.currentIndex <= 0) return;
+  history.currentIndex--;
+  const entry = history.entries[history.currentIndex];
+  try {
+    await window.API.restore(state.projectId, entry.snapshot);
+    await loadEditor();
+    showToast(`元に戻しました: ${entry.description}`, "info");
+  } catch (err) {
+    showToast(`Undoエラー: ${err.message}`, "error");
+    history.currentIndex++;
+  }
+  updateUndoRedoButtons();
+}
+
+async function redo() {
+  if (history.currentIndex >= history.entries.length - 1) return;
+  history.currentIndex++;
+  const entry = history.entries[history.currentIndex];
+  try {
+    await window.API.restore(state.projectId, entry.snapshot);
+    await loadEditor();
+    showToast(`やり直しました: ${entry.description}`, "info");
+  } catch (err) {
+    showToast(`Redoエラー: ${err.message}`, "error");
+    history.currentIndex--;
+  }
+  updateUndoRedoButtons();
+}
+
+function updateUndoRedoButtons() {
+  const btnUndo = document.getElementById("btn-undo");
+  const btnRedo = document.getElementById("btn-redo");
+  if (btnUndo) btnUndo.disabled = history.currentIndex <= 0;
+  if (btnRedo) btnRedo.disabled = history.currentIndex >= history.entries.length - 1;
+}
+
+window.pushHistory = pushHistory;
+window.history_ = history;
+
+// ── History Sidebar ───────────────────────────────────────
+
+function openHistorySidebar() {
+  // Close other sidebars
+  document.getElementById("edit-panel")?.classList.remove("open");
+  document.getElementById("widget-sidebar")?.classList.remove("open");
+
+  renderHistoryList();
+  document.getElementById("history-sidebar")?.classList.add("open");
+}
+
+function renderHistoryList(filter = "all") {
+  const list = document.getElementById("history-list");
+  if (!list) return;
+  list.innerHTML = "";
+
+  if (history.entries.length === 0) {
+    list.innerHTML = '<div class="history-empty">履歴がありません</div>';
+    return;
+  }
+
+  const filtered = filter === "all"
+    ? history.entries
+    : history.entries.filter((e) => {
+        if (filter === "image") return e.action.includes("image");
+        if (filter === "insert") return e.action.includes("insert");
+        if (filter === "text_modify") return e.action.includes("text");
+        return e.action === filter;
+      });
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="history-empty">該当する履歴がありません</div>';
+    return;
+  }
+
+  // Reverse to show newest first
+  [...filtered].reverse().forEach((entry) => {
+    const realIdx = history.entries.indexOf(entry);
+    const item = document.createElement("div");
+    item.className = "history-item" + (realIdx === history.currentIndex ? " current" : "");
+
+    const time = new Date(entry.timestamp).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+    const actionLabel = {
+      initial: "初期",
+      edit_block: "編集",
+      insert_block: "挿入",
+      insert_widget: "Widget",
+      text_modify: "差替",
+      text_replace: "検索置換",
+      inline_edit: "インライン",
+      image_apply: "AI画像",
+      image_upload: "画像UP",
+      ai_rewrite: "AI書換",
+      manual_save: "手動保存",
+      save_point: "セーブ",
+      tag_change: "タグ",
+      exit_popup_change: "離脱POP",
+    }[entry.action] || entry.action;
+
+    item.innerHTML = `
+      <div class="history-item-header">
+        <span class="history-time">${time}</span>
+        <span class="history-action-badge">${escapeHtml(actionLabel)}</span>
+      </div>
+      <div class="history-item-desc">${escapeHtml(entry.description)}</div>
+      ${realIdx !== history.currentIndex ? '<button class="history-restore-btn">この状態に戻す</button>' : '<span class="history-current-label">現在の状態</span>'}
+    `;
+
+    const restoreBtn = item.querySelector(".history-restore-btn");
+    if (restoreBtn) {
+      restoreBtn.addEventListener("click", async () => {
+        try {
+          await window.API.restore(state.projectId, entry.snapshot);
+          history.currentIndex = realIdx;
+          await loadEditor();
+          updateUndoRedoButtons();
+          renderHistoryList(document.getElementById("history-filter")?.value || "all");
+          showToast(`「${entry.description}」の状態に戻しました`, "info");
+        } catch (err) {
+          showToast(`復元エラー: ${err.message}`, "error");
+        }
+      });
+    }
+
+    list.appendChild(item);
+  });
+}
+
+document.getElementById("history-sidebar-close")?.addEventListener("click", () => {
+  document.getElementById("history-sidebar")?.classList.remove("open");
+});
+
+document.getElementById("history-filter")?.addEventListener("change", (e) => {
+  renderHistoryList(e.target.value);
+});
+
 // ── Screen Navigation ──────────────────────────────────────
 
 function showScreen(name) {
@@ -169,6 +335,10 @@ async function loadEditor() {
     renderBlockList(state.projectData.blocks);
     loadPreview();
     document.getElementById("btn-export").disabled = state.projectData.status !== "done";
+    // Push initial history entry (only once)
+    if (history.entries.length === 0) {
+      pushHistory("initial", "初期状態");
+    }
   } catch (err) {
     showToast(`エラー: ${err.message}`, "error");
   }
@@ -288,6 +458,7 @@ window.addEventListener("message", (e) => {
               if (textArea) textArea.value = newText || "";
             }
             showToast("インライン編集を保存しました", "success");
+            pushHistory("inline_edit", `ブロック ${idx} インライン編集`);
           }).catch((err) => {
             showToast(`保存エラー: ${err.message}`, "error");
           });
@@ -342,11 +513,46 @@ document.getElementById("btn-back").addEventListener("click", () => {
 
 document.getElementById("btn-text-modify").addEventListener("click", openTextModifyModal);
 
-// Refresh preview
+// Undo / Redo buttons
+document.getElementById("btn-undo")?.addEventListener("click", undo);
+document.getElementById("btn-redo")?.addEventListener("click", redo);
+
+// Keyboard shortcuts: Ctrl+Z = undo, Ctrl+Y / Cmd+Shift+Z = redo
+document.addEventListener("keydown", (e) => {
+  if (state.currentScreen !== "editor") return;
+  // Avoid when typing in input/textarea
+  const tag = e.target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || e.target.isContentEditable) return;
+
+  if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+    e.preventDefault();
+    undo();
+  }
+  if ((e.ctrlKey && e.key === "y") || (e.metaKey && e.shiftKey && e.key === "z")) {
+    e.preventDefault();
+    redo();
+  }
+});
+
+// Refresh preview (+ save point in history)
 document.getElementById("btn-refresh").addEventListener("click", () => {
+  pushHistory("save_point", "手動セーブポイント");
   loadPreview(true);
   showToast("プレビューを更新しました", "info");
 });
+
+// Tag settings
+document.getElementById("btn-tag-settings")?.addEventListener("click", () => {
+  window.openTagSettingsModal?.();
+});
+
+// Exit popup
+document.getElementById("btn-exit-popup")?.addEventListener("click", () => {
+  window.openExitPopupModal?.();
+});
+
+// History sidebar
+document.getElementById("btn-history")?.addEventListener("click", openHistorySidebar);
 
 // Viewport toggle
 const viewportSizes = [412, 768, -1]; // -1 = 100%
@@ -406,6 +612,7 @@ document.getElementById("btn-insert-block")?.addEventListener("click", async () 
       showToast(`ブロック ${result.insertedIndex} に挿入しました`, "success");
       closeModal("modal-add-block");
       await loadEditor();
+      pushHistory("insert_block", `ブロック ${result.insertedIndex} を挿入`);
     }
   } catch (err) {
     showToast(`エラー: ${err.message}`, "error");
@@ -475,6 +682,7 @@ function openWidgetSidebar() {
         if (result.ok) {
           showToast(`${tmpl.name} を挿入しました`, "success");
           await loadEditor();
+          pushHistory("insert_widget", `${tmpl.name} を挿入`);
         }
       } catch (err) {
         showToast(`エラー: ${err.message}`, "error");
@@ -700,6 +908,7 @@ document.getElementById("btn-find-replace-all")?.addEventListener("click", async
       showToast(`置換完了 (${result.blockCount} ブロック)`, "success");
       closeModal("modal-text-modify");
       await loadEditor();
+      pushHistory("text_replace", "検索と置換");
     }
   } catch (err) {
     showToast(`エラー: ${err.message}`, "error");
@@ -737,6 +946,7 @@ document.getElementById("btn-apply-text-modify").addEventListener("click", async
         showToast(`${blockReplacements.length}ブロックを更新しました`, "success");
         closeModal("modal-text-modify");
         await loadEditor();
+        pushHistory("text_modify", `${blockReplacements.length}ブロック テキスト編集`);
       }
     } catch (err) {
       showToast(`エラー: ${err.message}`, "error");
@@ -768,6 +978,7 @@ document.getElementById("btn-apply-text-modify").addEventListener("click", async
       showToast(`差し替え完了 (${result.blockCount} ブロック)`, "success");
       closeModal("modal-text-modify");
       await loadEditor();
+      pushHistory("text_modify", "一括テキスト差し替え");
     } else {
       showToast(`Error: ${result.error}`, "error");
     }

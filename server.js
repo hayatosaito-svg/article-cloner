@@ -69,6 +69,26 @@ function createProject(id, url) {
     sseClients: [],
     log: [],
     createdAt: Date.now(),
+    tagSettings: {
+      headTags: "",
+      bodyTags: "",
+      noindex: false,
+      jsHead: "",
+      jsBody: "",
+      masterCss: 'body {\n  font-size: 16px;\n  font-family: "ヒラギノ角ゴ Pro", "Hiragino Kaku Gothic Pro", "メイリオ", Meiryo, sans-serif;\n  color: #333;\n  line-height: 1.8;\n  margin: 0;\n  padding: 0;\n}',
+    },
+    exitPopup: {
+      enabled: false,
+      trigger: "mouseout",
+      mobileScrollUp: true,
+      showOnce: true,
+      minDelaySec: 5,
+      template: "simple",
+      content: { title: "ちょっと待ってください！", body: "今だけの特別オファーをご用意しています。", imageUrl: "", ctaText: "オファーを見る", ctaLink: "", declineText: "いいえ、結構です" },
+      style: { bgColor: "#ffffff", buttonColor: "#ec4899", overlayColor: "rgba(0,0,0,0.6)", borderRadius: "12", animation: "fadeIn" },
+      customHtml: "",
+      customCss: "",
+    },
   };
   projects.set(id, project);
   return project;
@@ -362,8 +382,66 @@ app.post("/api/projects/:id/blocks/reorder", (req, res) => {
   res.json({ ok: true, blockCount: project.blocks.length });
 });
 
+// GET /api/projects/:id/tag-settings
+app.get("/api/projects/:id/tag-settings", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  res.json(project.tagSettings);
+});
+
+// PUT /api/projects/:id/tag-settings
+app.put("/api/projects/:id/tag-settings", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  Object.assign(project.tagSettings, req.body);
+  res.json({ ok: true });
+});
+
+// GET /api/projects/:id/exit-popup
+app.get("/api/projects/:id/exit-popup", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  res.json(project.exitPopup);
+});
+
+// PUT /api/projects/:id/exit-popup
+app.put("/api/projects/:id/exit-popup", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  Object.assign(project.exitPopup, req.body);
+  res.json({ ok: true });
+});
+
+// GET /api/projects/:id/snapshot - Get current state snapshot for undo/redo
+app.get("/api/projects/:id/snapshot", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  res.json({
+    modifiedHtml: project.modifiedHtml || project.html || "",
+    blocks: JSON.stringify(project.blocks),
+  });
+});
+
+// PUT /api/projects/:id/restore - Restore from snapshot
+app.put("/api/projects/:id/restore", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const { modifiedHtml, blocks } = req.body;
+  if (!blocks) return res.status(400).json({ error: "blocks is required" });
+
+  try {
+    project.blocks = JSON.parse(blocks);
+    project.modifiedHtml = modifiedHtml || project.blocks.map((b) => b.html).join("\n");
+    res.json({ ok: true, blockCount: project.blocks.length });
+  } catch (err) {
+    res.status(400).json({ error: "Invalid blocks data" });
+  }
+});
+
 // GET /api/projects/:id/preview - Preview HTML for iframe
-app.get("/api/projects/:id/preview", (req, res) => {
+app.get("/api/projects/:id/preview", async (req, res) => {
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
 
@@ -372,11 +450,34 @@ app.get("/api/projects/:id/preview", (req, res) => {
   // Rewrite all asset URLs to serve through our API
   const html = rewriteAssetsForPreview(rawHtml, project);
 
+  // Tag settings injection
+  const ts = project.tagSettings || {};
+  const masterCssBlock = ts.masterCss ? `<style id="master-css">${ts.masterCss}</style>` : "";
+  const noindexTag = ts.noindex ? '<meta name="robots" content="noindex">' : "";
+  const headTagsBlock = (ts.headTags || "") + (ts.jsHead ? `<script>${ts.jsHead}<\/script>` : "");
+  let bodyEndBlock = (ts.bodyTags || "") + (ts.jsBody ? `<script>${ts.jsBody}<\/script>` : "");
+
+  // Exit popup injection for preview
+  if (project.exitPopup?.enabled) {
+    try {
+      const { generateExitPopupHtml } = await import("./src/exit-popup-builder.js");
+      const popupHtml = generateExitPopupHtml(project.exitPopup);
+      bodyEndBlock += popupHtml;
+      // Add test trigger button for preview
+      bodyEndBlock += `<div style="position:fixed;bottom:12px;right:12px;z-index:100000">
+        <button onclick="document.querySelector('[id$=-overlay]')?.classList.add('active')" style="padding:8px 16px;background:#ec4899;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,0.2)">離脱POPテスト</button>
+      </div>`;
+    } catch {}
+  }
+
   const previewHtml = `<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+${noindexTag}
+${masterCssBlock}
+${headTagsBlock}
 <style>
   * { box-sizing: border-box; }
   body {
@@ -681,6 +782,7 @@ ${html}
   });
 })();
 </script>
+${bodyEndBlock}
 </body>
 </html>`;
 
@@ -968,13 +1070,19 @@ app.post("/api/projects/:id/text-modify", (req, res) => {
 });
 
 // POST /api/projects/:id/build - Build SB HTML
-app.post("/api/projects/:id/build", (req, res) => {
+app.post("/api/projects/:id/build", async (req, res) => {
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
 
   try {
     project.status = "building";
     const config = req.body || {};
+    config.tagSettings = project.tagSettings;
+    config.exitPopup = project.exitPopup;
+    if (project.exitPopup?.enabled) {
+      const { generateExitPopupHtml } = await import("./src/exit-popup-builder.js");
+      config.exitPopupHtml = generateExitPopupHtml(project.exitPopup);
+    }
     const sourceHtml = project.modifiedHtml || project.html;
     if (!sourceHtml) {
       project.status = "ready";

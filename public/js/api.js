@@ -98,6 +98,39 @@ export const API = {
     });
   },
 
+  async getSnapshot(projectId) {
+    return fetchJson(`/api/projects/${projectId}/snapshot`);
+  },
+
+  async restore(projectId, data) {
+    return fetchJson(`/api/projects/${projectId}/restore`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getTagSettings(projectId) {
+    return fetchJson(`/api/projects/${projectId}/tag-settings`);
+  },
+
+  async saveTagSettings(projectId, data) {
+    return fetchJson(`/api/projects/${projectId}/tag-settings`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getExitPopup(projectId) {
+    return fetchJson(`/api/projects/${projectId}/exit-popup`);
+  },
+
+  async saveExitPopup(projectId, data) {
+    return fetchJson(`/api/projects/${projectId}/exit-popup`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
   async build(projectId, config = {}) {
     return fetchJson(`/api/projects/${projectId}/build`, {
       method: "POST",

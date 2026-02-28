@@ -6,12 +6,18 @@ let currentMode = "manual"; // "manual" | "ai"
 
 // ── Debounce付き自動保存 ─────────────────────────────────
 let _autoSaveTimer = null;
+let _historyPushTimer = null;
 function autoSave(projectId, blockIndex, getData, delay = 600) {
   if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
   _autoSaveTimer = setTimeout(async () => {
     try {
       await window.API.updateBlock(projectId, blockIndex, getData());
       window.loadPreview(true);
+      // Debounced history push (group rapid edits into one entry)
+      if (_historyPushTimer) clearTimeout(_historyPushTimer);
+      _historyPushTimer = setTimeout(() => {
+        window.pushHistory?.("edit_block", `ブロック ${blockIndex} を編集`);
+      }, 2000);
     } catch (err) {
       window.showToast(`自動保存エラー: ${err.message}`, "error");
     }
@@ -227,6 +233,7 @@ function buildAiTextPanel(projectId, blockIndex, block) {
             window.showToast("適用しました", "success");
             window.loadPreview(true);
             window.loadEditor();
+            window.pushHistory?.("ai_rewrite", `ブロック ${blockIndex} AI書き換え`);
           } catch (err) {
             window.showToast(`エラー: ${err.message}`, "error");
           } finally {
@@ -736,6 +743,7 @@ function buildImagePanel(projectId, blockIndex, block) {
               await window.API.applyImage(projectId, blockIndex, { imageUrl: imgUrl });
               window.showToast("画像を適用しました", "success");
               window.loadPreview(true);
+              window.pushHistory?.("image_apply", `ブロック ${blockIndex} AI画像適用`);
             } catch (err) {
               window.showToast(`エラー: ${err.message}`, "error");
             } finally {
@@ -815,6 +823,7 @@ function buildImagePanel(projectId, blockIndex, block) {
             await window.API.applyImage(projectId, blockIndex, { imageUrl: uploadResult.imageUrl });
             window.showToast("画像を適用しました", "success");
             window.loadPreview(true);
+            window.pushHistory?.("image_upload", `ブロック ${blockIndex} 画像アップロード`);
           }
         } catch (err) {
           window.showToast(`エラー: ${err.message}`, "error");
@@ -1225,6 +1234,7 @@ function buildSaveRow(projectId, blockIndex, getData) {
       indicator.classList.add("show");
       setTimeout(() => indicator.classList.remove("show"), 2000);
       window.loadPreview(true); // preserve scroll position
+      window.pushHistory?.("manual_save", `ブロック ${blockIndex} 手動保存`);
     } catch (err) {
       window.showToast(`保存エラー: ${err.message}`, "error");
     } finally {
