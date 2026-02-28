@@ -11,8 +11,8 @@ import { existsSync } from "fs";
 import fetch from "node-fetch";
 import { scrape } from "./src/scraper.js";
 import { parseHtml } from "./src/parser.js";
-import { applyTextModifications, analyzeForReplacement } from "./src/text-modifier.js";
-import { describeImage, generateImage, buildImagePrompt } from "./src/image-generator.js";
+import { applyTextModifications, analyzeForReplacement, applyBlockReplacements } from "./src/text-modifier.js";
+import { describeImage, generateImage, generateImageFromReference, buildImagePrompt } from "./src/image-generator.js";
 import { buildSbHtml, validateSbHtml } from "./src/html-builder.js";
 import {
   PROJECT_ROOT, SCRAPED_DIR, ANALYSIS_DIR, IMAGES_DIR, FINAL_DIR,
@@ -343,6 +343,71 @@ app.get("/api/projects/:id/preview", (req, res) => {
   }
   .block-wrapper:hover .block-type-badge,
   .block-wrapper.active .block-type-badge { opacity: 1; }
+
+  /* Inline editing */
+  .block-wrapper.editing .block-overlay { display: none; }
+  .block-wrapper.editing .block-type-badge { display: none; }
+  .block-wrapper.editing {
+    outline: 2px solid rgba(59, 130, 246, 0.6);
+    outline-offset: 2px;
+    cursor: text;
+  }
+  [contenteditable="true"] { outline: none; }
+
+  /* Floating toolbar */
+  .inline-toolbar {
+    position: fixed;
+    display: none;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 6px;
+    background: #1e293b;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    z-index: 9999;
+    font-family: -apple-system, sans-serif;
+  }
+  .inline-toolbar.visible { display: flex; }
+  .inline-toolbar button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: #cbd5e1;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: -apple-system, sans-serif;
+  }
+  .inline-toolbar button:hover { background: rgba(255,255,255,0.1); color: #fff; }
+  .inline-toolbar .tb-sep {
+    width: 1px;
+    height: 18px;
+    background: rgba(255,255,255,0.12);
+    margin: 0 3px;
+  }
+  .inline-toolbar select {
+    background: #334155;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    color: #cbd5e1;
+    font-size: 11px;
+    padding: 3px 4px;
+    cursor: pointer;
+  }
+  .inline-toolbar input[type="color"] {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    padding: 0;
+  }
 </style>
 </head>
 <body>
@@ -404,6 +469,135 @@ ${html}
   document.querySelectorAll('video source[data-src]').forEach(function(s) {
     s.src = s.dataset.src;
     try { s.parentElement.load(); } catch(e) {}
+  });
+
+  // ── Inline Editing ──
+  var editingWrapper = null;
+  var editingContent = null;
+  var originalHtml = '';
+
+  // Create floating toolbar
+  var toolbar = document.createElement('div');
+  toolbar.className = 'inline-toolbar';
+  toolbar.innerHTML = '<button data-cmd="bold" title="太字"><b>B</b></button>'
+    + '<button data-cmd="underline" title="下線"><u>U</u></button>'
+    + '<button data-cmd="italic" title="斜体"><i>I</i></button>'
+    + '<button data-cmd="strikeThrough" title="打消し"><s>S</s></button>'
+    + '<div class="tb-sep"></div>'
+    + '<button data-cmd="superscript" title="上付">X\u00B2</button>'
+    + '<button data-cmd="subscript" title="下付">X\u2082</button>'
+    + '<div class="tb-sep"></div>'
+    + '<select data-action="fontSize" title="\u30B5\u30A4\u30BA"><option value="">size</option><option value="1">10px</option><option value="2">13px</option><option value="3">16px</option><option value="4">18px</option><option value="5">24px</option><option value="6">32px</option></select>'
+    + '<input type="color" data-action="foreColor" value="#ffffff" title="\u6587\u5B57\u8272">'
+    + '<input type="color" data-action="backColor" value="#000000" title="\u80CC\u666F\u8272">'
+    + '<div class="tb-sep"></div>'
+    + '<button data-cmd="justifyLeft" title="\u5DE6\u63C3\u3048">\u2261</button>'
+    + '<button data-cmd="justifyCenter" title="\u4E2D\u592E">\u2550</button>'
+    + '<button data-cmd="justifyRight" title="\u53F3\u63C3\u3048">\u2261</button>';
+  document.body.appendChild(toolbar);
+
+  // Toolbar commands
+  toolbar.addEventListener('mousedown', function(e) { e.preventDefault(); });
+  toolbar.querySelectorAll('button[data-cmd]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      document.execCommand(btn.dataset.cmd, false, null);
+    });
+  });
+  toolbar.querySelector('select[data-action="fontSize"]').addEventListener('change', function(e) {
+    if (e.target.value) document.execCommand('fontSize', false, e.target.value);
+    e.target.value = '';
+  });
+  toolbar.querySelector('input[data-action="foreColor"]').addEventListener('input', function(e) {
+    document.execCommand('foreColor', false, e.target.value);
+  });
+  toolbar.querySelector('input[data-action="backColor"]').addEventListener('input', function(e) {
+    document.execCommand('backColor', false, e.target.value);
+  });
+
+  // Show toolbar on text selection
+  document.addEventListener('selectionchange', function() {
+    if (!editingWrapper) { toolbar.classList.remove('visible'); return; }
+    var sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) { toolbar.classList.remove('visible'); return; }
+    var range = sel.getRangeAt(0);
+    var rect = range.getBoundingClientRect();
+    if (rect.width === 0) { toolbar.classList.remove('visible'); return; }
+    toolbar.style.left = Math.max(4, rect.left + rect.width / 2 - 160) + 'px';
+    toolbar.style.top = Math.max(4, rect.top - 44) + 'px';
+    toolbar.classList.add('visible');
+  });
+
+  // Double-click to enter edit mode
+  document.addEventListener('dblclick', function(e) {
+    var wrapper = e.target.closest('.block-wrapper');
+    if (!wrapper) return;
+    var blockIdx = parseInt(wrapper.dataset.blockIndex);
+    var blockType = types[blockIdx];
+    // Only allow text/heading editing
+    if (blockType !== 'text' && blockType !== 'heading') return;
+
+    // Exit previous editing
+    if (editingWrapper && editingWrapper !== wrapper) exitEditMode(true);
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    editingWrapper = wrapper;
+    editingContent = wrapper.children[0]; // The actual content element
+    originalHtml = editingContent.innerHTML;
+
+    wrapper.classList.add('editing');
+    editingContent.contentEditable = 'true';
+    editingContent.focus();
+  });
+
+  function exitEditMode(save) {
+    if (!editingWrapper || !editingContent) return;
+    toolbar.classList.remove('visible');
+    editingContent.contentEditable = 'false';
+    editingWrapper.classList.remove('editing');
+
+    if (save) {
+      var newHtml = editingContent.innerHTML;
+      var newText = editingContent.textContent;
+      if (newHtml !== originalHtml) {
+        var blockIdx = parseInt(editingWrapper.dataset.blockIndex);
+        window.parent.postMessage({
+          type: 'inlineEditSave',
+          blockIndex: blockIdx,
+          html: newHtml,
+          text: newText
+        }, '*');
+      }
+    }
+
+    editingWrapper = null;
+    editingContent = null;
+    originalHtml = '';
+  }
+
+  // Click outside to save and exit
+  document.addEventListener('click', function(e) {
+    if (!editingWrapper) return;
+    if (editingWrapper.contains(e.target)) return;
+    if (toolbar.contains(e.target)) return;
+    exitEditMode(true);
+  });
+
+  // Handle exit message from parent
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'exitInlineEdit') {
+      exitEditMode(false);
+    }
+  });
+
+  // Escape key to cancel
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && editingWrapper) {
+      editingContent.innerHTML = originalHtml;
+      exitEditMode(false);
+    }
   });
 })();
 </script>
@@ -492,6 +686,101 @@ app.post("/api/projects/:id/generate-image/:idx", async (req, res) => {
   }
 });
 
+// POST /api/projects/:id/one-click-image/:idx - One-click AI image generation
+app.post("/api/projects/:id/one-click-image/:idx", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
+
+  const idx = parseInt(req.params.idx, 10);
+  const block = project.blocks[idx];
+  if (!block) return res.status(404).json({ error: "Block not found" });
+
+  const asset = block.assets?.[0];
+  if (!asset) return res.status(400).json({ error: "Block has no image asset" });
+
+  // Find local file
+  const assetEntry = project.assets.find((a) =>
+    a.originalUrl === asset.src ||
+    a.originalUrl === asset.webpSrc ||
+    a.originalUrl === asset.avifSrc
+  );
+
+  if (!assetEntry || !existsSync(assetEntry.localPath)) {
+    return res.status(400).json({ error: "Asset file not found on disk" });
+  }
+
+  const { nuance = "same", style = "photo" } = req.body;
+  const width = asset.width || 580;
+  const height = asset.height || 580;
+
+  try {
+    const results = [];
+    for (let i = 0; i < 2; i++) {
+      const outputPath = path.join(
+        project.dirs.images,
+        `block_${idx}_oneclick_${i}_${Date.now()}.jpg`
+      );
+      await generateImageFromReference(assetEntry.localPath, {
+        nuance, style, width, height, outputPath,
+      });
+      results.push(`/api/projects/${project.id}/generated-images/${path.basename(outputPath)}`);
+      // Delay between generations for rate limiting
+      if (i < 1) await new Promise(r => setTimeout(r, 2000));
+    }
+    res.json({ ok: true, images: results, width, height });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/projects/:id/apply-image/:idx - Apply selected image to block HTML
+app.put("/api/projects/:id/apply-image/:idx", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const idx = parseInt(req.params.idx, 10);
+  const block = project.blocks[idx];
+  if (!block) return res.status(404).json({ error: "Block not found" });
+
+  const { imageUrl } = req.body;
+  if (!imageUrl) return res.status(400).json({ error: "imageUrl is required" });
+
+  // Replace image sources in block HTML (src, data-src, data-srcset)
+  let html = block.html;
+  const asset = block.assets?.[0];
+  if (asset) {
+    // Replace all image source attributes
+    const oldSrcs = [asset.src, asset.webpSrc, asset.avifSrc, asset.dataSrc].filter(Boolean);
+    // Also find asset-rewritten URLs
+    const assetEntry = project.assets.find((a) =>
+      a.originalUrl === asset.src ||
+      a.originalUrl === asset.webpSrc ||
+      a.originalUrl === asset.avifSrc
+    );
+    if (assetEntry) {
+      oldSrcs.push(`/api/projects/${project.id}/assets/${assetEntry.localFile}`);
+    }
+
+    for (const oldSrc of oldSrcs) {
+      if (oldSrc) html = html.split(oldSrc).join(imageUrl);
+    }
+  }
+
+  block.html = html;
+  // Update asset reference
+  if (block.assets?.[0]) {
+    block.assets[0].src = imageUrl;
+    block.assets[0].webpSrc = null;
+    block.assets[0].avifSrc = null;
+  }
+
+  // Rebuild modifiedHtml
+  project.modifiedHtml = project.blocks.map((b) => b.html).join("\n");
+
+  res.json({ ok: true });
+});
+
 // Serve generated images
 app.get("/api/projects/:id/generated-images/:file", (req, res) => {
   const project = projects.get(req.params.id);
@@ -503,6 +792,25 @@ app.get("/api/projects/:id/generated-images/:file", (req, res) => {
   res.sendFile(filePath);
 });
 
+// GET /api/projects/:id/text-blocks - Get text blocks for editing
+app.get("/api/projects/:id/text-blocks", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const textBlocks = project.blocks
+    .filter((b) => (b.type === "text" || b.type === "heading") && b.text)
+    .map((b) => ({
+      index: b.index,
+      type: b.type,
+      text: b.text,
+      fontSize: b.fontSize,
+      hasStrong: b.hasStrong,
+      hasColor: b.hasColor,
+    }));
+
+  res.json({ textBlocks });
+});
+
 // POST /api/projects/:id/text-modify - Bulk text replacement
 app.post("/api/projects/:id/text-modify", (req, res) => {
   const project = projects.get(req.params.id);
@@ -510,6 +818,15 @@ app.post("/api/projects/:id/text-modify", (req, res) => {
 
   const config = req.body;
   try {
+    // Block-level replacements (from block-by-block tab)
+    if (config.blockReplacements && config.blockReplacements.length > 0) {
+      const updatedBlocks = applyBlockReplacements(project.blocks, config.blockReplacements);
+      project.blocks = updatedBlocks;
+      project.modifiedHtml = updatedBlocks.map((b) => b.html).join("\n");
+
+      return res.json({ ok: true, blockCount: project.blocks.length });
+    }
+
     const sourceHtml = project.modifiedHtml || project.html;
     if (!sourceHtml) return res.status(400).json({ error: "No HTML to modify" });
 

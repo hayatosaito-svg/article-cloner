@@ -231,25 +231,63 @@ GEMINI_API_KEY_1=your_key_here<br><br>
       </button>
     </div>
     <div class="modal-body">
-      <div class="form-section">
-        <label class="form-label">直接置換（旧テキスト → 新テキスト）</label>
-        <div id="replacements-list" class="replacements-list">
-          <div class="replacement-row">
-            <input type="text" placeholder="旧テキスト（例：商品名）" class="input-old">
-            <span class="arrow">&rarr;</span>
-            <input type="text" placeholder="新テキスト" class="input-new">
-            <button class="btn-remove-row" title="削除">&times;</button>
+      <!-- タブ切り替え -->
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-modal-tab="tab-bulk-replace">一括置換</button>
+        <button class="modal-tab" data-modal-tab="tab-block-text">ブロック別</button>
+        <button class="modal-tab" data-modal-tab="tab-find-replace">検索と置換</button>
+      </div>
+
+      <!-- タブ1: 一括置換（既存） -->
+      <div class="modal-tab-content active" id="tab-bulk-replace">
+        <div class="form-section">
+          <label class="form-label">直接置換（旧テキスト → 新テキスト）</label>
+          <div id="replacements-list" class="replacements-list">
+            <div class="replacement-row">
+              <input type="text" placeholder="旧テキスト（例：商品名）" class="input-old">
+              <span class="arrow">&rarr;</span>
+              <input type="text" placeholder="新テキスト" class="input-new">
+              <button class="btn-remove-row" title="削除">&times;</button>
+            </div>
           </div>
+          <button class="btn-add-row" id="btn-add-replacement">+ 行を追加</button>
         </div>
-        <button class="btn-add-row" id="btn-add-replacement">+ 行を追加</button>
+        <div class="form-section">
+          <label class="form-label">CTA URL差し替え</label>
+          <input type="url" id="cta-url-input" class="form-input" placeholder="新しい遷移先URL...">
+        </div>
+        <div class="form-section">
+          <label class="form-label">検出された頻出キーワード（クリックで追加）</label>
+          <div id="frequent-terms" class="frequent-terms"></div>
+        </div>
       </div>
-      <div class="form-section">
-        <label class="form-label">CTA URL差し替え</label>
-        <input type="url" id="cta-url-input" class="form-input" placeholder="新しい遷移先URL...">
+
+      <!-- タブ2: ブロック別テキスト -->
+      <div class="modal-tab-content" id="tab-block-text">
+        <div class="form-section">
+          <label class="form-label">テキストブロック一覧（右側を編集して適用）</label>
+          <div class="block-text-list" id="block-text-list"></div>
+        </div>
       </div>
-      <div class="form-section">
-        <label class="form-label">検出された頻出キーワード（クリックで追加）</label>
-        <div id="frequent-terms" class="frequent-terms"></div>
+
+      <!-- タブ3: 検索と置換 -->
+      <div class="modal-tab-content" id="tab-find-replace">
+        <div class="find-replace-section">
+          <div class="find-replace-row">
+            <label class="form-label" style="min-width:60px;margin:0">検索:</label>
+            <input type="text" id="find-input" class="find-replace-input" placeholder="検索テキスト...">
+            <span class="find-replace-count" id="find-count">0件</span>
+          </div>
+          <div class="find-replace-row">
+            <label class="form-label" style="min-width:60px;margin:0">置換:</label>
+            <input type="text" id="replace-input" class="find-replace-input" placeholder="置換テキスト...">
+          </div>
+          <div class="find-replace-actions">
+            <button class="btn-secondary" id="btn-find-count">マッチ数を確認</button>
+            <button class="btn-primary" id="btn-find-replace-all">一括置換</button>
+          </div>
+          <div id="find-replace-preview" class="form-section" style="margin-top:12px"></div>
+        </div>
       </div>
     </div>
     <div class="modal-footer">

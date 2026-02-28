@@ -46,6 +46,24 @@ export const API = {
     });
   },
 
+  async oneClickImage(projectId, idx, data) {
+    return fetchJson(`/api/projects/${projectId}/one-click-image/${idx}`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async applyImage(projectId, idx, data) {
+    return fetchJson(`/api/projects/${projectId}/apply-image/${idx}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getTextBlocks(projectId) {
+    return fetchJson(`/api/projects/${projectId}/text-blocks`);
+  },
+
   async aiRewrite(projectId, idx, data) {
     return fetchJson(`/api/projects/${projectId}/ai-rewrite/${idx}`, {
       method: "POST",

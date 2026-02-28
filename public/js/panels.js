@@ -255,13 +255,15 @@ function buildTextPanel(projectId, blockIndex, block) {
 function buildImagePanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
   const asset = block.assets?.[0];
+  const originalSrc = asset?.src || asset?.webpSrc || "";
 
+  // 元画像プレビュー
   const previewSection = createSection("元画像");
   if (asset) {
     const box = document.createElement("div");
     box.className = "image-preview-box";
     const img = document.createElement("img");
-    img.src = asset.src || asset.webpSrc || "";
+    img.src = originalSrc;
     img.alt = "元画像";
     img.onerror = () => { img.style.display = "none"; };
     box.appendChild(img);
@@ -274,6 +276,176 @@ function buildImagePanel(projectId, blockIndex, block) {
     previewSection.appendChild(box);
   }
   frag.appendChild(previewSection);
+
+  // ── ワンクリックAI画像生成 ──
+  const oneClickSection = document.createElement("div");
+  oneClickSection.className = "panel-section oneclick-section";
+
+  const oneClickTitle = document.createElement("div");
+  oneClickTitle.className = "panel-section-title";
+  oneClickTitle.textContent = "AI画像生成";
+  oneClickSection.appendChild(oneClickTitle);
+
+  // オプション行: ニュアンス
+  const nuanceRow = document.createElement("div");
+  nuanceRow.className = "oneclick-option-row";
+  nuanceRow.innerHTML = '<span class="oneclick-option-label">ニュアンス</span>';
+  const nuanceGroup = document.createElement("div");
+  nuanceGroup.className = "oneclick-radio-group";
+  [
+    { value: "same", label: "ほぼ同じ" },
+    { value: "slight", label: "少し変化" },
+    { value: "big", label: "大きく変化" },
+  ].forEach((opt, i) => {
+    const radio = document.createElement("label");
+    radio.className = "oneclick-radio" + (i === 0 ? " active" : "");
+    radio.innerHTML = `<input type="radio" name="nuance-${blockIndex}" value="${opt.value}" ${i === 0 ? "checked" : ""}><span>${opt.label}</span>`;
+    radio.querySelector("input").addEventListener("change", () => {
+      nuanceGroup.querySelectorAll(".oneclick-radio").forEach(r => r.classList.remove("active"));
+      radio.classList.add("active");
+    });
+    nuanceGroup.appendChild(radio);
+  });
+  nuanceRow.appendChild(nuanceGroup);
+  oneClickSection.appendChild(nuanceRow);
+
+  // オプション行: スタイル
+  const styleRow = document.createElement("div");
+  styleRow.className = "oneclick-option-row";
+  styleRow.innerHTML = '<span class="oneclick-option-label">スタイル</span>';
+  const styleGroup = document.createElement("div");
+  styleGroup.className = "oneclick-radio-group";
+  [
+    { value: "photo", label: "写真風" },
+    { value: "illustration", label: "イラスト" },
+    { value: "flat", label: "フラット" },
+  ].forEach((opt, i) => {
+    const radio = document.createElement("label");
+    radio.className = "oneclick-radio" + (i === 0 ? " active" : "");
+    radio.innerHTML = `<input type="radio" name="style-${blockIndex}" value="${opt.value}" ${i === 0 ? "checked" : ""}><span>${opt.label}</span>`;
+    radio.querySelector("input").addEventListener("change", () => {
+      styleGroup.querySelectorAll(".oneclick-radio").forEach(r => r.classList.remove("active"));
+      radio.classList.add("active");
+    });
+    styleGroup.appendChild(radio);
+  });
+  styleRow.appendChild(styleGroup);
+  oneClickSection.appendChild(styleRow);
+
+  // メインボタン
+  const mainBtn = document.createElement("button");
+  mainBtn.className = "oneclick-main-btn";
+  mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2v14M2 9h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> AIで類似画像を生成';
+
+  // 生成結果エリア
+  const resultGrid = document.createElement("div");
+  resultGrid.className = "oneclick-result-grid";
+
+  mainBtn.addEventListener("click", async () => {
+    const nuance = oneClickSection.querySelector(`input[name="nuance-${blockIndex}"]:checked`)?.value || "same";
+    const style = oneClickSection.querySelector(`input[name="style-${blockIndex}"]:checked`)?.value || "photo";
+
+    mainBtn.disabled = true;
+    mainBtn.innerHTML = '<span class="spinner"></span> 2パターン生成中...（約30秒）';
+    resultGrid.innerHTML = "";
+
+    try {
+      const result = await window.API.oneClickImage(projectId, blockIndex, { nuance, style });
+      if (result.ok && result.images) {
+        window.showToast(`${result.images.length}パターン生成しました`, "success");
+        resultGrid.innerHTML = "";
+
+        result.images.forEach((imgUrl, i) => {
+          const card = document.createElement("div");
+          card.className = "oneclick-variant-card";
+
+          const varImg = document.createElement("img");
+          varImg.src = imgUrl;
+          varImg.alt = `パターン ${i + 1}`;
+          card.appendChild(varImg);
+
+          const applyBtn = document.createElement("button");
+          applyBtn.className = "oneclick-apply-btn";
+          applyBtn.textContent = "これを使う";
+          applyBtn.addEventListener("click", async () => {
+            applyBtn.disabled = true;
+            applyBtn.innerHTML = '<span class="spinner"></span>';
+            try {
+              await window.API.applyImage(projectId, blockIndex, { imageUrl: imgUrl });
+              window.showToast("画像を適用しました", "success");
+              window.loadPreview();
+            } catch (err) {
+              window.showToast(`エラー: ${err.message}`, "error");
+            } finally {
+              applyBtn.disabled = false;
+              applyBtn.textContent = "これを使う";
+            }
+          });
+          card.appendChild(applyBtn);
+          resultGrid.appendChild(card);
+        });
+      }
+    } catch (err) {
+      window.showToast(`エラー: ${err.message}`, "error");
+    } finally {
+      mainBtn.disabled = false;
+      mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2v14M2 9h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> AIで類似画像を生成';
+    }
+  });
+
+  oneClickSection.appendChild(mainBtn);
+  oneClickSection.appendChild(resultGrid);
+  frag.appendChild(oneClickSection);
+
+  // ── 手持ち画像アップロード ──
+  const uploadSection = createSection("手持ち画像で差し替え");
+  const uploadInput = document.createElement("input");
+  uploadInput.type = "file";
+  uploadInput.accept = "image/*";
+  uploadInput.className = "oneclick-file-input";
+  uploadInput.addEventListener("change", async () => {
+    const file = uploadInput.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result;
+      try {
+        // For now, just show a preview - actual upload would need a separate endpoint
+        window.showToast("画像をプレビュー中...", "info");
+        // We can use the data URL directly for preview, but for apply we need server-side handling
+        // For simplicity, show preview with apply option
+        resultGrid.innerHTML = "";
+        const card = document.createElement("div");
+        card.className = "oneclick-variant-card";
+        const img = document.createElement("img");
+        img.src = dataUrl;
+        card.appendChild(img);
+        const label = document.createElement("div");
+        label.style.cssText = "font-size:11px; color:var(--text-muted); text-align:center; padding:4px";
+        label.textContent = file.name;
+        card.appendChild(label);
+        resultGrid.appendChild(card);
+      } catch (err) {
+        window.showToast(`エラー: ${err.message}`, "error");
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+  uploadSection.appendChild(uploadInput);
+  frag.appendChild(uploadSection);
+
+  // ── 詳細設定（折りたたみ） ──
+  const advancedToggle = document.createElement("button");
+  advancedToggle.className = "oneclick-advanced-toggle";
+  advancedToggle.textContent = "詳細設定（プロンプト指定で生成）";
+  advancedToggle.addEventListener("click", () => {
+    advancedContent.classList.toggle("open");
+    advancedToggle.classList.toggle("open");
+  });
+  frag.appendChild(advancedToggle);
+
+  const advancedContent = document.createElement("div");
+  advancedContent.className = "oneclick-advanced-content";
 
   // AI画像説明
   const descSection = createSection("AI画像説明");
@@ -303,9 +475,9 @@ function buildImagePanel(projectId, blockIndex, block) {
   });
   descBtnRow.appendChild(descBtn);
   descSection.appendChild(descBtnRow);
-  frag.appendChild(descSection);
+  advancedContent.appendChild(descSection);
 
-  // 画像生成
+  // 画像生成プロンプト
   const promptSection = createSection("画像生成プロンプト");
   const promptArea = document.createElement("textarea");
   promptArea.className = "panel-textarea";
@@ -345,7 +517,7 @@ function buildImagePanel(projectId, blockIndex, block) {
         const beforeDiv = document.createElement("div");
         beforeDiv.innerHTML = '<div class="image-compare-label">変更前</div>';
         const beforeImg = document.createElement("img");
-        beforeImg.src = asset?.src || asset?.webpSrc || "";
+        beforeImg.src = originalSrc;
         beforeImg.style.cssText = "width:100%; border-radius:4px";
         beforeDiv.appendChild(beforeImg);
 
@@ -371,7 +543,9 @@ function buildImagePanel(projectId, blockIndex, block) {
   genBtnRow.appendChild(genBtn);
   promptSection.appendChild(genBtnRow);
   promptSection.appendChild(genContainer);
-  frag.appendChild(promptSection);
+  advancedContent.appendChild(promptSection);
+
+  frag.appendChild(advancedContent);
 
   // HTMLソース
   const htmlSection = createSection("HTMLソース");

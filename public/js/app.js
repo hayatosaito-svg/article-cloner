@@ -219,18 +219,63 @@ function loadPreview() {
 window.addEventListener("message", (e) => {
   // Origin check - only accept from same origin
   if (e.origin !== window.location.origin) return;
-  if (e.data?.type !== "blockClick") return;
 
-  const idx = e.data.blockIndex;
-  const list = document.getElementById("block-list");
-  list.querySelectorAll(".block-item.active").forEach((i) => i.classList.remove("active"));
-  const item = list.querySelector(`[data-index="${idx}"]`);
-  if (item) {
-    item.classList.add("active");
-    item.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  if (e.data?.type === "blockClick") {
+    const idx = e.data.blockIndex;
+    const list = document.getElementById("block-list");
+    list.querySelectorAll(".block-item.active").forEach((i) => i.classList.remove("active"));
+    const item = list.querySelector(`[data-index="${idx}"]`);
+    if (item) {
+      item.classList.add("active");
+      item.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    const block = state.projectData?.blocks?.[idx];
+    if (block) window.openEditPanel(state.projectId, idx, block.type);
   }
-  const block = state.projectData?.blocks?.[idx];
-  if (block) window.openEditPanel(state.projectId, idx, block.type);
+
+  // Inline edit save - update block without iframe reload
+  if (e.data?.type === "inlineEditSave") {
+    const idx = e.data.blockIndex;
+    const newHtml = e.data.html;
+    const newText = e.data.text;
+
+    if (state.projectId != null && idx != null) {
+      // Find the full block html wrapper by rebuilding from the block's original wrapper
+      const block = state.projectData?.blocks?.[idx];
+      if (block) {
+        // The inline edit changes the inner content; we need to wrap it back in the block's outer tag
+        // Since the block.html is the full outer element, we replace its inner content
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(block.html, "text/html");
+        const root = doc.body.firstChild;
+        if (root) {
+          root.innerHTML = newHtml;
+          const updatedHtml = root.outerHTML;
+          window.API.updateBlock(state.projectId, idx, {
+            html: updatedHtml,
+            text: newText,
+          }).then(() => {
+            // Update local state
+            block.html = updatedHtml;
+            block.text = newText;
+            // Update block list preview text
+            const item = document.querySelector(`#block-list [data-index="${idx}"] .block-preview-text`);
+            if (item) item.textContent = (newText || "").slice(0, 80);
+            // Update panel if open for this block
+            if (window._currentPanelData?.blockIndex === idx) {
+              const codeArea = document.querySelector("#edit-panel-body .panel-code");
+              if (codeArea) codeArea.value = updatedHtml;
+              const textArea = document.querySelector("#edit-panel-body .panel-textarea");
+              if (textArea) textArea.value = newText || "";
+            }
+            showToast("インライン編集を保存しました", "success");
+          }).catch((err) => {
+            showToast(`保存エラー: ${err.message}`, "error");
+          });
+        }
+      }
+    }
+  }
 });
 
 // ── Tabs ───────────────────────────────────────────────────
@@ -316,8 +361,83 @@ document.getElementById("btn-export").addEventListener("click", async () => {
 
 // ── Text Modify Modal ──────────────────────────────────────
 
+// Modal tab switching
+document.querySelectorAll(".modal-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    const parent = tab.closest(".modal-body");
+    parent.querySelectorAll(".modal-tab").forEach((t) => t.classList.remove("active"));
+    parent.querySelectorAll(".modal-tab-content").forEach((c) => c.classList.remove("active"));
+    tab.classList.add("active");
+    const target = document.getElementById(tab.dataset.modalTab);
+    if (target) target.classList.add("active");
+
+    // Load block text when switching to that tab
+    if (tab.dataset.modalTab === "tab-block-text") loadBlockTextList();
+  });
+});
+
+let _blockTextData = [];
+
+async function loadBlockTextList() {
+  if (!state.projectId) return;
+  const list = document.getElementById("block-text-list");
+  list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px">読み込み中...</div>';
+  try {
+    const result = await window.API.getTextBlocks(state.projectId);
+    _blockTextData = result.textBlocks || [];
+    list.innerHTML = "";
+
+    if (_blockTextData.length === 0) {
+      list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px">テキストブロックがありません</div>';
+      return;
+    }
+
+    // Header row
+    const header = document.createElement("div");
+    header.className = "block-text-row";
+    header.style.cssText = "border-bottom:1px solid var(--border);padding-bottom:4px;margin-bottom:4px";
+    header.innerHTML = '<div class="block-text-index">#</div><div style="font-size:11px;font-weight:600;color:var(--text-muted)">元テキスト</div><div style="font-size:11px;font-weight:600;color:var(--text-muted)">新テキスト</div>';
+    list.appendChild(header);
+
+    _blockTextData.forEach((block) => {
+      const row = document.createElement("div");
+      row.className = "block-text-row";
+      row.dataset.blockIndex = block.index;
+
+      const idx = document.createElement("div");
+      idx.className = "block-text-index";
+      idx.textContent = block.index;
+      row.appendChild(idx);
+
+      const orig = document.createElement("textarea");
+      orig.className = "block-text-original";
+      orig.value = block.text;
+      orig.readOnly = true;
+      row.appendChild(orig);
+
+      const newText = document.createElement("textarea");
+      newText.className = "block-text-new";
+      newText.value = block.text;
+      newText.placeholder = "新しいテキストを入力...";
+      row.appendChild(newText);
+
+      list.appendChild(row);
+    });
+  } catch (err) {
+    list.innerHTML = `<div style="color:var(--red);font-size:12px;padding:8px">エラー: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
 function openTextModifyModal() {
   openModal("modal-text-modify");
+
+  // Reset to first tab
+  const tabs = document.querySelectorAll("#modal-text-modify .modal-tab");
+  const contents = document.querySelectorAll("#modal-text-modify .modal-tab-content");
+  tabs.forEach((t) => t.classList.remove("active"));
+  contents.forEach((c) => c.classList.remove("active"));
+  tabs[0]?.classList.add("active");
+  contents[0]?.classList.add("active");
 
   const termsContainer = document.getElementById("frequent-terms");
   termsContainer.innerHTML = "";
@@ -355,8 +475,110 @@ document.querySelectorAll(".btn-remove-row").forEach((btn) => {
   btn.addEventListener("click", () => btn.closest(".replacement-row").remove());
 });
 
+// Find and Replace functionality
+document.getElementById("btn-find-count")?.addEventListener("click", () => {
+  const findText = document.getElementById("find-input").value;
+  if (!findText) { document.getElementById("find-count").textContent = "0件"; return; }
+
+  let count = 0;
+  if (state.projectData?.blocks) {
+    state.projectData.blocks.forEach((b) => {
+      if (b.text) {
+        const matches = b.text.split(findText).length - 1;
+        count += matches;
+      }
+    });
+  }
+  document.getElementById("find-count").textContent = `${count}件`;
+
+  // Show preview of matches
+  const preview = document.getElementById("find-replace-preview");
+  preview.innerHTML = "";
+  if (count > 0) {
+    const replaceText = document.getElementById("replace-input").value;
+    const label = document.createElement("label");
+    label.className = "form-label";
+    label.textContent = `マッチ箇所プレビュー（${count}件）`;
+    preview.appendChild(label);
+
+    state.projectData.blocks.forEach((b) => {
+      if (b.text && b.text.includes(findText)) {
+        const div = document.createElement("div");
+        div.style.cssText = "font-size:12px;padding:6px 8px;margin:4px 0;background:var(--bg-tertiary);border-radius:4px;color:var(--text-secondary);line-height:1.5";
+        const highlighted = escapeHtml(b.text.slice(0, 200)).split(escapeHtml(findText)).join(
+          `<mark style="background:rgba(251,191,36,0.3);color:#fbbf24;padding:0 2px;border-radius:2px">${escapeHtml(findText)}</mark>`
+        );
+        div.innerHTML = `<span style="color:var(--text-muted);font-size:10px">[${b.index}]</span> ${highlighted}`;
+        preview.appendChild(div);
+      }
+    });
+  }
+});
+
+document.getElementById("btn-find-replace-all")?.addEventListener("click", async () => {
+  const findText = document.getElementById("find-input").value;
+  const replaceText = document.getElementById("replace-input").value;
+  if (!findText) { showToast("検索テキストを入力してください", "error"); return; }
+
+  try {
+    const result = await window.API.textModify(state.projectId, {
+      directReplacements: { [findText]: replaceText },
+    });
+    if (result.ok) {
+      showToast(`置換完了 (${result.blockCount} ブロック)`, "success");
+      closeModal("modal-text-modify");
+      await loadEditor();
+    }
+  } catch (err) {
+    showToast(`エラー: ${err.message}`, "error");
+  }
+});
+
 document.getElementById("btn-apply-text-modify").addEventListener("click", async () => {
   if (!state.projectId) return;
+
+  // Check which tab is active
+  const activeTab = document.querySelector("#modal-text-modify .modal-tab.active");
+  const tabId = activeTab?.dataset.modalTab;
+
+  if (tabId === "tab-block-text") {
+    // Block-by-block replacement
+    const rows = document.querySelectorAll("#block-text-list .block-text-row[data-block-index]");
+    const blockReplacements = [];
+    rows.forEach((row) => {
+      const idx = parseInt(row.dataset.blockIndex, 10);
+      const origText = row.querySelector(".block-text-original")?.value || "";
+      const newText = row.querySelector(".block-text-new")?.value || "";
+      if (newText !== origText) {
+        blockReplacements.push({ index: idx, newText });
+      }
+    });
+
+    if (blockReplacements.length === 0) {
+      showToast("変更されたブロックがありません", "info");
+      return;
+    }
+
+    try {
+      const result = await window.API.textModify(state.projectId, { blockReplacements });
+      if (result.ok) {
+        showToast(`${blockReplacements.length}ブロックを更新しました`, "success");
+        closeModal("modal-text-modify");
+        await loadEditor();
+      }
+    } catch (err) {
+      showToast(`エラー: ${err.message}`, "error");
+    }
+    return;
+  }
+
+  if (tabId === "tab-find-replace") {
+    // Trigger find-replace-all
+    document.getElementById("btn-find-replace-all")?.click();
+    return;
+  }
+
+  // Default: bulk replacement (tab-bulk-replace)
   const rows = document.querySelectorAll("#replacements-list .replacement-row");
   const directReplacements = {};
   rows.forEach((row) => {

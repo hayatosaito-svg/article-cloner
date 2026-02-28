@@ -184,6 +184,54 @@ export function analyzeForReplacement(html) {
 }
 
 /**
+ * ブロック個別のテキスト差し替えを適用
+ * @param {Array} blocks - ブロック配列
+ * @param {Array} blockReplacements - [{ index, newText }]
+ * @returns {Array} 更新されたブロック配列
+ */
+export function applyBlockReplacements(blocks, blockReplacements) {
+  const replacementMap = new Map();
+  for (const r of blockReplacements) {
+    replacementMap.set(r.index, r.newText);
+  }
+
+  return blocks.map((block) => {
+    if (!replacementMap.has(block.index)) return block;
+    const newText = replacementMap.get(block.index);
+    if (!newText || newText === block.text) return block;
+
+    const $ = cheerio.load(block.html, { decodeEntities: false });
+
+    // Replace text content while preserving HTML structure
+    walkTextNodes($, $.root(), (textNode) => {
+      const oldText = $(textNode).text().trim();
+      if (oldText.length > 0 && block.text && block.text.includes(oldText)) {
+        // Find corresponding portion in newText
+        const startIdx = block.text.indexOf(oldText);
+        if (startIdx >= 0) {
+          // Simple approach: if the entire text matches, replace completely
+          if (oldText === block.text.trim()) {
+            $(textNode).replaceWith(newText.trim());
+          }
+        }
+      }
+    });
+
+    // If walking didn't work well, fallback to simple replacement
+    let resultHtml = $.html();
+    if (block.text && resultHtml.includes(block.text)) {
+      resultHtml = resultHtml.split(block.text).join(newText);
+    }
+
+    return {
+      ...block,
+      html: resultHtml,
+      text: newText,
+    };
+  });
+}
+
+/**
  * replacement-configのテンプレートを生成
  */
 export function generateConfigTemplate(analysis) {

@@ -301,6 +301,98 @@ export async function generateBatch(imageList, options = {}) {
 }
 
 /**
+ * 元画像を参照してGeminiで類似画像を生成（ワンクリック画像差し替え）
+ * @param {string} imagePath - 元画像のローカルパス
+ * @param {object} options - { nuance, style, width, height, outputPath }
+ * @returns {Promise<string>} 保存先パス
+ */
+export async function generateImageFromReference(imagePath, options = {}) {
+  const key = keyRotator.getKey();
+  const outputPath = options.outputPath || `generated_${Date.now()}.jpg`;
+  const width = options.width || 580;
+  const height = options.height || 580;
+  const nuance = options.nuance || "same";
+  const style = options.style || "photo";
+
+  // 元画像をbase64エンコード
+  const imageData = await readFile(imagePath);
+  const base64 = imageData.toString("base64");
+  const ext = path.extname(imagePath).toLowerCase().replace(".", "");
+  const mimeType =
+    ext === "jpg" || ext === "jpeg"
+      ? "image/jpeg"
+      : ext === "png"
+        ? "image/png"
+        : ext === "webp"
+          ? "image/webp"
+          : "image/jpeg";
+
+  // ニュアンス別プロンプト
+  const nuancePrompts = {
+    same: "この画像とほぼ同じ構図・色使い・雰囲気で、細部のみ微細に変更した新しい画像を生成してください。全体的な印象は元画像とほぼ同一にしてください。",
+    slight: "この画像のテーマと雰囲気を維持しつつ、構図や色合いに適度な変化を加えた新しい画像を生成してください。元画像の本質は保ちながらも、明確な違いがわかるようにしてください。",
+    big: "この画像のコンセプトを参考にしつつ、構図・色使い・表現を大きくリメイクした新しい画像を生成してください。元画像から大胆に変化させてください。",
+  };
+
+  // スタイル修飾子
+  const styleModifiers = {
+    photo: "写実的な写真スタイルで、高品質な広告写真のように仕上げてください。",
+    illustration: "イラスト風のスタイルで、プロのイラストレーターが描いたような仕上がりにしてください。",
+    flat: "フラットデザインのスタイルで、シンプルで洗練されたグラフィックに仕上げてください。",
+  };
+
+  const prompt = `${nuancePrompts[nuance] || nuancePrompts.same}\n${styleModifiers[style] || styleModifiers.photo}\n画像内にテキストや文字は一切含めないでください。日本の商品広告LP用の画像として適切な品質にしてください。`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
+
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mimeType, data: base64 } },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseModalities: ["IMAGE"],
+        },
+      }),
+    });
+
+    if (!resp.ok) {
+      keyRotator.reportError(key);
+      throw new Error(`Gemini API error: ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    for (const part of parts) {
+      if (part.inline_data?.mime_type?.startsWith("image/")) {
+        const buffer = Buffer.from(part.inline_data.data, "base64");
+        const resized = await sharp(buffer)
+          .resize(width, height, { fit: "cover" })
+          .jpeg({ quality: 85 })
+          .toBuffer();
+
+        await writeFile(outputPath, resized);
+        console.log(`[image-gen] Reference-based: ${outputPath} (${width}x${height}, ${nuance}/${style})`);
+        return outputPath;
+      }
+    }
+
+    throw new Error("No image data in Gemini response");
+  } catch (err) {
+    console.error(`[image-gen] generateImageFromReference failed: ${err.message}`);
+    throw err;
+  }
+}
+
+/**
  * 動画→静止画代替のプロンプト生成
  */
 export function videoToImagePrompt(videoContext) {

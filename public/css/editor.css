@@ -624,3 +624,283 @@
   transition: opacity 0.2s;
 }
 .save-indicator.show { opacity: 1; }
+
+/* ═══════════════════════════════════════════════════════════
+   One-Click Image Generation
+   ═══════════════════════════════════════════════════════════ */
+
+.oneclick-section {
+  background: rgba(59,130,246,0.04);
+  border: 1px solid rgba(59,130,246,0.12);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+
+.oneclick-option-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.oneclick-option-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 60px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.oneclick-radio-group {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.oneclick-radio {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.oneclick-radio input { display: none; }
+.oneclick-radio:hover { border-color: var(--border-active); }
+.oneclick-radio.active {
+  background: rgba(59,130,246,0.12);
+  border-color: rgba(59,130,246,0.4);
+  color: var(--accent);
+}
+
+.oneclick-main-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  margin-top: 4px;
+  background: rgba(59,130,246,0.15);
+  border: 1px solid rgba(59,130,246,0.4);
+  border-radius: var(--radius-sm);
+  color: #60a5fa;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.oneclick-main-btn:hover {
+  background: rgba(59,130,246,0.25);
+  border-color: rgba(59,130,246,0.6);
+}
+.oneclick-main-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.oneclick-result-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+.oneclick-result-grid:empty { display: none; }
+
+.oneclick-variant-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.oneclick-variant-card img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.oneclick-apply-btn {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  background: rgba(16,185,129,0.1);
+  border: none;
+  border-top: 1px solid var(--border);
+  color: #34d399;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.oneclick-apply-btn:hover { background: rgba(16,185,129,0.2); }
+.oneclick-apply-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.oneclick-file-input {
+  width: 100%;
+  padding: 8px;
+  background: var(--bg-tertiary);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font);
+  cursor: pointer;
+}
+.oneclick-file-input:hover { border-color: var(--border-active); }
+
+.oneclick-advanced-toggle {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  margin: 8px 0 4px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font);
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--transition);
+}
+.oneclick-advanced-toggle::before {
+  content: "\25B6";
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 9px;
+  transition: transform 0.2s;
+}
+.oneclick-advanced-toggle.open::before { transform: rotate(90deg); }
+.oneclick-advanced-toggle:hover { color: var(--text-secondary); border-color: var(--border-active); }
+
+.oneclick-advanced-content {
+  display: none;
+  padding: 12px 0 0;
+}
+.oneclick-advanced-content.open { display: block; }
+
+/* ═══════════════════════════════════════════════════════════
+   Inline Editing (Preview iframe toolbar)
+   ═══════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════
+   Text Modify Modal - Tabs & Enhancements
+   ═══════════════════════════════════════════════════════════ */
+
+.modal-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  margin: -20px -24px 16px;
+  padding: 0 24px;
+}
+
+.modal-tab {
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.modal-tab:hover { color: var(--text-secondary); }
+.modal-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.modal-tab-content {
+  display: none;
+}
+.modal-tab-content.active { display: block; }
+
+/* Block-by-block text editing */
+.block-text-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.block-text-row {
+  display: grid;
+  grid-template-columns: 40px 1fr 1fr;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  align-items: start;
+}
+
+.block-text-index {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  padding-top: 8px;
+  text-align: center;
+}
+
+.block-text-original,
+.block-text-new {
+  width: 100%;
+  min-height: 60px;
+  padding: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font);
+  resize: vertical;
+  line-height: 1.5;
+}
+.block-text-original { color: var(--text-muted); }
+
+/* Find and replace */
+.find-replace-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.find-replace-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.find-replace-input {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font);
+}
+.find-replace-input:focus { border-color: var(--border-active); outline: none; }
+
+.find-replace-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 60px;
+}
+
+.find-replace-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
