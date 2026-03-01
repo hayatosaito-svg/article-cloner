@@ -75,7 +75,7 @@ async function duplicateWidgetBelow(blockIndex) {
     });
     if (result.ok) {
       window.showToast("Widgetを複製しました", "success");
-      await window.loadEditor();
+      await window.loadEditor(blockIndex + 1);
       window.pushHistory?.("insert_block", `ブロック ${blockIndex} を複製`);
     }
   } catch (err) {
@@ -391,13 +391,26 @@ document.getElementById("we-toolbar")?.addEventListener("click", (e) => {
   } catch {}
 });
 
-document.querySelectorAll("#we-toolbar .we-tool-color").forEach((input) => {
-  input.addEventListener("input", (e) => {
-    const action = e.target.dataset.action;
-    const iframe = document.getElementById("we-preview-iframe");
-    try {
-      iframe.contentDocument.execCommand(action, false, e.target.value);
-    } catch {}
+// Widget editor toolbar color buttons → ColorPicker
+document.querySelectorAll("#we-toolbar .we-color-btn").forEach((btn) => {
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    const action = btn.dataset.action;
+    const dot = btn.querySelector(".color-dot");
+    const currentColor = dot?.style.background || (action === "foreColor" ? "#ec4899" : "#ffffff");
+    if (!window.ColorPicker) return;
+    window.ColorPicker.open({
+      initialColor: currentColor,
+      mode: action === "backColor" ? "bg-color" : "text-color",
+      anchorEl: btn,
+      onApply: (color) => {
+        if (dot) dot.style.background = color;
+        const iframe = document.getElementById("we-preview-iframe");
+        try {
+          iframe.contentDocument.execCommand(action, false, color);
+        } catch {}
+      },
+    });
   });
 });
 
@@ -437,11 +450,28 @@ document.getElementById("quick-edit-bar")?.addEventListener("click", (e) => {
   } catch {}
 });
 
-document.getElementById("qe-color")?.addEventListener("input", (e) => {
-  const iframe = document.getElementById("preview-iframe");
-  try {
-    iframe.contentDocument.execCommand("foreColor", false, e.target.value);
-  } catch {}
+// Quick edit bar color buttons → ColorPicker
+["qe-fore-color", "qe-back-color"].forEach((id) => {
+  document.getElementById(id)?.addEventListener("click", (e) => {
+    e.preventDefault();
+    const btn = document.getElementById(id);
+    const action = btn?.dataset.action;
+    const dot = btn?.querySelector(".color-dot");
+    const currentColor = dot?.style.background || "#ec4899";
+    if (!window.ColorPicker || !action) return;
+    window.ColorPicker.open({
+      initialColor: currentColor,
+      mode: action === "backColor" ? "bg-color" : "text-color",
+      anchorEl: btn,
+      onApply: (color) => {
+        if (dot) dot.style.background = color;
+        const iframe = document.getElementById("preview-iframe");
+        try {
+          iframe.contentDocument.execCommand(action, false, color);
+        } catch {}
+      },
+    });
+  });
 });
 
 document.getElementById("qe-cancel")?.addEventListener("click", () => {

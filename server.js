@@ -6,7 +6,7 @@
  */
 import express from "express";
 import path from "path";
-import { readFile, writeFile } from "fs/promises";
+import { readFile, writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import fetch from "node-fetch";
 import { scrape } from "./src/scraper.js";
@@ -333,7 +333,7 @@ app.post("/api/projects/:id/blocks/insert", (req, res) => {
   // Rebuild modifiedHtml
   project.modifiedHtml = project.blocks.map((b) => b.html).join("\n");
 
-  res.json({ ok: true, insertedIndex: insertAt, blockCount: project.blocks.length, blocks: project.blocks });
+  res.json({ ok: true, insertedIndex: insertAt, blockCount: project.blocks.length });
 });
 
 // DELETE /api/projects/:id/blocks/:idx - Delete a block
@@ -581,13 +581,24 @@ ${headTagsBlock}
     padding: 3px 4px;
     cursor: pointer;
   }
-  .inline-toolbar input[type="color"] {
-    width: 24px;
-    height: 24px;
-    border: none;
+  .inline-toolbar .tb-color-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
     background: none;
+    border: none;
+    border-radius: 4px;
     cursor: pointer;
     padding: 0;
+  }
+  .inline-toolbar .tb-color-btn:hover { background: rgba(255,255,255,0.1); }
+  .inline-toolbar .tb-color-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.4);
   }
 </style>
 </head>
@@ -621,9 +632,9 @@ ${html}
     wrapper.addEventListener('click', function(ev) {
       document.querySelectorAll('.block-wrapper.active').forEach(function(w) { w.classList.remove('active'); });
       wrapper.classList.add('active');
-      var bIdx = parseInt(wrapper.dataset.blockIndex);
-      var bType = types[bIdx] || 'block';
-      window.parent.postMessage({ type: 'blockClick', blockIndex: bIdx, blockType: bType, clientX: ev.clientX, clientY: ev.clientY }, '*');
+      var bi = parseInt(wrapper.dataset.blockIndex);
+      var bt = types[bi] || 'block';
+      window.parent.postMessage({ type: 'blockClick', blockIndex: bi, blockType: bt, clientX: ev.clientX, clientY: ev.clientY }, '*');
     });
 
     idx++;
@@ -671,8 +682,8 @@ ${html}
     + '<button data-cmd="subscript" title="下付">X\u2082</button>'
     + '<div class="tb-sep"></div>'
     + '<select data-action="fontSize" title="\u30B5\u30A4\u30BA"><option value="">size</option><option value="1">10px</option><option value="2">13px</option><option value="3">16px</option><option value="4">18px</option><option value="5">24px</option><option value="6">32px</option></select>'
-    + '<input type="color" data-action="foreColor" value="#ffffff" title="\u6587\u5B57\u8272">'
-    + '<input type="color" data-action="backColor" value="#000000" title="\u80CC\u666F\u8272">'
+    + '<button class="tb-color-btn" data-color-action="foreColor" title="\u6587\u5B57\u8272"><span class="tb-color-dot" style="background:#ffffff"></span></button>'
+    + '<button class="tb-color-btn" data-color-action="backColor" title="\u80CC\u666F\u8272"><span class="tb-color-dot" style="background:#000000"></span></button>'
     + '<div class="tb-sep"></div>'
     + '<button data-cmd="justifyLeft" title="\u5DE6\u63C3\u3048">\u2261</button>'
     + '<button data-cmd="justifyCenter" title="\u4E2D\u592E">\u2550</button>'
@@ -691,11 +702,32 @@ ${html}
     if (e.target.value) document.execCommand('fontSize', false, e.target.value);
     e.target.value = '';
   });
-  toolbar.querySelector('input[data-action="foreColor"]').addEventListener('input', function(e) {
-    document.execCommand('foreColor', false, e.target.value);
+  // Color picker buttons - send to parent
+  toolbar.querySelectorAll('.tb-color-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      var action = btn.dataset.colorAction;
+      var dot = btn.querySelector('.tb-color-dot');
+      var currentColor = dot ? dot.style.background : '#ffffff';
+      var rect = btn.getBoundingClientRect();
+      window.parent.postMessage({
+        type: 'openColorPicker',
+        action: action,
+        currentColor: currentColor,
+        anchorRect: { top: rect.top, left: rect.left, bottom: rect.bottom, right: rect.right, width: rect.width, height: rect.height }
+      }, '*');
+    });
   });
-  toolbar.querySelector('input[data-action="backColor"]').addEventListener('input', function(e) {
-    document.execCommand('backColor', false, e.target.value);
+  // Listen for color response from parent
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'applyColor' && e.data.action && e.data.color) {
+      document.execCommand(e.data.action, false, e.data.color);
+      var btn = toolbar.querySelector('.tb-color-btn[data-color-action="' + e.data.action + '"]');
+      if (btn) {
+        var dot = btn.querySelector('.tb-color-dot');
+        if (dot) dot.style.background = e.data.color;
+      }
+    }
   });
 
   // Show toolbar on text selection
@@ -768,46 +800,62 @@ ${html}
     exitEditMode(true);
   });
 
-  // Handle exit message from parent
+  // Handle messages from parent
   window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'exitInlineEdit') {
+    if (!e.data || !e.data.type) return;
+    if (e.data.type === 'exitInlineEdit') {
       exitEditMode(false);
     }
-    // Quick edit: enable contenteditable on widget block
-    if (e.data && e.data.type === 'enableQuickEdit') {
-      var qeIdx = e.data.blockIndex;
-      var qeWrapper = document.querySelector('[data-block-index="' + qeIdx + '"]');
-      if (qeWrapper) {
-        var content = qeWrapper.children[0];
+    // Quick edit support for widgets
+    if (e.data.type === 'enableQuickEdit') {
+      var bi = e.data.blockIndex;
+      var w = document.querySelector('[data-block-index="' + bi + '"]');
+      if (w) {
+        var content = w.children[0];
         if (content) {
-          content.contentEditable = 'true';
-          content.focus();
-          qeWrapper.classList.add('editing');
+          // Make text nodes editable (skip style/script)
+          var elems = content.querySelectorAll('*');
+          elems.forEach(function(el) {
+            if (el.tagName !== 'STYLE' && el.tagName !== 'SCRIPT' && el.children.length === 0 && el.textContent.trim()) {
+              el.contentEditable = 'true';
+              el.style.outline = '1px dashed rgba(236,72,153,0.4)';
+              el.style.outlineOffset = '2px';
+            }
+          });
+          w.classList.add('editing');
         }
       }
     }
-    // Quick edit: get HTML and disable
-    if (e.data && e.data.type === 'getQuickEditHtml') {
-      var qeIdx2 = e.data.blockIndex;
-      var qeWrapper2 = document.querySelector('[data-block-index="' + qeIdx2 + '"]');
-      if (qeWrapper2) {
-        var content2 = qeWrapper2.children[0];
-        if (content2) {
-          content2.contentEditable = 'false';
-          qeWrapper2.classList.remove('editing');
-          window.parent.postMessage({ type: 'quickEditHtml', blockIndex: qeIdx2, html: content2.outerHTML }, '*');
-        }
+    if (e.data.type === 'disableQuickEdit') {
+      var bi2 = e.data.blockIndex;
+      var w2 = document.querySelector('[data-block-index="' + bi2 + '"]');
+      if (w2) {
+        w2.classList.remove('editing');
+        w2.querySelectorAll('[contenteditable]').forEach(function(el) {
+          el.contentEditable = 'false';
+          el.style.outline = '';
+          el.style.outlineOffset = '';
+        });
       }
     }
-    // Quick edit: disable without saving
-    if (e.data && e.data.type === 'disableQuickEdit') {
-      var qeIdx3 = e.data.blockIndex;
-      var qeWrapper3 = document.querySelector('[data-block-index="' + qeIdx3 + '"]');
-      if (qeWrapper3) {
-        var content3 = qeWrapper3.children[0];
+    if (e.data.type === 'getQuickEditHtml') {
+      var bi3 = e.data.blockIndex;
+      var w3 = document.querySelector('[data-block-index="' + bi3 + '"]');
+      if (w3) {
+        // Remove editing state first
+        w3.classList.remove('editing');
+        w3.querySelectorAll('[contenteditable]').forEach(function(el) {
+          el.contentEditable = 'false';
+          el.style.outline = '';
+          el.style.outlineOffset = '';
+        });
+        var content3 = w3.children[0];
         if (content3) {
-          content3.contentEditable = 'false';
-          qeWrapper3.classList.remove('editing');
+          window.parent.postMessage({
+            type: 'quickEditHtml',
+            blockIndex: bi3,
+            html: content3.outerHTML
+          }, '*');
         }
       }
     }
@@ -932,7 +980,7 @@ app.post("/api/projects/:id/one-click-image/:idx", async (req, res) => {
     return res.status(400).json({ error: "Asset file not found on disk" });
   }
 
-  const { nuance = "same", style = "photo", designRequirements = "" } = req.body;
+  const { nuance = "same", style = "photo", designRequirements = "", customPrompt = "" } = req.body;
   const width = asset.width || 580;
   const height = asset.height || 580;
 
@@ -944,7 +992,7 @@ app.post("/api/projects/:id/one-click-image/:idx", async (req, res) => {
         `block_${idx}_oneclick_${i}_${Date.now()}.jpg`
       );
       await generateImageFromReference(assetEntry.localPath, {
-        nuance, style, width, height, outputPath, designRequirements,
+        nuance, style, width, height, outputPath, designRequirements, customPrompt,
       });
       results.push(`/api/projects/${project.id}/generated-images/${path.basename(outputPath)}`);
       // Delay between generations for rate limiting
@@ -1184,7 +1232,7 @@ app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
   const block = project.blocks[idx];
   if (!block) return res.status(404).json({ error: "Block not found" });
 
-  const { instruction, text, designRequirements, referenceImage } = req.body;
+  const { instruction, text, designRequirements } = req.body;
   if (!instruction) return res.status(400).json({ error: "instruction is required" });
 
   const sourceText = text || block.text || "";
@@ -1201,21 +1249,12 @@ app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
 
   const key = keys[Math.floor(Math.random() * keys.length)];
   const designContext = designRequirements ? `\nデザイン要件: ${designRequirements}\n上記のトーン・雰囲気に合わせて書き換えてください。` : "";
-  const imageContext = referenceImage ? "\n添付画像のトーンや雰囲気を参考にして書き換えてください。" : "";
   const prompt = `以下のテキストを指示に従って書き換えてください。HTMLのインラインスタイル（font-size, color, strong等）は必ず保持してください。書き換え後のテキストのみを返してください。余計な説明は不要です。
-${designContext}${imageContext}
+${designContext}
 指示: ${instruction}
 
 元テキスト:
 ${sourceText}`;
-
-  // Build multimodal parts
-  const parts = [{ text: prompt }];
-  if (referenceImage) {
-    const [meta, base64Data] = referenceImage.split(",");
-    const mimeType = meta.match(/data:(.*?);/)?.[1] || "image/png";
-    parts.push({ inlineData: { mimeType, data: base64Data } });
-  }
 
   try {
     const apiRes = await fetch(
@@ -1224,7 +1263,7 @@ ${sourceText}`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts }],
+          contents: [{ parts: [{ text: prompt }] }],
         }),
       }
     );
@@ -1364,57 +1403,6 @@ app.post("/api/set-cloudflare", async (req, res) => {
   res.json({ ok: true, message: "Cloudflare設定を保存しました" });
 });
 
-// ── Widget Template CRUD ─────────────────────────────────
-const WIDGET_TEMPLATES_FILE = path.join(PROJECT_ROOT, "data", "widget-templates.json");
-
-async function loadWidgetTemplates() {
-  try {
-    if (existsSync(WIDGET_TEMPLATES_FILE)) {
-      const content = await readFile(WIDGET_TEMPLATES_FILE, "utf-8");
-      return JSON.parse(content);
-    }
-  } catch {}
-  return [];
-}
-
-async function saveWidgetTemplates(templates) {
-  const dir = path.dirname(WIDGET_TEMPLATES_FILE);
-  const { mkdirSync } = await import("fs");
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  await writeFile(WIDGET_TEMPLATES_FILE, JSON.stringify(templates, null, 2));
-}
-
-app.get("/api/widget-templates", async (req, res) => {
-  const templates = await loadWidgetTemplates();
-  res.json({ templates });
-});
-
-app.post("/api/widget-templates", async (req, res) => {
-  const { name, icon, category, description, html, css, isFavorite } = req.body;
-  if (!name) return res.status(400).json({ error: "name is required" });
-  const templates = await loadWidgetTemplates();
-  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  templates.push({ id, name, icon: icon || "W", category: category || "その他", description: description || "", html: html || "", css: css || "", isFavorite: !!isFavorite, createdAt: Date.now() });
-  await saveWidgetTemplates(templates);
-  res.json({ ok: true, id });
-});
-
-app.put("/api/widget-templates/:id", async (req, res) => {
-  const templates = await loadWidgetTemplates();
-  const idx = templates.findIndex((t) => t.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: "Template not found" });
-  Object.assign(templates[idx], req.body);
-  await saveWidgetTemplates(templates);
-  res.json({ ok: true });
-});
-
-app.delete("/api/widget-templates/:id", async (req, res) => {
-  let templates = await loadWidgetTemplates();
-  templates = templates.filter((t) => t.id !== req.params.id);
-  await saveWidgetTemplates(templates);
-  res.json({ ok: true });
-});
-
 // GET /api/cloudflare-status
 app.get("/api/cloudflare-status", (req, res) => {
   res.json({
@@ -1537,6 +1525,60 @@ ${html}
   } catch (err) {
     res.status(500).json({ error: `公開エラー: ${err.message}` });
   }
+});
+
+// ── Widget Template CRUD ────────────────────────────────
+
+const WIDGET_TEMPLATES_PATH = path.join(PROJECT_ROOT, "data", "widget-templates.json");
+
+async function loadWidgetTemplates() {
+  try {
+    if (existsSync(WIDGET_TEMPLATES_PATH)) {
+      const raw = await readFile(WIDGET_TEMPLATES_PATH, "utf-8");
+      return JSON.parse(raw);
+    }
+  } catch {}
+  return [];
+}
+
+async function saveWidgetTemplates(templates) {
+  const dir = path.dirname(WIDGET_TEMPLATES_PATH);
+  if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+  await writeFile(WIDGET_TEMPLATES_PATH, JSON.stringify(templates, null, 2), "utf-8");
+}
+
+app.get("/api/widget-templates", async (req, res) => {
+  const templates = await loadWidgetTemplates();
+  res.json({ templates });
+});
+
+app.post("/api/widget-templates", async (req, res) => {
+  const { name, icon, category, description, html, css, isFavorite } = req.body;
+  if (!name) return res.status(400).json({ error: "name is required" });
+
+  const templates = await loadWidgetTemplates();
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const newTemplate = { id, name, icon: icon || "W", category: category || "その他", description: description || "", html: html || "", css: css || "", isFavorite: !!isFavorite, createdAt: new Date().toISOString() };
+  templates.push(newTemplate);
+  await saveWidgetTemplates(templates);
+  res.json({ ok: true, template: newTemplate });
+});
+
+app.put("/api/widget-templates/:id", async (req, res) => {
+  const templates = await loadWidgetTemplates();
+  const idx = templates.findIndex((t) => t.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "Template not found" });
+
+  Object.assign(templates[idx], req.body, { id: req.params.id });
+  await saveWidgetTemplates(templates);
+  res.json({ ok: true, template: templates[idx] });
+});
+
+app.delete("/api/widget-templates/:id", async (req, res) => {
+  let templates = await loadWidgetTemplates();
+  templates = templates.filter((t) => t.id !== req.params.id);
+  await saveWidgetTemplates(templates);
+  res.json({ ok: true });
 });
 
 // SPA fallback

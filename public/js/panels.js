@@ -113,8 +113,8 @@ function buildAiTextPanel(projectId, blockIndex, block) {
   providerGemini.dataset.provider = "gemini";
   const providerPixai = document.createElement("button");
   providerPixai.className = "panel-btn";
-  providerPixai.textContent = "PixAI";
-  providerPixai.dataset.provider = "pixai";
+  providerPixai.textContent = "nanobanana";
+  providerPixai.dataset.provider = "nanobanana";
   providerPixai.style.opacity = "0.5";
   providerPixai.title = "準備中 — APIキー設定後に利用可能";
   let selectedProvider = "gemini";
@@ -125,7 +125,7 @@ function buildAiTextPanel(projectId, blockIndex, block) {
     providerPixai.style.opacity = "0.5";
   });
   providerPixai.addEventListener("click", () => {
-    window.showToast("PixAI連携は準備中です。APIキーが設定され次第利用できます。", "info");
+    window.showToast("nanobanana連携は準備中です。APIキー設定後に利用できます。", "info");
   });
   providerRow.appendChild(providerGemini);
   providerRow.appendChild(providerPixai);
@@ -171,28 +171,6 @@ function buildAiTextPanel(projectId, blockIndex, block) {
   aiInput.rows = 3;
   aiSection.appendChild(aiInput);
 
-  // 参考画像アップロード
-  const imageUploadSection = document.createElement("div");
-  imageUploadSection.style.cssText = "margin-top:8px";
-  const imageLabel = document.createElement("div");
-  imageLabel.style.cssText = "font-size:12px;color:var(--text-secondary);margin-bottom:4px";
-  imageLabel.textContent = "参考画像（任意）";
-  imageUploadSection.appendChild(imageLabel);
-  const imageInput = document.createElement("input");
-  imageInput.type = "file";
-  imageInput.accept = "image/*";
-  imageInput.className = "panel-file-input";
-  let referenceImageBase64 = null;
-  imageInput.addEventListener("change", (e) => {
-    const file = e.target.files[0];
-    if (!file) { referenceImageBase64 = null; return; }
-    const reader = new FileReader();
-    reader.onload = () => { referenceImageBase64 = reader.result; };
-    reader.readAsDataURL(file);
-  });
-  imageUploadSection.appendChild(imageInput);
-  aiSection.appendChild(imageUploadSection);
-
   const aiBtnRow = document.createElement("div");
   aiBtnRow.className = "panel-btn-row";
   const aiBtn = document.createElement("button");
@@ -214,13 +192,11 @@ function buildAiTextPanel(projectId, blockIndex, block) {
     aiBtn.innerHTML = '<span class="spinner"></span> AI処理中...';
 
     try {
-      const payload = {
+      const result = await window.API.aiRewrite(projectId, blockIndex, {
         instruction,
         text: block.text,
         designRequirements: window._designRequirements || "",
-      };
-      if (referenceImageBase64) payload.referenceImage = referenceImageBase64;
-      const result = await window.API.aiRewrite(projectId, blockIndex, payload);
+      });
 
       if (result.ok) {
         resultArea.innerHTML = "";
@@ -637,7 +613,7 @@ function buildImagePanel(projectId, blockIndex, block) {
   imgProviderGemini.textContent = "Gemini";
   const imgProviderPixai = document.createElement("button");
   imgProviderPixai.className = "panel-btn";
-  imgProviderPixai.textContent = "PixAI";
+  imgProviderPixai.textContent = "nanobanana";
   imgProviderPixai.style.opacity = "0.5";
   imgProviderPixai.title = "準備中 — APIキー設定後に利用可能";
   imgProviderGemini.addEventListener("click", () => {
@@ -646,7 +622,7 @@ function buildImagePanel(projectId, blockIndex, block) {
     imgProviderPixai.style.opacity = "0.5";
   });
   imgProviderPixai.addEventListener("click", () => {
-    window.showToast("PixAI連携は準備中です。APIキーが設定され次第利用できます。", "info");
+    window.showToast("nanobanana連携は準備中です。APIキー設定後に利用できます。", "info");
   });
   imgProviderRow.appendChild(imgProviderGemini);
   imgProviderRow.appendChild(imgProviderPixai);
@@ -710,6 +686,7 @@ function buildImagePanel(projectId, blockIndex, block) {
   styleGroup.className = "oneclick-radio-group";
   [
     { value: "photo", label: "写真風" },
+    { value: "manga", label: "漫画風" },
     { value: "illustration", label: "イラスト" },
     { value: "flat", label: "フラット" },
   ].forEach((opt, i) => {
@@ -724,6 +701,21 @@ function buildImagePanel(projectId, blockIndex, block) {
   });
   styleRow.appendChild(styleGroup);
   oneClickSection.appendChild(styleRow);
+
+  // カスタムプロンプト入力
+  const promptRow = document.createElement("div");
+  promptRow.style.cssText = "margin-top:8px";
+  const promptLabel = document.createElement("div");
+  promptLabel.style.cssText = "font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:4px";
+  promptLabel.textContent = "追加指示（任意）";
+  const promptInput = document.createElement("textarea");
+  promptInput.className = "panel-textarea";
+  promptInput.placeholder = "例：背景を青空に変えて / もっと明るく / 人物を笑顔に...";
+  promptInput.rows = 2;
+  promptInput.style.cssText = "min-height:auto";
+  promptRow.appendChild(promptLabel);
+  promptRow.appendChild(promptInput);
+  oneClickSection.appendChild(promptRow);
 
   // メインボタン
   const mainBtn = document.createElement("button");
@@ -743,7 +735,8 @@ function buildImagePanel(projectId, blockIndex, block) {
     resultGrid.innerHTML = "";
 
     try {
-      const result = await window.API.oneClickImage(projectId, blockIndex, { nuance, style, designRequirements: window._designRequirements || "" });
+      const customPrompt = promptInput.value.trim();
+      const result = await window.API.oneClickImage(projectId, blockIndex, { nuance, style, designRequirements: window._designRequirements || "", customPrompt });
       if (result.ok && result.images) {
         window.showToast(`${result.images.length}パターン生成しました`, "success");
         resultGrid.innerHTML = "";
@@ -1169,31 +1162,6 @@ function buildWidgetPanel(projectId, blockIndex, block) {
   }
   frag.appendChild(typeSection);
 
-  // Quick action buttons
-  const actionsSection = createSection("アクション");
-  const actionRow = document.createElement("div");
-  actionRow.className = "panel-btn-row";
-  actionRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
-
-  const btnHtmlEdit = document.createElement("button");
-  btnHtmlEdit.className = "panel-btn primary";
-  btnHtmlEdit.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="margin-right:4px"><path d="M5 3L1 8l4 5M11 3l4 5-4 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>HTML編集';
-  btnHtmlEdit.addEventListener("click", () => {
-    window.openWidgetHtmlEditor?.(blockIndex);
-  });
-  actionRow.appendChild(btnHtmlEdit);
-
-  const btnQuickEdit = document.createElement("button");
-  btnQuickEdit.className = "panel-btn";
-  btnQuickEdit.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="margin-right:4px"><path d="M11.5 1.5l3 3L5 14H2v-3l9.5-9.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>クイック編集';
-  btnQuickEdit.addEventListener("click", () => {
-    window.openQuickEdit?.(blockIndex);
-  });
-  actionRow.appendChild(btnQuickEdit);
-
-  actionsSection.appendChild(actionRow);
-  frag.appendChild(actionsSection);
-
   if (block.styles?.length > 0) {
     const cssSection = createSection("ウィジェットCSS");
     const cssArea = document.createElement("textarea");
@@ -1213,6 +1181,28 @@ function buildWidgetPanel(projectId, blockIndex, block) {
     textSection.appendChild(textarea);
     frag.appendChild(textSection);
   }
+
+  // Widget edit action buttons
+  const actionsDiv = document.createElement("div");
+  actionsDiv.className = "widget-edit-actions";
+
+  const htmlEditBtn = document.createElement("button");
+  htmlEditBtn.className = "widget-edit-btn";
+  htmlEditBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M5 3l-3 5 3 5M11 3l3 5-3 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> HTML編集';
+  htmlEditBtn.addEventListener("click", () => {
+    if (window.openWidgetHtmlEditor) window.openWidgetHtmlEditor(blockIndex);
+  });
+  actionsDiv.appendChild(htmlEditBtn);
+
+  const quickEditBtn = document.createElement("button");
+  quickEditBtn.className = "widget-edit-btn";
+  quickEditBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> クイック編集';
+  quickEditBtn.addEventListener("click", () => {
+    if (window.openQuickEdit) window.openQuickEdit(blockIndex);
+  });
+  actionsDiv.appendChild(quickEditBtn);
+
+  frag.appendChild(actionsDiv);
 
   const htmlSection = createSection("HTMLソース");
   const codeArea = document.createElement("textarea");

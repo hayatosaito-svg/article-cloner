@@ -347,12 +347,15 @@ export async function generateImageFromReference(imagePath, options = {}) {
   // スタイル修飾子
   const styleModifiers = {
     photo: "写実的な写真スタイルで、高品質な広告写真のように仕上げてください。",
+    manga: "日本の漫画風スタイルで、コミック調の表現で仕上げてください。効果線やトーン表現を活用し、漫画LP広告に適した画像にしてください。",
     illustration: "イラスト風のスタイルで、プロのイラストレーターが描いたような仕上がりにしてください。",
     flat: "フラットデザインのスタイルで、シンプルで洗練されたグラフィックに仕上げてください。",
   };
 
+  const customPrompt = options.customPrompt || "";
   const designContext = designRequirements ? `\nデザイン要件: ${designRequirements}` : "";
-  const prompt = `${nuancePrompts[nuance] || nuancePrompts.same}\n${styleModifiers[style] || styleModifiers.photo}${designContext}\n画像内にテキストや文字は一切含めないでください。日本の商品広告LP用の画像として適切な品質にしてください。`;
+  const customContext = customPrompt ? `\n追加指示: ${customPrompt}` : "";
+  const prompt = `${nuancePrompts[nuance] || nuancePrompts.same}\n${styleModifiers[style] || styleModifiers.photo}${designContext}${customContext}\n画像内にテキストや文字は一切含めないでください。日本の商品広告LP用の画像として適切な品質にしてください。`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
 

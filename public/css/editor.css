@@ -530,17 +530,6 @@
 .panel-btn:hover { background: var(--bg-card); color: var(--text-primary); }
 .panel-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.panel-file-input {
-  width: 100%;
-  font-size: 12px;
-  padding: 6px;
-  border: 1px dashed var(--border-color);
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  background: var(--bg-tertiary);
-}
-
 .panel-btn.primary {
   background: rgba(236,72,153,0.12);
   border-color: rgba(236,72,153,0.3);
@@ -1745,7 +1734,7 @@
 .ep-template-card-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
 
 /* ═══════════════════════════════════════════════════════════
-   Editor Sidebar (右サイドバー)
+   Editor Sidebar (Right Icon Column)
    ═══════════════════════════════════════════════════════════ */
 
 .editor-sidebar {
@@ -1767,12 +1756,12 @@
 .sidebar-icon {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: none;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
   color: var(--text-muted);
   cursor: pointer;
   transition: all var(--transition);
@@ -1784,6 +1773,7 @@
 .sidebar-icon.active {
   background: rgba(236,72,153,0.1);
   color: var(--accent);
+  border-color: rgba(236,72,153,0.2);
 }
 
 @media (max-width: 768px) {
@@ -1798,16 +1788,14 @@
   display: none;
   position: fixed;
   z-index: 1000;
-  background: var(--bg-secondary);
+  background: #fff;
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
   padding: 6px;
   min-width: 220px;
 }
-.widget-context-menu.visible {
-  display: block;
-}
+.widget-context-menu.visible { display: block; }
 
 .ctx-item {
   display: flex;
@@ -1818,22 +1806,16 @@
   background: none;
   border: none;
   border-radius: 6px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: 13px;
   font-family: var(--font);
   cursor: pointer;
   transition: background var(--transition);
 }
-.ctx-item:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-}
-.ctx-item.danger {
-  color: var(--red, #ef4444);
-}
-.ctx-item.danger:hover {
-  background: rgba(239,68,68,0.08);
-}
+.ctx-item:hover { background: var(--bg-tertiary); }
+.ctx-item svg { flex-shrink: 0; color: var(--text-muted); }
+.ctx-item.danger { color: var(--red, #ef4444); }
+.ctx-item.danger svg { color: var(--red, #ef4444); }
 
 /* ═══════════════════════════════════════════════════════════
    Quick Edit Bar
@@ -1841,18 +1823,17 @@
 
 .quick-edit-bar {
   position: fixed;
-  top: 0;
+  bottom: 0;
   left: 0;
   right: 0;
-  height: 48px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 16px;
+  padding: 8px 16px;
   background: var(--bg-secondary);
-  border-bottom: 2px solid var(--accent);
+  border-top: 2px solid var(--accent);
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
   z-index: 200;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
 }
 
 .qe-btn {
@@ -1864,15 +1845,12 @@
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: 14px;
   cursor: pointer;
   transition: all var(--transition);
 }
-.qe-btn:hover {
-  background: var(--bg-card, var(--bg-primary));
-  color: var(--text-primary);
-}
+.qe-btn:hover { border-color: var(--accent); background: rgba(236,72,153,0.08); }
 
 .qe-color {
   width: 36px;
@@ -1884,9 +1862,7 @@
   background: var(--bg-tertiary);
 }
 
-.qe-spacer {
-  flex: 1;
-}
+.qe-spacer { flex: 1; }
 
 /* ═══════════════════════════════════════════════════════════
    3-Pane Widget HTML Editor
@@ -1900,43 +1876,37 @@
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
+
 .we-back-btn {
   background: none;
   border: none;
-  color: var(--red, #ef4444);
-  font-weight: 600;
+  color: var(--accent);
   font-size: 14px;
+  font-weight: 600;
   font-family: var(--font);
   cursor: pointer;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  transition: background var(--transition);
 }
-.we-back-btn:hover { background: rgba(239,68,68,0.08); }
+.we-back-btn:hover { color: #db2777; }
 
 .we-description {
-  font-size: 13px;
-  color: var(--text-secondary);
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .we-category {
-  font-size: 10px;
+  font-size: 11px;
   padding: 2px 8px;
   background: rgba(16,185,129,0.12);
   color: #34d399;
-  border-radius: 10px;
+  border-radius: 8px;
   font-weight: 600;
 }
 
 .we-header-actions {
+  margin-left: auto;
   display: flex;
   gap: 8px;
-  flex-shrink: 0;
 }
 
 .we-body {
@@ -1944,6 +1914,11 @@
   flex: 1;
   overflow: hidden;
 }
+
+.we-body.preview-only .we-code-pane,
+.we-body.preview-only .we-divider-v { display: none; }
+.we-body.code-only .we-preview-pane,
+.we-body.code-only .we-divider-v { display: none; }
 
 .we-preview-pane {
   flex: 1;
@@ -1962,36 +1937,28 @@
 }
 
 .we-tool-btn {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: none;
+  background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
-  transition: all var(--transition);
 }
-.we-tool-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
-
-.we-tool-sep {
-  width: 1px;
-  height: 24px;
-  background: var(--border);
-  margin: 4px 4px;
-}
+.we-tool-btn:hover { border-color: var(--accent); color: var(--text-primary); }
 
 .we-tool-color {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
   padding: 2px;
-  background: none;
+  background: var(--bg-tertiary);
 }
 
 .we-preview-iframe {
@@ -2038,24 +2005,21 @@
 
 .we-expand-btn {
   background: none;
-  border: 1px solid rgba(205,214,244,0.2);
+  border: 1px solid rgba(255,255,255,0.15);
   border-radius: 4px;
   color: #cdd6f4;
   font-size: 11px;
-  cursor: pointer;
   padding: 2px 8px;
-  transition: all var(--transition);
+  cursor: pointer;
 }
-.we-expand-btn:hover { background: rgba(205,214,244,0.1); }
+.we-expand-btn:hover { background: rgba(255,255,255,0.1); }
 
 .we-editor-container {
   flex: 1;
   overflow: auto;
   background: #1e1e2e;
 }
-.we-editor-container .cm-editor {
-  height: 100%;
-}
+.we-editor-container .cm-editor { height: 100%; }
 
 .we-divider-h {
   height: 5px;
@@ -2067,16 +2031,7 @@
 .we-divider-h:hover,
 .we-divider-h.dragging { background: var(--accent); }
 
-/* Split modes */
-.we-body.preview-only .we-code-pane,
-.we-body.preview-only .we-divider-v { display: none; }
-.we-body.preview-only .we-preview-pane { flex: 1; }
-
-.we-body.code-only .we-preview-pane,
-.we-body.code-only .we-divider-v { display: none; }
-.we-body.code-only .we-code-pane { width: 100%; }
-
-/* Fallback textarea when CodeMirror fails to load */
+/* Fallback textarea for when CodeMirror fails to load */
 .we-fallback-editor {
   width: 100%;
   height: 100%;
@@ -2090,5 +2045,52 @@
   line-height: 1.5;
   resize: none;
   outline: none;
-  tab-size: 2;
+}
+
+/* Widget panel edit buttons */
+.widget-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.widget-edit-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  background: rgba(236,72,153,0.08);
+  border: 1px solid rgba(236,72,153,0.2);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.widget-edit-btn:hover {
+  background: rgba(236,72,153,0.15);
+  border-color: rgba(236,72,153,0.4);
+}
+
+/* Color picker trigger buttons */
+.color-dot {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(0,0,0,0.15);
+  vertical-align: middle;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.3) inset;
+}
+.qe-color-btn,
+.we-color-btn {
+  position: relative;
+  cursor: pointer;
+}
+.we-color-btn {
+  padding: 4px !important;
 }
