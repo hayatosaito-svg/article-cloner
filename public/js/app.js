@@ -11,17 +11,17 @@ const state = {
 
 // ── Undo/Redo History ─────────────────────────────────────
 
-const history = { entries: [], currentIndex: -1, maxEntries: 100 };
+const editHistory = { entries: [], currentIndex: -1, maxEntries: 100 };
 
 async function pushHistory(action, description) {
   if (!state.projectId) return;
   try {
     const snapshot = await window.API.getSnapshot(state.projectId);
     // Trim any redo entries after current
-    if (history.currentIndex < history.entries.length - 1) {
-      history.entries = history.entries.slice(0, history.currentIndex + 1);
+    if (editHistory.currentIndex < editHistory.entries.length - 1) {
+      editHistory.entries = editHistory.entries.slice(0, editHistory.currentIndex + 1);
     }
-    history.entries.push({
+    editHistory.entries.push({
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       timestamp: Date.now(),
       action,
@@ -29,10 +29,10 @@ async function pushHistory(action, description) {
       snapshot,
     });
     // Enforce max entries
-    if (history.entries.length > history.maxEntries) {
-      history.entries.shift();
+    if (editHistory.entries.length > editHistory.maxEntries) {
+      editHistory.entries.shift();
     }
-    history.currentIndex = history.entries.length - 1;
+    editHistory.currentIndex = editHistory.entries.length - 1;
     updateUndoRedoButtons();
   } catch (err) {
     console.warn("pushHistory failed:", err);
@@ -40,31 +40,31 @@ async function pushHistory(action, description) {
 }
 
 async function undo() {
-  if (history.currentIndex <= 0) return;
-  history.currentIndex--;
-  const entry = history.entries[history.currentIndex];
+  if (editHistory.currentIndex <= 0) return;
+  editHistory.currentIndex--;
+  const entry = editHistory.entries[editHistory.currentIndex];
   try {
     await window.API.restore(state.projectId, entry.snapshot);
     await loadEditor();
     showToast(`元に戻しました: ${entry.description}`, "info");
   } catch (err) {
     showToast(`Undoエラー: ${err.message}`, "error");
-    history.currentIndex++;
+    editHistory.currentIndex++;
   }
   updateUndoRedoButtons();
 }
 
 async function redo() {
-  if (history.currentIndex >= history.entries.length - 1) return;
-  history.currentIndex++;
-  const entry = history.entries[history.currentIndex];
+  if (editHistory.currentIndex >= editHistory.entries.length - 1) return;
+  editHistory.currentIndex++;
+  const entry = editHistory.entries[editHistory.currentIndex];
   try {
     await window.API.restore(state.projectId, entry.snapshot);
     await loadEditor();
     showToast(`やり直しました: ${entry.description}`, "info");
   } catch (err) {
     showToast(`Redoエラー: ${err.message}`, "error");
-    history.currentIndex--;
+    editHistory.currentIndex--;
   }
   updateUndoRedoButtons();
 }
@@ -72,12 +72,12 @@ async function redo() {
 function updateUndoRedoButtons() {
   const btnUndo = document.getElementById("btn-undo");
   const btnRedo = document.getElementById("btn-redo");
-  if (btnUndo) btnUndo.disabled = history.currentIndex <= 0;
-  if (btnRedo) btnRedo.disabled = history.currentIndex >= history.entries.length - 1;
+  if (btnUndo) btnUndo.disabled = editHistory.currentIndex <= 0;
+  if (btnRedo) btnRedo.disabled = editHistory.currentIndex >= editHistory.entries.length - 1;
 }
 
 window.pushHistory = pushHistory;
-window.history_ = history;
+window.history_ = editHistory;
 
 // ── History Sidebar ───────────────────────────────────────
 
@@ -95,14 +95,14 @@ function renderHistoryList(filter = "all") {
   if (!list) return;
   list.innerHTML = "";
 
-  if (history.entries.length === 0) {
+  if (editHistory.entries.length === 0) {
     list.innerHTML = '<div class="history-empty">履歴がありません</div>';
     return;
   }
 
   const filtered = filter === "all"
-    ? history.entries
-    : history.entries.filter((e) => {
+    ? editHistory.entries
+    : editHistory.entries.filter((e) => {
         if (filter === "image") return e.action.includes("image");
         if (filter === "insert") return e.action.includes("insert");
         if (filter === "text_modify") return e.action.includes("text");
@@ -116,9 +116,9 @@ function renderHistoryList(filter = "all") {
 
   // Reverse to show newest first
   [...filtered].reverse().forEach((entry) => {
-    const realIdx = history.entries.indexOf(entry);
+    const realIdx = editHistory.entries.indexOf(entry);
     const item = document.createElement("div");
-    item.className = "history-item" + (realIdx === history.currentIndex ? " current" : "");
+    item.className = "history-item" + (realIdx === editHistory.currentIndex ? " current" : "");
 
     const time = new Date(entry.timestamp).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
     const actionLabel = {
@@ -144,7 +144,7 @@ function renderHistoryList(filter = "all") {
         <span class="history-action-badge">${escapeHtml(actionLabel)}</span>
       </div>
       <div class="history-item-desc">${escapeHtml(entry.description)}</div>
-      ${realIdx !== history.currentIndex ? '<button class="history-restore-btn">この状態に戻す</button>' : '<span class="history-current-label">現在の状態</span>'}
+      ${realIdx !== editHistory.currentIndex ? '<button class="history-restore-btn">この状態に戻す</button>' : '<span class="history-current-label">現在の状態</span>'}
     `;
 
     const restoreBtn = item.querySelector(".history-restore-btn");
@@ -152,7 +152,7 @@ function renderHistoryList(filter = "all") {
       restoreBtn.addEventListener("click", async () => {
         try {
           await window.API.restore(state.projectId, entry.snapshot);
-          history.currentIndex = realIdx;
+          editHistory.currentIndex = realIdx;
           await loadEditor();
           updateUndoRedoButtons();
           renderHistoryList(document.getElementById("history-filter")?.value || "all");
@@ -186,9 +186,9 @@ function showScreen(name) {
   }
   // URLハッシュを更新（editor画面ではprojectIdを付与）
   if (name === "editor" && state.projectId) {
-    history.replaceState(null, "", `#editor/${state.projectId}`);
+    window.history.replaceState(null, "", `#editor/${state.projectId}`);
   } else if (name === "landing") {
-    history.replaceState(null, "", window.location.pathname);
+    window.history.replaceState(null, "", window.location.pathname);
   }
 }
 
@@ -205,7 +205,7 @@ async function handleHashRoute() {
     } catch (err) {
       console.warn("プロジェクト復帰失敗:", err.message);
       state.projectId = null;
-      history.replaceState(null, "", window.location.pathname);
+      window.history.replaceState(null, "", window.location.pathname);
     }
   }
   return false;
@@ -388,7 +388,7 @@ async function loadEditor(scrollToBlockIndex) {
     _editorLoaded = true;
     document.getElementById("btn-export").disabled = state.projectData.status !== "done";
     // Push initial history entry (only once)
-    if (history.entries.length === 0) {
+    if (editHistory.entries.length === 0) {
       pushHistory("initial", "初期状態");
       // Load user widget templates
       if (window.loadUserWidgetTemplates) window.loadUserWidgetTemplates();
