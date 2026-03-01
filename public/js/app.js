@@ -184,6 +184,54 @@ function showScreen(name) {
     screen.classList.add("active");
     state.currentScreen = name;
   }
+  // URLハッシュを更新（editor画面ではprojectIdを付与）
+  if (name === "editor" && state.projectId) {
+    history.replaceState(null, "", `#editor/${state.projectId}`);
+  } else if (name === "landing") {
+    history.replaceState(null, "", window.location.pathname);
+  }
+}
+
+// ── ハッシュルーティング: リロード時にエディター復帰 ──
+async function handleHashRoute() {
+  const hash = window.location.hash;
+  const match = hash.match(/^#editor\/(.+)$/);
+  if (match) {
+    const projectId = match[1];
+    try {
+      state.projectId = projectId;
+      await loadEditor();
+      return true;
+    } catch (err) {
+      console.warn("プロジェクト復帰失敗:", err.message);
+      state.projectId = null;
+      history.replaceState(null, "", window.location.pathname);
+    }
+  }
+  return false;
+}
+
+// ── 保存済みプロジェクト一覧表示 ──
+async function loadProjectList() {
+  try {
+    const data = await window.API.listProjects();
+    const list = document.getElementById("saved-project-list");
+    if (!list || !data.projects?.length) return;
+    list.innerHTML = "";
+    list.style.display = "";
+    data.projects.filter(p => p.status === "ready" || p.status === "done").forEach(p => {
+      const item = document.createElement("div");
+      item.className = "saved-project-item";
+      const ago = Math.floor((Date.now() - p.createdAt) / 60000);
+      const timeStr = ago < 60 ? `${ago}分前` : ago < 1440 ? `${Math.floor(ago / 60)}時間前` : `${Math.floor(ago / 1440)}日前`;
+      item.innerHTML = `<div class="saved-project-name">${p.slug}</div><div class="saved-project-meta">${p.blockCount}ブロック · ${timeStr}</div>`;
+      item.addEventListener("click", async () => {
+        state.projectId = p.id;
+        await loadEditor();
+      });
+      list.appendChild(item);
+    });
+  } catch {}
 }
 
 // ── Toast ──────────────────────────────────────────────────
@@ -1328,4 +1376,17 @@ document.getElementById("sb-settings")?.addEventListener("click", () => {
 
 // Init
 checkStatus();
-urlInput.focus();
+
+// ハッシュルーティング: エディター復帰 or ランディング
+(async () => {
+  const restored = await handleHashRoute();
+  if (!restored) {
+    urlInput.focus();
+    loadProjectList();
+  }
+})();
+
+// ブラウザバック/フォワード対応
+window.addEventListener("hashchange", () => {
+  handleHashRoute();
+});

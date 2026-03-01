@@ -336,6 +336,48 @@ html, body {
   min-height: 18px;
 }
 
+/* ── 保存済みプロジェクト一覧 ── */
+.saved-project-list {
+  max-width: 480px;
+  margin: 0 auto 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.saved-project-list::before {
+  content: "保存済みプロジェクト";
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.saved-project-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.saved-project-item:hover {
+  border-color: var(--accent);
+  background: rgba(236,72,153,0.04);
+}
+.saved-project-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.saved-project-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .landing-footer {
   display: flex;
   align-items: center;

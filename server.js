@@ -48,6 +48,52 @@ app.use(express.static(path.join(PROJECT_ROOT, "public")));
 // ── Project Store ──────────────────────────────────────────
 const projects = new Map();
 const PROJECT_TTL = 24 * 60 * 60 * 1000; // 24h
+const PROJECTS_DB = path.join(PROJECT_ROOT, "output", "projects.json");
+
+// プロジェクト永続化: 起動時にロード
+async function loadProjectsFromDisk() {
+  try {
+    if (existsSync(PROJECTS_DB)) {
+      const data = JSON.parse(await readFile(PROJECTS_DB, "utf-8"));
+      for (const [id, p] of Object.entries(data)) {
+        // SSEクライアントとlogはメモリのみ
+        p.sseClients = [];
+        p.log = p.log || [];
+        // 未完了のスクレイピングは復帰不可
+        if (p.status === "scraping" || p.status === "parsing") {
+          p.status = "error";
+          p.error = "サーバー再起動により中断されました";
+        }
+        projects.set(id, p);
+      }
+      console.log(`[server] ${projects.size} プロジェクトを復元しました`);
+    }
+  } catch (err) {
+    console.error("[server] プロジェクト復元エラー:", err.message);
+  }
+}
+
+// プロジェクト永続化: ディスクに保存
+let _saveTimer = null;
+function saveProjectsToDisk() {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(async () => {
+    try {
+      const data = {};
+      for (const [id, p] of projects) {
+        // sseClientsはシリアライズ不可、除外
+        const { sseClients, ...serializable } = p;
+        data[id] = serializable;
+      }
+      await mkdir(path.dirname(PROJECTS_DB), { recursive: true });
+      await writeFile(PROJECTS_DB, JSON.stringify(data, null, 2), "utf-8");
+    } catch (err) {
+      console.error("[server] プロジェクト保存エラー:", err.message);
+    }
+  }, 1000); // 1秒デバウンス
+}
+
+await loadProjectsFromDisk();
 
 function createProject(id, url) {
   const project = {
@@ -91,6 +137,7 @@ function createProject(id, url) {
     },
   };
   projects.set(id, project);
+  saveProjectsToDisk();
   return project;
 }
 
@@ -147,6 +194,23 @@ function rewriteAssetsForPreview(html, project) {
 }
 
 // ── API Routes ─────────────────────────────────────────────
+
+// GET /api/projects - List all projects (for restore)
+app.get("/api/projects", (req, res) => {
+  const list = [];
+  for (const [id, p] of projects) {
+    list.push({
+      id,
+      url: p.url,
+      slug: p.slug,
+      status: p.status,
+      blockCount: p.blocks?.length || 0,
+      createdAt: p.createdAt,
+    });
+  }
+  list.sort((a, b) => b.createdAt - a.createdAt);
+  res.json({ projects: list });
+});
 
 // POST /api/projects - Start scraping
 app.post("/api/projects", async (req, res) => {
@@ -300,6 +364,7 @@ app.put("/api/projects/:id/blocks/:idx", (req, res) => {
 
   // Rebuild modifiedHtml from blocks
   project.modifiedHtml = project.blocks.map((b) => b.html).join("\n");
+  saveProjectsToDisk();
 
   res.json({ ok: true, block: { index: block.index, type: block.type } });
 });
@@ -332,6 +397,7 @@ app.post("/api/projects/:id/blocks/insert", (req, res) => {
 
   // Rebuild modifiedHtml
   project.modifiedHtml = project.blocks.map((b) => b.html).join("\n");
+  saveProjectsToDisk();
 
   res.json({ ok: true, insertedIndex: insertAt, blockCount: project.blocks.length });
 });
@@ -353,6 +419,7 @@ app.delete("/api/projects/:id/blocks/:idx", (req, res) => {
 
   // Rebuild modifiedHtml
   project.modifiedHtml = project.blocks.map((b) => b.html).join("\n");
+  saveProjectsToDisk();
 
   res.json({ ok: true, blockCount: project.blocks.length });
 });
@@ -378,6 +445,7 @@ app.post("/api/projects/:id/blocks/reorder", (req, res) => {
 
   // Rebuild modifiedHtml
   project.modifiedHtml = project.blocks.map((b) => b.html).join("\n");
+  saveProjectsToDisk();
 
   res.json({ ok: true, blockCount: project.blocks.length });
 });
@@ -394,6 +462,7 @@ app.put("/api/projects/:id/tag-settings", (req, res) => {
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
   Object.assign(project.tagSettings, req.body);
+  saveProjectsToDisk();
   res.json({ ok: true });
 });
 
@@ -409,6 +478,7 @@ app.put("/api/projects/:id/exit-popup", (req, res) => {
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
   Object.assign(project.exitPopup, req.body);
+  saveProjectsToDisk();
   res.json({ ok: true });
 });
 
@@ -1047,6 +1117,7 @@ app.put("/api/projects/:id/apply-image/:idx", (req, res) => {
 
   // Rebuild modifiedHtml
   project.modifiedHtml = project.blocks.map((b) => b.html).join("\n");
+  saveProjectsToDisk();
 
   res.json({ ok: true });
 });
@@ -1183,6 +1254,7 @@ app.post("/api/projects/:id/build", async (req, res) => {
     project.buildResult = result;
     project.validation = validation;
     project.status = "done";
+    saveProjectsToDisk();
 
     const sizeBytes = Buffer.byteLength(result, "utf-8");
 

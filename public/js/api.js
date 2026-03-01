@@ -3,6 +3,10 @@
  */
 
 export const API = {
+  async listProjects() {
+    return fetchJson("/api/projects");
+  },
+
   async createProject(url) {
     const res = await fetchJson("/api/projects", {
       method: "POST",
