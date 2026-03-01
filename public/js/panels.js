@@ -171,6 +171,28 @@ function buildAiTextPanel(projectId, blockIndex, block) {
   aiInput.rows = 3;
   aiSection.appendChild(aiInput);
 
+  // 参考画像アップロード
+  const imageUploadSection = document.createElement("div");
+  imageUploadSection.style.cssText = "margin-top:8px";
+  const imageLabel = document.createElement("div");
+  imageLabel.style.cssText = "font-size:12px;color:var(--text-secondary);margin-bottom:4px";
+  imageLabel.textContent = "参考画像（任意）";
+  imageUploadSection.appendChild(imageLabel);
+  const imageInput = document.createElement("input");
+  imageInput.type = "file";
+  imageInput.accept = "image/*";
+  imageInput.className = "panel-file-input";
+  let referenceImageBase64 = null;
+  imageInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) { referenceImageBase64 = null; return; }
+    const reader = new FileReader();
+    reader.onload = () => { referenceImageBase64 = reader.result; };
+    reader.readAsDataURL(file);
+  });
+  imageUploadSection.appendChild(imageInput);
+  aiSection.appendChild(imageUploadSection);
+
   const aiBtnRow = document.createElement("div");
   aiBtnRow.className = "panel-btn-row";
   const aiBtn = document.createElement("button");
@@ -192,11 +214,13 @@ function buildAiTextPanel(projectId, blockIndex, block) {
     aiBtn.innerHTML = '<span class="spinner"></span> AI処理中...';
 
     try {
-      const result = await window.API.aiRewrite(projectId, blockIndex, {
+      const payload = {
         instruction,
         text: block.text,
         designRequirements: window._designRequirements || "",
-      });
+      };
+      if (referenceImageBase64) payload.referenceImage = referenceImageBase64;
+      const result = await window.API.aiRewrite(projectId, blockIndex, payload);
 
       if (result.ok) {
         resultArea.innerHTML = "";
@@ -1144,6 +1168,31 @@ function buildWidgetPanel(projectId, blockIndex, block) {
     typeSection.appendChild(idInfo);
   }
   frag.appendChild(typeSection);
+
+  // Quick action buttons
+  const actionsSection = createSection("アクション");
+  const actionRow = document.createElement("div");
+  actionRow.className = "panel-btn-row";
+  actionRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
+
+  const btnHtmlEdit = document.createElement("button");
+  btnHtmlEdit.className = "panel-btn primary";
+  btnHtmlEdit.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="margin-right:4px"><path d="M5 3L1 8l4 5M11 3l4 5-4 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>HTML編集';
+  btnHtmlEdit.addEventListener("click", () => {
+    window.openWidgetHtmlEditor?.(blockIndex);
+  });
+  actionRow.appendChild(btnHtmlEdit);
+
+  const btnQuickEdit = document.createElement("button");
+  btnQuickEdit.className = "panel-btn";
+  btnQuickEdit.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="margin-right:4px"><path d="M11.5 1.5l3 3L5 14H2v-3l9.5-9.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>クイック編集';
+  btnQuickEdit.addEventListener("click", () => {
+    window.openQuickEdit?.(blockIndex);
+  });
+  actionRow.appendChild(btnQuickEdit);
+
+  actionsSection.appendChild(actionRow);
+  frag.appendChild(actionsSection);
 
   if (block.styles?.length > 0) {
     const cssSection = createSection("ウィジェットCSS");

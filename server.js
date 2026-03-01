@@ -333,7 +333,7 @@ app.post("/api/projects/:id/blocks/insert", (req, res) => {
   // Rebuild modifiedHtml
   project.modifiedHtml = project.blocks.map((b) => b.html).join("\n");
 
-  res.json({ ok: true, insertedIndex: insertAt, blockCount: project.blocks.length });
+  res.json({ ok: true, insertedIndex: insertAt, blockCount: project.blocks.length, blocks: project.blocks });
 });
 
 // DELETE /api/projects/:id/blocks/:idx - Delete a block
@@ -618,10 +618,12 @@ ${html}
     wrapper.appendChild(overlay);
     wrapper.appendChild(badge);
 
-    wrapper.addEventListener('click', function() {
+    wrapper.addEventListener('click', function(ev) {
       document.querySelectorAll('.block-wrapper.active').forEach(function(w) { w.classList.remove('active'); });
       wrapper.classList.add('active');
-      window.parent.postMessage({ type: 'blockClick', blockIndex: parseInt(wrapper.dataset.blockIndex) }, '*');
+      var bIdx = parseInt(wrapper.dataset.blockIndex);
+      var bType = types[bIdx] || 'block';
+      window.parent.postMessage({ type: 'blockClick', blockIndex: bIdx, blockType: bType, clientX: ev.clientX, clientY: ev.clientY }, '*');
     });
 
     idx++;
@@ -770,6 +772,44 @@ ${html}
   window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'exitInlineEdit') {
       exitEditMode(false);
+    }
+    // Quick edit: enable contenteditable on widget block
+    if (e.data && e.data.type === 'enableQuickEdit') {
+      var qeIdx = e.data.blockIndex;
+      var qeWrapper = document.querySelector('[data-block-index="' + qeIdx + '"]');
+      if (qeWrapper) {
+        var content = qeWrapper.children[0];
+        if (content) {
+          content.contentEditable = 'true';
+          content.focus();
+          qeWrapper.classList.add('editing');
+        }
+      }
+    }
+    // Quick edit: get HTML and disable
+    if (e.data && e.data.type === 'getQuickEditHtml') {
+      var qeIdx2 = e.data.blockIndex;
+      var qeWrapper2 = document.querySelector('[data-block-index="' + qeIdx2 + '"]');
+      if (qeWrapper2) {
+        var content2 = qeWrapper2.children[0];
+        if (content2) {
+          content2.contentEditable = 'false';
+          qeWrapper2.classList.remove('editing');
+          window.parent.postMessage({ type: 'quickEditHtml', blockIndex: qeIdx2, html: content2.outerHTML }, '*');
+        }
+      }
+    }
+    // Quick edit: disable without saving
+    if (e.data && e.data.type === 'disableQuickEdit') {
+      var qeIdx3 = e.data.blockIndex;
+      var qeWrapper3 = document.querySelector('[data-block-index="' + qeIdx3 + '"]');
+      if (qeWrapper3) {
+        var content3 = qeWrapper3.children[0];
+        if (content3) {
+          content3.contentEditable = 'false';
+          qeWrapper3.classList.remove('editing');
+        }
+      }
     }
   });
 
@@ -1144,7 +1184,7 @@ app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
   const block = project.blocks[idx];
   if (!block) return res.status(404).json({ error: "Block not found" });
 
-  const { instruction, text, designRequirements } = req.body;
+  const { instruction, text, designRequirements, referenceImage } = req.body;
   if (!instruction) return res.status(400).json({ error: "instruction is required" });
 
   const sourceText = text || block.text || "";
@@ -1161,12 +1201,21 @@ app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
 
   const key = keys[Math.floor(Math.random() * keys.length)];
   const designContext = designRequirements ? `\nデザイン要件: ${designRequirements}\n上記のトーン・雰囲気に合わせて書き換えてください。` : "";
+  const imageContext = referenceImage ? "\n添付画像のトーンや雰囲気を参考にして書き換えてください。" : "";
   const prompt = `以下のテキストを指示に従って書き換えてください。HTMLのインラインスタイル（font-size, color, strong等）は必ず保持してください。書き換え後のテキストのみを返してください。余計な説明は不要です。
-${designContext}
+${designContext}${imageContext}
 指示: ${instruction}
 
 元テキスト:
 ${sourceText}`;
+
+  // Build multimodal parts
+  const parts = [{ text: prompt }];
+  if (referenceImage) {
+    const [meta, base64Data] = referenceImage.split(",");
+    const mimeType = meta.match(/data:(.*?);/)?.[1] || "image/png";
+    parts.push({ inlineData: { mimeType, data: base64Data } });
+  }
 
   try {
     const apiRes = await fetch(
@@ -1175,7 +1224,7 @@ ${sourceText}`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
+          contents: [{ parts }],
         }),
       }
     );
@@ -1313,6 +1362,57 @@ app.post("/api/set-cloudflare", async (req, res) => {
   } catch {}
 
   res.json({ ok: true, message: "Cloudflare設定を保存しました" });
+});
+
+// ── Widget Template CRUD ─────────────────────────────────
+const WIDGET_TEMPLATES_FILE = path.join(PROJECT_ROOT, "data", "widget-templates.json");
+
+async function loadWidgetTemplates() {
+  try {
+    if (existsSync(WIDGET_TEMPLATES_FILE)) {
+      const content = await readFile(WIDGET_TEMPLATES_FILE, "utf-8");
+      return JSON.parse(content);
+    }
+  } catch {}
+  return [];
+}
+
+async function saveWidgetTemplates(templates) {
+  const dir = path.dirname(WIDGET_TEMPLATES_FILE);
+  const { mkdirSync } = await import("fs");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  await writeFile(WIDGET_TEMPLATES_FILE, JSON.stringify(templates, null, 2));
+}
+
+app.get("/api/widget-templates", async (req, res) => {
+  const templates = await loadWidgetTemplates();
+  res.json({ templates });
+});
+
+app.post("/api/widget-templates", async (req, res) => {
+  const { name, icon, category, description, html, css, isFavorite } = req.body;
+  if (!name) return res.status(400).json({ error: "name is required" });
+  const templates = await loadWidgetTemplates();
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  templates.push({ id, name, icon: icon || "W", category: category || "その他", description: description || "", html: html || "", css: css || "", isFavorite: !!isFavorite, createdAt: Date.now() });
+  await saveWidgetTemplates(templates);
+  res.json({ ok: true, id });
+});
+
+app.put("/api/widget-templates/:id", async (req, res) => {
+  const templates = await loadWidgetTemplates();
+  const idx = templates.findIndex((t) => t.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "Template not found" });
+  Object.assign(templates[idx], req.body);
+  await saveWidgetTemplates(templates);
+  res.json({ ok: true });
+});
+
+app.delete("/api/widget-templates/:id", async (req, res) => {
+  let templates = await loadWidgetTemplates();
+  templates = templates.filter((t) => t.id !== req.params.id);
+  await saveWidgetTemplates(templates);
+  res.json({ ok: true });
 });
 
 // GET /api/cloudflare-status

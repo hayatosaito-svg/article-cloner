@@ -190,32 +190,15 @@ GEMINI_API_KEY_1=your_key_here<br><br>
       </button>
     </div>
     <div class="toolbar-right">
-      <button class="toolbar-btn" id="btn-tag-settings" title="タグ設定">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3h10v2H3zM5 7h6v2H5zM4 11h8v2H4z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span>タグ設定</span>
-      </button>
-      <button class="toolbar-btn" id="btn-exit-popup" title="離脱ポップアップ">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3h10v10H3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6 8h4M8 6v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        <span>離脱POP</span>
-      </button>
-      <button class="toolbar-btn" id="btn-history" title="変更履歴">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 4v4l3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/></svg>
-        <span>履歴</span>
-      </button>
       <button class="toolbar-btn" id="btn-viewport" title="プレビュー幅切替">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="12" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 12h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         <span>412px</span>
       </button>
-      <button class="toolbar-btn btn-accent" id="btn-build" title="SB互換HTMLを生成">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8l3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span>ビルド</span>
-      </button>
-      <button class="toolbar-btn" id="btn-export" title="HTMLをダウンロード" disabled>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m-3-3l3 3 3-3M3 12v1h10v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span>書き出し</span>
-      </button>
-      <button class="toolbar-btn btn-accent" id="btn-publish" title="Cloudflare Pagesに公開">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v6m0 0l2.5-2.5M8 7L5.5 4.5M2 10v3h12v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <button class="toolbar-btn btn-accent" id="btn-deploy" title="ビルド＆公開">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M8 1l3 4H9v4H7V5H5l3-4z" fill="currentColor"/>
+          <path d="M2 11v3h12v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
         <span>公開</span>
       </button>
     </div>
@@ -249,6 +232,71 @@ GEMINI_API_KEY_1=your_key_here<br><br>
       </div>
     </div>
   </div>
+
+  <!-- 右サイドバー（常時表示アイコン列） -->
+  <div id="editor-sidebar" class="editor-sidebar">
+    <button class="sidebar-icon" id="sb-deploy" title="公開">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 1l3 4H9v4H7V5H5l3-4z" fill="currentColor"/><path d="M2 11v3h12v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="sidebar-icon" id="sb-history" title="変更履歴">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 4v4l3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/></svg>
+    </button>
+    <button class="sidebar-icon" id="sb-fav-widgets" title="お気に入りWidget">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+    </button>
+    <button class="sidebar-icon" id="sb-link-manage" title="リンク管理">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </button>
+    <button class="sidebar-icon" id="sb-settings" title="設定">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </button>
+    <button class="sidebar-icon" id="sb-tag-settings" title="タグ設定">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3 3h10v2H3zM5 7h6v2H5zM4 11h8v2H4z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="sidebar-icon" id="sb-undo" title="元に戻す">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3 8h8a3 3 0 010 6H9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 5L3 8l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="sidebar-icon" id="sb-redo" title="やり直し">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M13 8H5a3 3 0 000 6h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 5l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="sidebar-icon" id="sb-exit-popup" title="離脱ポップアップ">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3 3h10v10H3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6 8h4M8 6v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- Widgetコンテキストメニュー -->
+<div id="widget-context-menu" class="widget-context-menu">
+  <button class="ctx-item" data-action="openHtmlEditor">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M5 3L1 8l4 5M11 3l4 5-4 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>HTML編集</span>
+  </button>
+  <button class="ctx-item" data-action="openQuickEdit">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3l9.5-9.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>クイック編集</span>
+  </button>
+  <button class="ctx-item" data-action="duplicateBelow">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="6" y="6" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg>
+    <span>すぐ下に複製</span>
+  </button>
+  <button class="ctx-item" data-action="copyToClipboard">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M5 2H3a1 1 0 00-1 1v10a1 1 0 001 1h6a1 1 0 001-1v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="6" y="1" width="8" height="10" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+    <span>widgetコピー</span>
+  </button>
+  <button class="ctx-item danger" data-action="deleteWidget">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 4l1 10a1 1 0 001 1h6a1 1 0 001-1l1-10" stroke="currentColor" stroke-width="1.5"/></svg>
+    <span>Versionから削除する</span>
+  </button>
+</div>
+
+<!-- クイック編集バー -->
+<div id="quick-edit-bar" class="quick-edit-bar" style="display:none">
+  <button class="qe-btn" data-cmd="bold" title="太字"><b>B</b></button>
+  <button class="qe-btn" data-cmd="underline" title="下線"><u>U</u></button>
+  <input type="color" class="qe-color" id="qe-color" title="文字色" value="#000000">
+  <div class="qe-spacer"></div>
+  <button class="btn-secondary qe-cancel" id="qe-cancel">キャンセル</button>
+  <button class="btn-primary qe-save" id="qe-save">更新</button>
 </div>
 
 <!-- 編集パネル (スライドアウト) -->
@@ -347,29 +395,57 @@ GEMINI_API_KEY_1=your_key_here<br><br>
   </div>
 </div>
 
-<!-- 書き出しモーダル -->
-<div id="modal-export" class="modal">
+<!-- 公開結果モーダル（統合） -->
+<div id="modal-deploy-result" class="modal">
   <div class="modal-backdrop"></div>
-  <div class="modal-content">
+  <div class="modal-content" style="max-width:520px">
     <div class="modal-header">
-      <h3>SB互換HTML書き出し</h3>
-      <button class="modal-close" data-close-modal="modal-export">
+      <h3>公開完了</h3>
+      <button class="modal-close" data-close-modal="modal-deploy-result">
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       </button>
     </div>
     <div class="modal-body">
-      <div class="validation-section" id="validation-section">
-        <h4>SB互換チェック</h4>
-        <div id="validation-results"></div>
+      <!-- バリデーション結果 -->
+      <div class="validation-section" id="deploy-validation-section">
+        <div id="deploy-validation-results"></div>
+        <div class="export-stats" id="deploy-export-stats"></div>
       </div>
-      <div class="export-stats" id="export-stats"></div>
+
+      <!-- 公開URL -->
+      <div class="panel-section" id="deploy-url-section"></div>
+
+      <!-- Squad Beyond 連携 -->
+      <div class="panel-section">
+        <div class="panel-section-title">Squad Beyond 連携</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+          <button class="btn-secondary" id="btn-html-code-copy" style="width:100%;justify-content:center">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="margin-right:6px"><path d="M5 2H3a1 1 0 00-1 1v10a1 1 0 001 1h6a1 1 0 001-1v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="6" y="1" width="8" height="10" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+            HTMLコードをコピー
+          </button>
+          <button class="btn-secondary" id="btn-visual-copy" style="width:100%;justify-content:center">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="margin-right:6px"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 8h6M5 5.5h6M5 10.5h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            ビジュアルコピー（見た目ごと）
+          </button>
+          <div style="font-size:11px;color:var(--text-muted);line-height:1.5">
+            「HTMLコードをコピー」→ SBのHTMLソース入力欄に貼り付け<br>
+            「ビジュアルコピー」→ SBデザインエディターにCtrl+Vで見た目ごと貼り付け
+          </div>
+        </div>
+      </div>
+
+      <!-- ダウンロード -->
+      <div class="panel-section">
+        <div class="panel-section-title">ダウンロード</div>
+        <button class="btn-secondary" id="btn-deploy-download" style="width:100%;justify-content:center;margin-top:8px">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="margin-right:6px"><path d="M8 2v8m-3-3l3 3 3-3M3 12v1h10v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          HTMLファイルをダウンロード
+        </button>
+      </div>
     </div>
     <div class="modal-footer">
-      <button class="btn-secondary" id="btn-copy-html">クリップボードにコピー</button>
-      <button class="btn-primary" id="btn-download-html">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m-3-3l3 3 3-3M3 12v1h10v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        HTMLをダウンロード
-      </button>
+      <button class="btn-secondary" data-close-modal="modal-deploy-result">閉じる</button>
+      <a href="#" id="btn-open-deployed" class="btn-primary" target="_blank" rel="noopener" style="display:none">サイトを開く</a>
     </div>
   </div>
 </div>
@@ -407,25 +483,6 @@ GEMINI_API_KEY_1=your_key_here<br><br>
   </div>
 </div>
 
-<!-- 公開結果モーダル -->
-<div id="modal-publish-result" class="modal">
-  <div class="modal-backdrop"></div>
-  <div class="modal-content" style="max-width:480px">
-    <div class="modal-header">
-      <h3>公開完了</h3>
-      <button class="modal-close" data-close-modal="modal-publish-result">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <div id="publish-result-body"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" data-close-modal="modal-publish-result">閉じる</button>
-      <a href="#" id="btn-open-published" class="btn-primary" target="_blank" rel="noopener">サイトを開く</a>
-    </div>
-  </div>
-</div>
 
 <!-- ウィジェット選択サイドバー -->
 <div id="widget-sidebar" class="widget-sidebar">
@@ -611,14 +668,115 @@ GEMINI_API_KEY_1=your_key_here<br><br>
   </div>
 </div>
 
+<!-- 3ペインWidget HTMLエディタモーダル -->
+<div id="modal-widget-editor" class="modal fullscreen-modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content modal-fullscreen">
+    <div class="we-header">
+      <button class="we-back-btn" id="we-back">&larr; 戻る</button>
+      <span class="we-description" id="we-description">Widget説明</span>
+      <span class="we-category" id="we-category"></span>
+      <div class="we-header-actions">
+        <button class="btn-secondary" id="we-register">Widgetとして登録</button>
+        <button class="btn-secondary" id="we-split-toggle">分割</button>
+        <button class="btn-primary" id="we-update">更新</button>
+      </div>
+    </div>
+    <div class="we-body">
+      <div class="we-preview-pane" id="we-preview-pane">
+        <div class="we-toolbar" id="we-toolbar">
+          <button class="we-tool-btn" data-cmd="bold" title="太字"><b>B</b></button>
+          <button class="we-tool-btn" data-cmd="underline" title="下線"><u>U</u></button>
+          <button class="we-tool-btn" data-cmd="italic" title="斜体"><i>I</i></button>
+          <div class="we-tool-sep"></div>
+          <input type="color" class="we-tool-color" data-action="foreColor" value="#000000" title="文字色">
+          <input type="color" class="we-tool-color" data-action="backColor" value="#ffffff" title="背景色">
+          <div class="we-tool-sep"></div>
+          <button class="we-tool-btn" data-cmd="justifyLeft" title="左揃え">&#8801;</button>
+          <button class="we-tool-btn" data-cmd="justifyCenter" title="中央">&#9552;</button>
+          <button class="we-tool-btn" data-cmd="justifyRight" title="右揃え">&#8801;</button>
+        </div>
+        <iframe id="we-preview-iframe" class="we-preview-iframe"></iframe>
+      </div>
+      <div class="we-divider we-divider-v" id="we-divider-main"></div>
+      <div class="we-code-pane" id="we-code-pane">
+        <div class="we-code-section" id="we-html-section">
+          <div class="we-code-header">
+            <span>HTML(カスタム)</span>
+            <button class="we-expand-btn" data-target="html" title="展開">&lt;/&gt;</button>
+          </div>
+          <div id="we-html-editor" class="we-editor-container"></div>
+        </div>
+        <div class="we-divider we-divider-h" id="we-divider-code"></div>
+        <div class="we-code-section" id="we-css-section">
+          <div class="we-code-header">
+            <span>CSS(カスタム)</span>
+            <button class="we-expand-btn" data-target="css" title="展開">&lt;/&gt;</button>
+          </div>
+          <div id="we-css-editor" class="we-editor-container"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Widget登録モーダル -->
+<div id="modal-widget-register" class="modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content" style="max-width:480px">
+    <div class="modal-header">
+      <h3>Widgetとして登録</h3>
+      <button class="modal-close" data-close-modal="modal-widget-register">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-section">
+        <label class="form-label">Widget名</label>
+        <input type="text" id="wr-name" class="form-input" placeholder="例: カスタムCTA">
+      </div>
+      <div class="form-section">
+        <label class="form-label">カテゴリ</label>
+        <select id="wr-category" class="form-input">
+          <option value="区切り">区切り</option>
+          <option value="CTA">CTA</option>
+          <option value="装飾">装飾</option>
+          <option value="インタラクティブ">インタラクティブ</option>
+          <option value="その他">その他</option>
+        </select>
+      </div>
+      <div class="form-section">
+        <label class="form-label">アイコン (絵文字 or テキスト)</label>
+        <input type="text" id="wr-icon" class="form-input" placeholder="例: ⭐" maxlength="6">
+      </div>
+      <div class="form-section">
+        <label class="form-label">説明</label>
+        <textarea id="wr-description" class="panel-textarea" rows="3" placeholder="Widgetの説明..."></textarea>
+      </div>
+      <div class="form-section">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="wr-favorite">
+          <span class="form-label" style="margin:0">お気に入りに追加</span>
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close-modal="modal-widget-register">キャンセル</button>
+      <button class="btn-primary" id="btn-widget-register-save">登録</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container" class="toast-container"></div>
 
 <script type="module" src="/js/widgets.js"></script>
 <script type="module" src="/js/api.js"></script>
+<script type="module" src="/js/codemirror-loader.js"></script>
 <script type="module" src="/js/panels.js"></script>
 <script type="module" src="/js/editor.js"></script>
 <script type="module" src="/js/tag-settings.js"></script>
 <script type="module" src="/js/exit-popup.js"></script>
+<script type="module" src="/js/widget-editor.js"></script>
 <script type="module" src="/js/app.js"></script>
 </body>
 </html>

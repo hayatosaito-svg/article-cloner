@@ -156,6 +156,31 @@ export const API = {
     return fetchJson("/api/cloudflare-status");
   },
 
+  // Widget Templates
+  async getWidgetTemplates() {
+    return fetchJson("/api/widget-templates");
+  },
+
+  async saveWidgetTemplate(data) {
+    return fetchJson("/api/widget-templates", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateWidgetTemplate(id, data) {
+    return fetchJson(`/api/widget-templates/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteWidgetTemplate(id) {
+    return fetchJson(`/api/widget-templates/${id}`, {
+      method: "DELETE",
+    });
+  },
+
   getExportUrl(projectId) {
     return `/api/projects/${projectId}/export`;
   },

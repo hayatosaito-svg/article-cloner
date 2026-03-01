@@ -333,8 +333,8 @@ async function loadEditor() {
     document.getElementById("toolbar-title").textContent = state.projectData.slug;
     document.getElementById("toolbar-block-count").textContent = `${state.projectData.blockCount} ブロック`;
     renderBlockList(state.projectData.blocks);
-    loadPreview();
-    document.getElementById("btn-export").disabled = state.projectData.status !== "done";
+    loadPreview(history.entries.length > 0);
+    // status tracking (btn-deploy always enabled)
     // Push initial history entry (only once)
     if (history.entries.length === 0) {
       pushHistory("initial", "初期状態");
@@ -419,7 +419,19 @@ window.addEventListener("message", (e) => {
       item.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
     const block = state.projectData?.blocks?.[idx];
-    if (block) window.openEditPanel(state.projectId, idx, block.type);
+    if (block) {
+      // Widget blocks: show context menu instead of edit panel
+      if (block.type === "widget" && e.data.clientX != null) {
+        // Convert iframe-relative coordinates to page coordinates
+        const iframe = document.getElementById("preview-iframe");
+        const iframeRect = iframe?.getBoundingClientRect() || { left: 0, top: 0 };
+        const pageX = (e.data.clientX || 0) + iframeRect.left;
+        const pageY = (e.data.clientY || 0) + iframeRect.top;
+        window.showWidgetContextMenu?.(idx, pageX, pageY);
+      } else {
+        window.openEditPanel(state.projectId, idx, block.type);
+      }
+    }
   }
 
   // Inline edit save - update block without iframe reload
@@ -541,18 +553,39 @@ document.getElementById("btn-refresh").addEventListener("click", () => {
   showToast("プレビューを更新しました", "info");
 });
 
-// Tag settings
+// Tag settings (toolbar button kept as fallback)
 document.getElementById("btn-tag-settings")?.addEventListener("click", () => {
   window.openTagSettingsModal?.();
 });
 
-// Exit popup
+// Exit popup (toolbar button kept as fallback)
 document.getElementById("btn-exit-popup")?.addEventListener("click", () => {
   window.openExitPopupModal?.();
 });
 
-// History sidebar
+// History sidebar (toolbar button kept as fallback)
 document.getElementById("btn-history")?.addEventListener("click", openHistorySidebar);
+
+// ── Sidebar Icon Events ─────────────────────────────────
+document.getElementById("sb-deploy")?.addEventListener("click", () => {
+  document.getElementById("btn-deploy")?.click();
+});
+document.getElementById("sb-history")?.addEventListener("click", openHistorySidebar);
+document.getElementById("sb-tag-settings")?.addEventListener("click", () => {
+  window.openTagSettingsModal?.();
+});
+document.getElementById("sb-exit-popup")?.addEventListener("click", () => {
+  window.openExitPopupModal?.();
+});
+document.getElementById("sb-undo")?.addEventListener("click", undo);
+document.getElementById("sb-redo")?.addEventListener("click", redo);
+document.getElementById("sb-settings")?.addEventListener("click", () => {
+  openModal("modal-cloudflare");
+});
+document.getElementById("sb-fav-widgets")?.addEventListener("click", () => {
+  openWidgetSidebar();
+});
+document.getElementById("sb-link-manage")?.addEventListener("click", openTextModifyModal);
 
 // Viewport toggle
 const viewportSizes = [412, 768, -1]; // -1 = 100%
@@ -628,9 +661,12 @@ document.getElementById("widget-sidebar-close")?.addEventListener("click", () =>
   document.getElementById("widget-sidebar")?.classList.remove("open");
 });
 
-function openWidgetSidebar() {
+async function openWidgetSidebar(favoriteOnly = false) {
   // Close edit panel if open (but not widget sidebar itself)
   document.getElementById("edit-panel")?.classList.remove("open");
+
+  // Load user templates if not yet loaded
+  if (window.loadUserWidgetTemplates) await window.loadUserWidgetTemplates();
 
   // Populate position select
   const select = document.getElementById("widget-insert-position");
@@ -647,7 +683,7 @@ function openWidgetSidebar() {
   // Populate widget list
   const list = document.getElementById("widget-list");
   list.innerHTML = "";
-  const templates = window.WIDGET_TEMPLATES || [];
+  const templates = window.getAllWidgetTemplates ? window.getAllWidgetTemplates(favoriteOnly) : (window.WIDGET_TEMPLATES || []);
   templates.forEach((tmpl) => {
     const card = document.createElement("div");
     card.className = "widget-card";
@@ -681,7 +717,15 @@ function openWidgetSidebar() {
         });
         if (result.ok) {
           showToast(`${tmpl.name} を挿入しました`, "success");
-          await loadEditor();
+          if (result.blocks) {
+            state.projectData.blocks = result.blocks;
+            state.projectData.blockCount = result.blocks.length;
+            renderBlockList(result.blocks);
+            document.getElementById("toolbar-block-count").textContent = `${result.blocks.length} ブロック`;
+            loadPreview(true);
+          } else {
+            await loadEditor();
+          }
           pushHistory("insert_widget", `${tmpl.name} を挿入`);
         }
       } catch (err) {
@@ -703,39 +747,38 @@ function openWidgetSidebar() {
 
 // Note: modal close listeners for modal-add-block are handled by the generic data-close-modal handler above
 
-document.getElementById("btn-build").addEventListener("click", async () => {
+// ── Deploy (統合: ビルド→公開→結果) ─────────────────────
+
+document.getElementById("btn-deploy").addEventListener("click", async () => {
   if (!state.projectId) return;
-  const btn = document.getElementById("btn-build");
+  const btn = document.getElementById("btn-deploy");
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> ビルド中...';
+  btn.innerHTML = '<span class="spinner"></span> 処理中...';
+
   try {
-    const result = await window.API.build(state.projectId);
-    if (result.ok) {
-      showToast("ビルド完了!", "success");
-      document.getElementById("btn-export").disabled = false;
-      openExportModal(result);
-    } else {
-      showToast(`ビルドエラー: ${result.error}`, "error");
+    // 1. ビルド
+    const buildResult = await window.API.build(state.projectId);
+    if (!buildResult.ok) {
+      showToast(`ビルドエラー: ${buildResult.error}`, "error");
+      return;
     }
+
+    // 2. Cloudflare設定チェック → あれば公開
+    let publishResult = null;
+    try {
+      const cfStatus = await window.API.getCloudflareStatus();
+      if (cfStatus.configured) {
+        publishResult = await window.API.publish(state.projectId);
+      }
+    } catch {}
+
+    // 3. 結果モーダル表示
+    openDeployResultModal(buildResult, publishResult);
   } catch (err) {
-    showToast(`ビルドエラー: ${err.message}`, "error");
+    showToast(`エラー: ${err.message}`, "error");
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8l3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>ビルド</span>';
-  }
-});
-
-document.getElementById("btn-export").addEventListener("click", async () => {
-  if (!state.projectId) return;
-  if (state.projectData?.status !== "done") {
-    try {
-      const result = await window.API.build(state.projectId);
-      openExportModal(result);
-    } catch (err) {
-      showToast(`エラー: ${err.message}`, "error");
-    }
-  } else {
-    openExportModal(null);
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1l3 4H9v4H7V5H5l3-4z" fill="currentColor"/><path d="M2 11v3h12v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>公開</span>';
   }
 });
 
@@ -987,18 +1030,18 @@ document.getElementById("btn-apply-text-modify").addEventListener("click", async
   }
 });
 
-// ── Export Modal ────────────────────────────────────────────
+// ── Deploy Result Modal ─────────────────────────────────────
 
-function openExportModal(buildResult) {
-  openModal("modal-export");
-  const vr = document.getElementById("validation-results");
-  const stats = document.getElementById("export-stats");
+function openDeployResultModal(buildResult, publishResult) {
+  const vr = document.getElementById("deploy-validation-results");
+  const stats = document.getElementById("deploy-export-stats");
+  const urlSection = document.getElementById("deploy-url-section");
   vr.innerHTML = "";
   stats.innerHTML = "";
 
+  // バリデーション結果
   if (buildResult) {
     const checks = [];
-
     if (buildResult.valid) {
       checks.push({ label: "SBフラグメント形式: 正常", pass: true });
     }
@@ -1008,7 +1051,6 @@ function openExportModal(buildResult) {
       checks.push({ label: "バリデーションエラーなし", pass: true });
     }
     buildResult.warnings?.forEach((w) => checks.push({ label: w, pass: true, warn: true }));
-
     if (!buildResult.errors?.length && !buildResult.warnings?.length) {
       checks.push({ label: "全チェック通過", pass: true });
     }
@@ -1026,83 +1068,97 @@ function openExportModal(buildResult) {
       <div class="stat-card"><div class="stat-value">${buildResult.sizeFormatted || "-"}</div><div class="stat-label">ファイルサイズ</div></div>
       <div class="stat-card"><div class="stat-value">${buildResult.blockCount || "-"}</div><div class="stat-label">ブロック数</div></div>`;
   }
+
+  // URL表示
+  updateDeployUrlSection(publishResult);
+
+  // フッター: サイトを開くボタン
+  const openBtn = document.getElementById("btn-open-deployed");
+  if (publishResult?.ok && publishResult.pagesDevUrl) {
+    openBtn.href = publishResult.pagesDevUrl;
+    openBtn.style.display = "";
+  } else {
+    openBtn.style.display = "none";
+  }
+
+  openModal("modal-deploy-result");
 }
 
-document.getElementById("btn-download-html").addEventListener("click", () => {
-  if (state.projectId) window.location.href = window.API.getExportUrl(state.projectId);
-});
+function updateDeployUrlSection(publishResult) {
+  const urlSection = document.getElementById("deploy-url-section");
+  const openBtn = document.getElementById("btn-open-deployed");
 
-document.getElementById("btn-copy-html").addEventListener("click", async () => {
+  if (publishResult?.ok) {
+    urlSection.innerHTML = `
+      <div class="panel-section-title">公開URL</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+        <div style="flex:1;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;word-break:break-all;font-family:monospace;font-size:13px">
+          <a href="${escapeHtml(publishResult.pagesDevUrl)}" target="_blank" rel="noopener" style="color:var(--accent)">${escapeHtml(publishResult.pagesDevUrl)}</a>
+        </div>
+        <button class="btn-secondary" id="btn-copy-deploy-url" style="white-space:nowrap;flex-shrink:0">コピー</button>
+      </div>`;
+    document.getElementById("btn-copy-deploy-url")?.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(publishResult.pagesDevUrl);
+        showToast("URLをコピーしました", "success");
+      } catch { showToast("コピーに失敗しました", "error"); }
+    });
+    if (openBtn) {
+      openBtn.href = publishResult.pagesDevUrl;
+      openBtn.style.display = "";
+    }
+  } else {
+    urlSection.innerHTML = `
+      <div class="panel-section-title">公開URL</div>
+      <div style="margin-top:8px;padding:12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-secondary)">
+        Cloudflare Pages設定でURLを発行できます
+        <button class="btn-secondary" id="btn-open-cf-from-deploy" style="margin-top:8px;width:100%;justify-content:center">Cloudflare Pagesを設定</button>
+      </div>`;
+    document.getElementById("btn-open-cf-from-deploy")?.addEventListener("click", () => {
+      openModal("modal-cloudflare");
+    });
+  }
+}
+
+// HTMLコードコピー
+document.getElementById("btn-html-code-copy")?.addEventListener("click", async () => {
   if (!state.projectId) return;
   try {
     const res = await fetch(window.API.getExportUrl(state.projectId));
     const html = await res.text();
     await navigator.clipboard.writeText(html);
-    showToast("クリップボードにコピーしました", "success");
+    showToast("HTMLコードをコピーしました", "success");
   } catch {
     showToast("コピーに失敗しました", "error");
   }
 });
 
-// ── Cloudflare Pages 公開 ────────────────────────────────
-
-document.getElementById("btn-publish").addEventListener("click", async () => {
+// ビジュアルコピー（リッチテキスト）
+document.getElementById("btn-visual-copy")?.addEventListener("click", async () => {
   if (!state.projectId) return;
-
-  // Check if Cloudflare is configured
   try {
-    const cfStatus = await window.API.getCloudflareStatus();
-    if (!cfStatus.configured) {
-      openModal("modal-cloudflare");
-      return;
-    }
+    const res = await fetch(window.API.getExportUrl(state.projectId));
+    const html = await res.text();
+    const htmlBlob = new Blob([html], { type: "text/html" });
+    const textBlob = new Blob([html], { type: "text/plain" });
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        "text/html": htmlBlob,
+        "text/plain": textBlob,
+      }),
+    ]);
+    showToast("ビジュアルコピーしました", "success");
   } catch {
-    openModal("modal-cloudflare");
-    return;
-  }
-
-  // Publish
-  const btn = document.getElementById("btn-publish");
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> 公開中...';
-
-  try {
-    // Build first if needed
-    if (state.projectData?.status !== "done") {
-      await window.API.build(state.projectId);
-    }
-
-    const result = await window.API.publish(state.projectId);
-    if (result.ok) {
-      showToast("公開しました!", "success");
-      // Show result modal
-      const body = document.getElementById("publish-result-body");
-      body.innerHTML = `
-        <div class="panel-section">
-          <div class="panel-section-title">公開URL</div>
-          <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:12px;word-break:break-all;font-family:monospace;font-size:13px">
-            <a href="${escapeHtml(result.url)}" target="_blank" rel="noopener" style="color:var(--accent)">${escapeHtml(result.url)}</a>
-          </div>
-        </div>
-        <div class="panel-section">
-          <div class="panel-section-title">Pages.dev URL（永続）</div>
-          <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:12px;word-break:break-all;font-family:monospace;font-size:13px">
-            <a href="${escapeHtml(result.pagesDevUrl)}" target="_blank" rel="noopener" style="color:var(--accent)">${escapeHtml(result.pagesDevUrl)}</a>
-          </div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">
-            Cloudflareダッシュボードからカスタムドメインを紐付けられます
-          </div>
-        </div>`;
-      document.getElementById("btn-open-published").href = result.pagesDevUrl;
-      openModal("modal-publish-result");
-    }
-  } catch (err) {
-    showToast(`公開エラー: ${err.message}`, "error");
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v6m0 0l2.5-2.5M8 7L5.5 4.5M2 10v3h12v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>公開</span>';
+    showToast("コピーに失敗しました", "error");
   }
 });
+
+// HTMLダウンロード
+document.getElementById("btn-deploy-download")?.addEventListener("click", () => {
+  if (state.projectId) window.location.href = window.API.getExportUrl(state.projectId);
+});
+
+// ── Cloudflare Pages 設定 ────────────────────────────────
 
 // Save Cloudflare config
 document.getElementById("btn-save-cloudflare").addEventListener("click", async () => {
@@ -1123,8 +1179,16 @@ document.getElementById("btn-save-cloudflare").addEventListener("click", async (
     if (result.ok) {
       showToast("Cloudflare設定を保存しました", "success");
       closeModal("modal-cloudflare");
-      // Trigger publish now
-      document.getElementById("btn-publish").click();
+      // 公開実行
+      try {
+        const publishResult = await window.API.publish(state.projectId);
+        if (publishResult.ok) {
+          updateDeployUrlSection(publishResult);
+          showToast("公開しました!", "success");
+        }
+      } catch (pubErr) {
+        showToast(`公開エラー: ${pubErr.message}`, "error");
+      }
     }
   } catch (err) {
     showToast(`設定エラー: ${err.message}`, "error");

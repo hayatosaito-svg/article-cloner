@@ -245,4 +245,45 @@ const WIDGET_TEMPLATES = [
   },
 ];
 
+// User-registered templates (loaded from server)
+let USER_WIDGET_TEMPLATES = [];
+
+async function loadUserWidgetTemplates() {
+  try {
+    const result = await window.API?.getWidgetTemplates();
+    if (result?.templates) {
+      USER_WIDGET_TEMPLATES = result.templates.map((t) => ({
+        id: t.id,
+        name: t.name,
+        icon: t.icon || "W",
+        description: t.description || "",
+        category: t.category || "その他",
+        isFavorite: t.isFavorite || false,
+        isUserTemplate: true,
+        generate() {
+          const partId = "sb-part-" + genId();
+          const customClass = "sb-custom-part-" + genId();
+          let html = t.html || "";
+          let css = t.css || "";
+          // Wrap in SB-compatible structure
+          const styleBlock = css ? `<style>${css}</style>` : "";
+          const fullHtml = `<div><div class="sb-custom"><span><div id="${partId}" class="${customClass}">${styleBlock}${html}</div></span></div></div>`;
+          return { html: fullHtml, type: "widget", widgetType: t.name };
+        },
+      }));
+    }
+  } catch (err) {
+    console.warn("loadUserWidgetTemplates failed:", err);
+  }
+}
+
+function getAllWidgetTemplates(favoriteOnly = false) {
+  const all = [...WIDGET_TEMPLATES, ...USER_WIDGET_TEMPLATES];
+  if (favoriteOnly) return all.filter((t) => t.isFavorite);
+  return all;
+}
+
 window.WIDGET_TEMPLATES = WIDGET_TEMPLATES;
+window.USER_WIDGET_TEMPLATES = USER_WIDGET_TEMPLATES;
+window.loadUserWidgetTemplates = loadUserWidgetTemplates;
+window.getAllWidgetTemplates = getAllWidgetTemplates;
