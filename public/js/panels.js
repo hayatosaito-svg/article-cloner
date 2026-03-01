@@ -2704,15 +2704,6 @@ function buildWidgetPanel(projectId, blockIndex, block) {
   kitSection.appendChild(kitGrid);
   frag.appendChild(kitSection);
 
-  // 保存ボタン
-  frag.appendChild(buildSaveRow(projectId, blockIndex, () => {
-    if (widgetEditMode === "html") {
-      return { html: codeArea.value };
-    }
-    const newHtml = applyTextChanges(blockHtml, textItems);
-    return { html: newHtml, text: textItems.map(t => t.currentText).join(" ") };
-  }));
-
   return frag;
 }
 
