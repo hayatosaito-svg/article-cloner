@@ -1382,7 +1382,9 @@ function buildVideoPanel(projectId, blockIndex, block) {
 
 function buildWidgetPanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
+  const blockHtml = block.html || "";
 
+  // ── ウィジェット種別 ──
   const typeSection = createSection("ウィジェット種別");
   const badge = document.createElement("span");
   badge.className = "widget-type-badge";
@@ -1397,57 +1399,217 @@ function buildWidgetPanel(projectId, blockIndex, block) {
   }
   frag.appendChild(typeSection);
 
-  if (block.styles?.length > 0) {
-    const cssSection = createSection("ウィジェットCSS");
-    const cssArea = document.createElement("textarea");
-    cssArea.className = "panel-code";
-    cssArea.value = block.styles.join("\n\n");
-    cssArea.rows = 6;
-    cssSection.appendChild(cssArea);
-    frag.appendChild(cssSection);
+  // ── HTMLプレビュー（iframe） ──
+  const previewSection = createSection("プレビュー");
+  const previewFrame = document.createElement("iframe");
+  previewFrame.className = "widget-inline-preview";
+  previewFrame.sandbox = "allow-scripts allow-same-origin";
+  previewFrame.style.cssText = "width:100%;border:1px solid var(--border);border-radius:6px;min-height:120px;background:#fff";
+  previewSection.appendChild(previewFrame);
+  frag.appendChild(previewSection);
+
+  // プレビュー更新関数
+  function updateInlinePreview(html) {
+    const doc = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:12px;font-family:-apple-system,"Hiragino Sans",sans-serif;}</style></head><body>${html}</body></html>`;
+    previewFrame.srcdoc = doc;
+    // iframeの高さ自動調整
+    previewFrame.onload = () => {
+      try {
+        const h = previewFrame.contentDocument.body.scrollHeight;
+        previewFrame.style.height = Math.min(Math.max(h + 24, 80), 400) + "px";
+      } catch {}
+    };
   }
+  // 初期プレビュー
+  setTimeout(() => updateInlinePreview(blockHtml), 0);
 
-  if (block.text) {
-    const textSection = createSection("テキスト内容");
-    const textarea = document.createElement("textarea");
-    textarea.className = "panel-textarea";
-    textarea.value = block.text;
-    textarea.rows = 4;
-    textSection.appendChild(textarea);
-    frag.appendChild(textSection);
-  }
+  // ── 編集モード切替（クイック編集 / HTML編集） ──
+  let widgetEditMode = "quick"; // "quick" | "html"
+  const modeRow = document.createElement("div");
+  modeRow.style.cssText = "display:flex;gap:6px;margin:8px 0";
 
-  // Widget edit action buttons
-  const actionsDiv = document.createElement("div");
-  actionsDiv.className = "widget-edit-actions";
+  const wQuickBtn = document.createElement("button");
+  wQuickBtn.className = "widget-edit-btn";
+  wQuickBtn.style.background = "rgba(236,72,153,0.15)";
+  wQuickBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3z" stroke="currentColor" stroke-width="1.5"/></svg> クイック編集';
 
-  const htmlEditBtn = document.createElement("button");
-  htmlEditBtn.className = "widget-edit-btn";
-  htmlEditBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M5 3l-3 5 3 5M11 3l3 5-3 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> HTML編集';
-  htmlEditBtn.addEventListener("click", () => {
+  const wHtmlBtn = document.createElement("button");
+  wHtmlBtn.className = "widget-edit-btn";
+  wHtmlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M5 3l-3 5 3 5M11 3l3 5-3 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> HTML編集';
+
+  const wFullEditorBtn = document.createElement("button");
+  wFullEditorBtn.className = "widget-edit-btn";
+  wFullEditorBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M1 5h14" stroke="currentColor" stroke-width="1.5"/></svg> フルエディタ';
+  wFullEditorBtn.addEventListener("click", () => {
     if (window.openWidgetHtmlEditor) window.openWidgetHtmlEditor(blockIndex);
   });
-  actionsDiv.appendChild(htmlEditBtn);
 
-  const quickEditBtn = document.createElement("button");
-  quickEditBtn.className = "widget-edit-btn";
-  quickEditBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> クイック編集';
-  quickEditBtn.addEventListener("click", () => {
-    if (window.openQuickEdit) window.openQuickEdit(blockIndex);
-  });
-  actionsDiv.appendChild(quickEditBtn);
+  modeRow.appendChild(wQuickBtn);
+  modeRow.appendChild(wHtmlBtn);
+  modeRow.appendChild(wFullEditorBtn);
+  frag.appendChild(modeRow);
 
-  frag.appendChild(actionsDiv);
+  // ── クイック編集エリア（テキストノード編集） ──
+  const quickSection = document.createElement("div");
+  quickSection.className = "panel-section";
+  const quickTitle = document.createElement("div");
+  quickTitle.className = "panel-section-title";
+  quickTitle.textContent = "テキスト内容";
+  quickSection.appendChild(quickTitle);
 
-  const htmlSection = createSection("HTMLソース");
+  const textItems = extractTextNodes(blockHtml);
+  const textContainer = document.createElement("div");
+  textContainer.className = "text-nodes-container";
+
+  // CSS表示
+  const cssArea = document.createElement("textarea");
+  cssArea.className = "panel-code pane-css-editor";
+  cssArea.value = extractCssFromHtml(blockHtml);
+  cssArea.rows = 4;
+  cssArea.readOnly = true;
+
+  // HTMLソースエリア（先に作成）
   const codeArea = document.createElement("textarea");
   codeArea.className = "panel-code";
-  codeArea.value = block.html || "";
+  codeArea.value = blockHtml;
   codeArea.rows = 8;
+  codeArea.readOnly = true;
+
+  textItems.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "text-node-row";
+    const input = document.createElement("textarea");
+    input.className = "text-node-input";
+    input.value = item.currentText;
+    input.rows = 1;
+    input.style.height = "auto";
+    input.style.height = input.scrollHeight + "px";
+    input.addEventListener("input", () => {
+      item.currentText = input.value;
+      input.style.height = "auto";
+      input.style.height = input.scrollHeight + "px";
+      const newHtml = applyTextChanges(blockHtml, textItems);
+      codeArea.value = newHtml;
+      updateInlinePreview(newHtml);
+      autoSave(projectId, blockIndex, () => ({
+        html: newHtml,
+        text: textItems.map(t => t.currentText).join(" "),
+      }));
+    });
+    row.appendChild(input);
+    textContainer.appendChild(row);
+  });
+
+  if (textItems.length === 0) {
+    const noText = document.createElement("div");
+    noText.style.cssText = "color:var(--text-muted);font-size:12px;padding:8px";
+    noText.textContent = "テキストノードなし";
+    textContainer.appendChild(noText);
+  }
+  quickSection.appendChild(textContainer);
+
+  // ── HTMLソースセクション ──
+  const htmlSection = document.createElement("div");
+  htmlSection.className = "panel-section";
+  const htmlTitle = document.createElement("div");
+  htmlTitle.className = "panel-section-title";
+  htmlTitle.textContent = "HTMLソース";
+  htmlSection.appendChild(htmlTitle);
+  codeArea.addEventListener("input", () => {
+    updateInlinePreview(codeArea.value);
+    autoSave(projectId, blockIndex, () => ({ html: codeArea.value }));
+  });
   htmlSection.appendChild(codeArea);
+
+  // ── CSSセクション ──
+  const cssSection = document.createElement("div");
+  cssSection.className = "panel-section";
+  const cssTitle = document.createElement("div");
+  cssTitle.className = "panel-section-title";
+  cssTitle.textContent = "CSS";
+  cssSection.appendChild(cssTitle);
+  cssSection.appendChild(cssArea);
+
+  // 各セクションを追加
+  frag.appendChild(quickSection);
+  frag.appendChild(cssSection);
   frag.appendChild(htmlSection);
 
-  frag.appendChild(buildSaveRow(projectId, blockIndex, () => ({ html: codeArea.value })));
+  // ── モード切替ロジック ──
+  function setWidgetEditMode(mode) {
+    widgetEditMode = mode;
+    if (mode === "quick") {
+      wQuickBtn.style.background = "rgba(236,72,153,0.15)";
+      wHtmlBtn.style.background = "";
+      // テキスト編集可能、HTML/CSS読取専用
+      textContainer.querySelectorAll(".text-node-input").forEach(t => { t.readOnly = false; t.style.opacity = "1"; });
+      codeArea.readOnly = true;
+      codeArea.style.opacity = "0.7";
+      cssArea.readOnly = true;
+      cssArea.style.opacity = "0.7";
+      quickSection.style.display = "";
+    } else {
+      wHtmlBtn.style.background = "rgba(236,72,153,0.15)";
+      wQuickBtn.style.background = "";
+      // HTML/CSS編集可能、テキスト読取専用
+      textContainer.querySelectorAll(".text-node-input").forEach(t => { t.readOnly = true; t.style.opacity = "0.5"; });
+      codeArea.readOnly = false;
+      codeArea.style.opacity = "1";
+      cssArea.readOnly = false;
+      cssArea.style.opacity = "1";
+      quickSection.style.display = "";
+    }
+  }
+
+  wQuickBtn.addEventListener("click", () => setWidgetEditMode("quick"));
+  wHtmlBtn.addEventListener("click", () => setWidgetEditMode("html"));
+
+  // 初期モード
+  setWidgetEditMode("quick");
+
+  // ── キット追加セクション ──
+  const kitSection = createSection("ウィジェットキット追加");
+  const kitGrid = document.createElement("div");
+  kitGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:6px";
+
+  const allTemplates = window.getAllWidgetTemplates ? window.getAllWidgetTemplates() : (window.WIDGET_TEMPLATES || []);
+  allTemplates.forEach((tpl) => {
+    const card = document.createElement("button");
+    card.className = "widget-kit-card";
+    card.innerHTML = `<span class="widget-kit-icon">${tpl.icon || "W"}</span><span class="widget-kit-name">${tpl.name}</span>`;
+    card.title = tpl.description || "";
+    card.addEventListener("click", async () => {
+      const generated = tpl.generate();
+      try {
+        const result = await window.API.insertBlock(projectId, {
+          afterIndex: blockIndex,
+          html: generated.html,
+          type: generated.type || "widget",
+        });
+        if (result.ok) {
+          window.showToast(`「${tpl.name}」を追加しました`, "success");
+          await window.loadEditor?.(blockIndex + 1);
+          window.loadPreview?.(true);
+          window.pushHistory?.("insert_block", `Widget「${tpl.name}」を追加`);
+        }
+      } catch (err) {
+        window.showToast(`追加エラー: ${err.message}`, "error");
+      }
+    });
+    kitGrid.appendChild(card);
+  });
+
+  kitSection.appendChild(kitGrid);
+  frag.appendChild(kitSection);
+
+  // 保存ボタン
+  frag.appendChild(buildSaveRow(projectId, blockIndex, () => {
+    if (widgetEditMode === "html") {
+      return { html: codeArea.value };
+    }
+    const newHtml = applyTextChanges(blockHtml, textItems);
+    return { html: newHtml, text: textItems.map(t => t.currentText).join(" ") };
+  }));
 
   return frag;
 }
