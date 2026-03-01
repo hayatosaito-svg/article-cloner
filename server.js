@@ -232,7 +232,10 @@ app.post("/api/projects", async (req, res) => {
     try {
       // Phase 1: Scrape
       sendSSE(project, "progress", { phase: "scrape", message: "ブラウザ起動中..." });
-      const result = await scrape(url, { slug: project.slug });
+      const result = await scrape(url, {
+        slug: project.slug,
+        onProgress: (msg) => sendSSE(project, "progress", { phase: "scrape", message: msg }),
+      });
       project.html = result.html;
       project.modifiedHtml = result.html;
       project.assets = result.assets;

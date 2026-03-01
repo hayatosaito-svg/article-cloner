@@ -27,12 +27,14 @@ const USER_AGENT =
  * @param {string} [options.slug] - プロジェクトスラッグ（省略時はURL由来）
  * @param {number} [options.scrollIterations=15] - スクロール回数
  * @param {number} [options.scrollDelay=800] - スクロール間のms
+ * @param {function} [options.onProgress] - 進捗コールバック (message: string) => void
  * @returns {Promise<{html: string, assets: Array, dirs: object}>}
  */
 export async function scrape(url, options = {}) {
   const slug = options.slug || urlToSlug(url);
   const scrollIterations = options.scrollIterations || 8;
-  const scrollDelay = options.scrollDelay || 350;
+  const scrollDelay = options.scrollDelay || 200;
+  const onProgress = options.onProgress || (() => {});
 
   console.log(`[scraper] Starting scrape: ${url}`);
   console.log(`[scraper] Project slug: ${slug}`);
@@ -56,12 +58,14 @@ export async function scrape(url, options = {}) {
 
     // ページ読み込み
     console.log("[scraper] Loading page...");
+    onProgress("ページ読み込み中...");
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
     // DOMロード後、追加リソース読み込みを待つ
-    await sleep(2000);
+    await sleep(800);
 
     // スクロールしてlazy loadを完全展開
     console.log(`[scraper] Scrolling to load lazy content (${scrollIterations} iterations)...`);
+    onProgress("ページスクロール中（lazy load展開）...");
     for (let i = 0; i < scrollIterations; i++) {
       await page.evaluate(({ step, total }) => {
         const totalHeight = document.body.scrollHeight;
@@ -72,13 +76,14 @@ export async function scrape(url, options = {}) {
     }
     // 最後にページ末端まで
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await sleep(500);
+    await sleep(300);
     // トップに戻す
     await page.evaluate(() => window.scrollTo(0, 0));
-    await sleep(200);
+    await sleep(100);
 
     // innerHTML取得（body配下 or article-body配下）
     console.log("[scraper] Extracting HTML...");
+    onProgress("HTML抽出中...");
     const html = await page.evaluate(() => {
       // SB記事本文エリアを優先取得
       const articleBody = document.querySelector(".article-body");
@@ -115,11 +120,12 @@ export async function scrape(url, options = {}) {
 
     console.log(`[scraper] Found ${mediaUrls.length} media assets`);
 
-    // アセットダウンロード（並列5同時）
+    // アセットダウンロード（並列20同時）
+    onProgress(`${mediaUrls.length}件のアセットをダウンロード中...`);
     const assets = [];
     let downloaded = 0;
     let failed = 0;
-    const CONCURRENCY = 5;
+    const CONCURRENCY = 20;
 
     async function downloadOne(mediaUrl) {
       try {
@@ -147,6 +153,9 @@ export async function scrape(url, options = {}) {
           type: guessMediaType(mediaUrl),
         });
         downloaded++;
+        if (downloaded % 10 === 0 || downloaded === mediaUrls.length) {
+          onProgress(`アセットダウンロード: ${downloaded}/${mediaUrls.length}`);
+        }
       } catch (err) {
         failed++;
         console.warn(`[scraper] Failed: ${mediaUrl} - ${err.message}`);
