@@ -31,8 +31,8 @@ const USER_AGENT =
  */
 export async function scrape(url, options = {}) {
   const slug = options.slug || urlToSlug(url);
-  const scrollIterations = options.scrollIterations || 15;
-  const scrollDelay = options.scrollDelay || 800;
+  const scrollIterations = options.scrollIterations || 8;
+  const scrollDelay = options.scrollDelay || 350;
 
   console.log(`[scraper] Starting scrape: ${url}`);
   console.log(`[scraper] Project slug: ${slug}`);
@@ -58,24 +58,24 @@ export async function scrape(url, options = {}) {
     console.log("[scraper] Loading page...");
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
     // DOMロード後、追加リソース読み込みを待つ
-    await sleep(3000);
+    await sleep(2000);
 
     // スクロールしてlazy loadを完全展開
     console.log(`[scraper] Scrolling to load lazy content (${scrollIterations} iterations)...`);
     for (let i = 0; i < scrollIterations; i++) {
-      await page.evaluate((step) => {
+      await page.evaluate((step, total) => {
         const totalHeight = document.body.scrollHeight;
-        const stepSize = totalHeight / 15;
+        const stepSize = totalHeight / total;
         window.scrollTo(0, stepSize * (step + 1));
-      }, i);
+      }, i, scrollIterations);
       await sleep(scrollDelay);
     }
     // 最後にページ末端まで
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await sleep(800);
+    await sleep(500);
     // トップに戻す
     await page.evaluate(() => window.scrollTo(0, 0));
-    await sleep(300);
+    await sleep(200);
 
     // innerHTML取得（body配下 or article-body配下）
     console.log("[scraper] Extracting HTML...");
@@ -115,24 +115,25 @@ export async function scrape(url, options = {}) {
 
     console.log(`[scraper] Found ${mediaUrls.length} media assets`);
 
-    // アセットダウンロード
+    // アセットダウンロード（並列5同時）
     const assets = [];
     let downloaded = 0;
     let failed = 0;
+    const CONCURRENCY = 5;
 
-    for (const mediaUrl of mediaUrls) {
+    async function downloadOne(mediaUrl) {
       try {
         const filename = urlToFilename(mediaUrl);
         const filePath = path.join(dirs.assets, filename);
 
         const resp = await fetch(mediaUrl, {
           headers: { "User-Agent": USER_AGENT },
-          timeout: 15000,
+          timeout: 10000,
         });
 
         if (!resp.ok) {
           failed++;
-          continue;
+          return;
         }
 
         const buffer = Buffer.from(await resp.arrayBuffer());
@@ -148,8 +149,14 @@ export async function scrape(url, options = {}) {
         downloaded++;
       } catch (err) {
         failed++;
-        console.warn(`[scraper] Failed to download: ${mediaUrl} - ${err.message}`);
+        console.warn(`[scraper] Failed: ${mediaUrl} - ${err.message}`);
       }
+    }
+
+    // 並列バッチ実行
+    for (let i = 0; i < mediaUrls.length; i += CONCURRENCY) {
+      const batch = mediaUrls.slice(i, i + CONCURRENCY);
+      await Promise.all(batch.map(downloadOne));
     }
 
     console.log(
