@@ -11,7 +11,7 @@ import { writeFile, readFile } from "fs/promises";
 import path from "path";
 import { sleep } from "./utils.js";
 
-const GEMINI_IMAGE_GEN_MODEL = "gemini-2.5-flash-image";
+const GEMINI_IMAGE_GEN_MODEL = "gemini-3-pro-image-preview";
 const GEMINI_FLASH_MODEL = "gemini-2.5-flash";
 const GEMINI_IMAGEN_MODEL = "imagen-3.0-generate-002";
 
