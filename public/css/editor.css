@@ -2230,6 +2230,61 @@
   font-size: 11px;
 }
 
+/* ── アニメーションチップ ── */
+.anim-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-glass);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: var(--font);
+}
+.anim-chip:hover { border-color: #ec4899; color: var(--text-primary); }
+.anim-chip.active {
+  background: rgba(236,72,153,0.15);
+  border-color: #ec4899;
+  color: #ec4899;
+  font-weight: 600;
+}
+
+/* ── 要素分離カード ── */
+.element-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 6px;
+}
+.element-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  background: var(--bg-tertiary);
+  text-align: center;
+}
+.element-card-info {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ── テキストノードタグバッジ ── */
+.text-node-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  color: #ec4899;
+  background: rgba(236,72,153,0.1);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
 /* ── 画像アップロードモーダル ── */
 .upload-modal-zone {
   display: flex;
