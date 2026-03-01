@@ -1184,29 +1184,192 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
   const asset = block.assets?.[0];
   const originalSrc = asset?.src || asset?.webpSrc || "";
+  const blockHtml = block.html || "";
 
-  // 元画像プレビュー
-  const previewSection = createSection("元画像");
-  if (asset) {
-    const box = document.createElement("div");
-    box.className = "image-preview-box";
-    const img = document.createElement("img");
-    img.src = originalSrc;
-    img.alt = "元画像";
-    img.onerror = () => { img.style.display = "none"; };
-    box.appendChild(img);
-    if (asset.width && asset.height) {
-      const dims = document.createElement("div");
-      dims.style.cssText = "font-size:11px; color:var(--text-muted); padding:6px; text-align:center";
-      dims.textContent = `${asset.width} x ${asset.height}`;
-      box.appendChild(dims);
-    }
-    previewSection.appendChild(box);
+  // ── 画像プレビュー（大きめ表示） ──
+  const previewSection = createSection("画像プレビュー");
+  const previewBox = document.createElement("div");
+  previewBox.className = "image-preview-box";
+  previewBox.style.cssText = "position:relative;background:#111;border-radius:8px;overflow:hidden";
+  const previewImg = document.createElement("img");
+  previewImg.style.cssText = "width:100%;display:block;border-radius:8px";
+  if (originalSrc) {
+    previewImg.src = originalSrc;
+    previewImg.alt = "現在の画像";
+    previewImg.onerror = () => { previewImg.style.display = "none"; };
+  } else {
+    previewImg.style.display = "none";
   }
+  previewBox.appendChild(previewImg);
+  previewSection.appendChild(previewBox);
   frag.appendChild(previewSection);
 
-  // 手持ち画像アップロード
-  const uploadSection = createSection("手持ち画像で差し替え");
+  // ── 画像情報 ──
+  const infoSection = createSection("画像情報");
+  const infoGrid = document.createElement("div");
+  infoGrid.className = "img-info-grid";
+  const infoItems = [
+    { label: "サイズ", value: asset ? `${asset.width || "?"}×${asset.height || "?"}` : "不明" },
+    { label: "形式", value: asset?.type || (originalSrc.match(/\.(webp|jpg|png|gif|svg)/i)?.[1] || "不明") },
+    { label: "ファイル", value: (originalSrc.split("/").pop() || "").slice(0, 30) || "なし" },
+  ];
+  infoItems.forEach(item => {
+    const row = document.createElement("div");
+    row.className = "img-info-row";
+    row.innerHTML = `<span class="img-info-label">${item.label}</span><span class="img-info-value">${item.value}</span>`;
+    infoGrid.appendChild(row);
+  });
+  infoSection.appendChild(infoGrid);
+  frag.appendChild(infoSection);
+
+  // ── サイズ調整 ──
+  const sizeSection = createSection("サイズ調整");
+  const sizeRow = document.createElement("div");
+  sizeRow.style.cssText = "display:flex;gap:8px;align-items:center";
+  const wLabel = document.createElement("span");
+  wLabel.style.cssText = "font-size:12px;color:var(--text-muted)";
+  wLabel.textContent = "幅:";
+  const wInput = document.createElement("input");
+  wInput.type = "number";
+  wInput.className = "panel-input-sm";
+  wInput.value = asset?.width || "";
+  wInput.placeholder = "auto";
+  const hLabel = document.createElement("span");
+  hLabel.style.cssText = "font-size:12px;color:var(--text-muted)";
+  hLabel.textContent = "高さ:";
+  const hInput = document.createElement("input");
+  hInput.type = "number";
+  hInput.className = "panel-input-sm";
+  hInput.value = asset?.height || "";
+  hInput.placeholder = "auto";
+  sizeRow.appendChild(wLabel);
+  sizeRow.appendChild(wInput);
+  sizeRow.appendChild(hLabel);
+  sizeRow.appendChild(hInput);
+  sizeSection.appendChild(sizeRow);
+
+  const presetRow = document.createElement("div");
+  presetRow.style.cssText = "display:flex;gap:4px;margin-top:6px;flex-wrap:wrap";
+  [
+    { label: "元サイズ", w: asset?.width, h: asset?.height },
+    { label: "580×auto", w: 580, h: "" },
+    { label: "400×400", w: 400, h: 400 },
+    { label: "300×250", w: 300, h: 250 },
+    { label: "100%幅", w: "100%", h: "" },
+  ].forEach(p => {
+    const btn = document.createElement("button");
+    btn.className = "style-preset-btn";
+    btn.textContent = p.label;
+    btn.addEventListener("click", () => {
+      wInput.value = p.w || "";
+      hInput.value = p.h || "";
+    });
+    presetRow.appendChild(btn);
+  });
+  sizeSection.appendChild(presetRow);
+  frag.appendChild(sizeSection);
+
+  // ── alt / title 編集 ──
+  const attrSection = createSection("alt / title テキスト");
+  const altDoc = new DOMParser().parseFromString(blockHtml, "text/html");
+  const altImgEl = altDoc.querySelector("img");
+  const currentAlt = altImgEl?.getAttribute("alt") || "";
+  const currentTitle = altImgEl?.getAttribute("title") || "";
+
+  const altLabel = document.createElement("div");
+  altLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:2px";
+  altLabel.textContent = "alt（代替テキスト）";
+  const altInput = document.createElement("input");
+  altInput.type = "text";
+  altInput.className = "panel-input";
+  altInput.value = currentAlt;
+  altInput.placeholder = "画像の説明テキスト...";
+
+  const titleLabel = document.createElement("div");
+  titleLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:8px;margin-bottom:2px";
+  titleLabel.textContent = "title（ツールチップ）";
+  const titleInput = document.createElement("input");
+  titleInput.type = "text";
+  titleInput.className = "panel-input";
+  titleInput.value = currentTitle;
+  titleInput.placeholder = "マウスオーバー時の表示テキスト...";
+
+  attrSection.appendChild(altLabel);
+  attrSection.appendChild(altInput);
+  attrSection.appendChild(titleLabel);
+  attrSection.appendChild(titleInput);
+  frag.appendChild(attrSection);
+
+  // ── リンク設定 ──
+  const linkSection = createSection("リンク設定");
+  const linkDoc = new DOMParser().parseFromString(blockHtml, "text/html");
+  const linkEl = linkDoc.querySelector("a");
+  const currentHref = linkEl?.getAttribute("href") || "";
+  const currentTarget = linkEl?.getAttribute("target") || "";
+
+  const hrefLabel = document.createElement("div");
+  hrefLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:2px";
+  hrefLabel.textContent = "リンクURL";
+  const hrefInput = document.createElement("input");
+  hrefInput.type = "url";
+  hrefInput.className = "panel-input";
+  hrefInput.value = currentHref;
+  hrefInput.placeholder = "https://example.com（空欄でリンクなし）";
+
+  const targetRow = document.createElement("div");
+  targetRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-top:6px";
+  const targetCheck = document.createElement("input");
+  targetCheck.type = "checkbox";
+  targetCheck.id = `target-blank-${blockIndex}`;
+  targetCheck.checked = currentTarget === "_blank";
+  const targetLabel = document.createElement("label");
+  targetLabel.htmlFor = targetCheck.id;
+  targetLabel.style.cssText = "font-size:12px;color:var(--text-secondary);cursor:pointer";
+  targetLabel.textContent = "別タブで開く";
+  targetRow.appendChild(targetCheck);
+  targetRow.appendChild(targetLabel);
+
+  linkSection.appendChild(hrefLabel);
+  linkSection.appendChild(hrefInput);
+  linkSection.appendChild(targetRow);
+  frag.appendChild(linkSection);
+
+  // ── 表示スタイル ──
+  const styleSection = createSection("表示スタイル");
+  const fitLabel = document.createElement("div");
+  fitLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:4px";
+  fitLabel.textContent = "object-fit";
+  const fitSelect = document.createElement("select");
+  fitSelect.className = "form-input";
+  fitSelect.style.cssText = "font-size:12px;padding:5px 8px";
+  ["cover", "contain", "fill", "none", "scale-down"].forEach(v => {
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v;
+    fitSelect.appendChild(opt);
+  });
+  // 現在の値を検出
+  const currentFit = altImgEl?.style?.objectFit || "";
+  if (currentFit) fitSelect.value = currentFit;
+
+  const borderLabel = document.createElement("div");
+  borderLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:8px;margin-bottom:4px";
+  borderLabel.textContent = "角丸 (border-radius)";
+  const borderInput = document.createElement("input");
+  borderInput.type = "text";
+  borderInput.className = "panel-input-sm";
+  borderInput.style.width = "100px";
+  borderInput.value = altImgEl?.style?.borderRadius || "0";
+  borderInput.placeholder = "0px";
+
+  styleSection.appendChild(fitLabel);
+  styleSection.appendChild(fitSelect);
+  styleSection.appendChild(borderLabel);
+  styleSection.appendChild(borderInput);
+  frag.appendChild(styleSection);
+
+  // ── 画像差し替え（アップロード）──
+  const uploadSection = createSection("画像差し替え");
   const uploadZone = document.createElement("div");
   uploadZone.className = "upload-drop-zone";
   uploadZone.innerHTML = '<div class="upload-drop-icon">📁</div><div class="upload-drop-text">画像をドラッグ＆ドロップ<br>またはクリックして選択</div>';
@@ -1249,6 +1412,8 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
           });
           if (uploadResult.ok) {
             await window.API.applyImage(projectId, blockIndex, { imageUrl: uploadResult.imageUrl });
+            previewImg.src = uploadResult.imageUrl;
+            previewImg.style.display = "block";
             window.showToast("画像を適用しました", "success");
             window.loadPreview(true);
             window.pushHistory?.("image_upload", `ブロック ${blockIndex} 画像アップロード`);
@@ -1275,16 +1440,63 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
   uploadSection.appendChild(uploadPreview);
   frag.appendChild(uploadSection);
 
-  // HTMLソース
+  // ── HTMLソース ──
   const htmlSection = createSection("HTMLソース");
   const codeArea = document.createElement("textarea");
   codeArea.className = "panel-code";
-  codeArea.value = block.html || "";
+  codeArea.value = blockHtml;
   codeArea.rows = 6;
   htmlSection.appendChild(codeArea);
   frag.appendChild(htmlSection);
 
-  frag.appendChild(buildSaveRow(projectId, blockIndex, () => ({ html: codeArea.value })));
+  // ── 保存 ──
+  frag.appendChild(buildSaveRow(projectId, blockIndex, () => {
+    // HTML直接編集されていたらそのまま返す
+    if (codeArea.value !== blockHtml) {
+      return { html: codeArea.value };
+    }
+    // UIから変更を適用してHTML生成
+    let html = blockHtml;
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const imgEl = doc.querySelector("img");
+    if (imgEl) {
+      // alt / title
+      if (altInput.value) imgEl.setAttribute("alt", altInput.value);
+      else imgEl.removeAttribute("alt");
+      if (titleInput.value) imgEl.setAttribute("title", titleInput.value);
+      else imgEl.removeAttribute("title");
+      // サイズ
+      if (wInput.value) imgEl.style.width = String(wInput.value).includes("%") ? wInput.value : wInput.value + "px";
+      if (hInput.value) imgEl.style.height = hInput.value + "px";
+      // object-fit
+      if (fitSelect.value !== "cover" || currentFit) imgEl.style.objectFit = fitSelect.value;
+      // border-radius
+      if (borderInput.value && borderInput.value !== "0") {
+        imgEl.style.borderRadius = borderInput.value.includes("px") ? borderInput.value : borderInput.value + "px";
+      } else {
+        imgEl.style.removeProperty("border-radius");
+      }
+    }
+    // リンク処理
+    const existingLink = doc.querySelector("a");
+    if (hrefInput.value.trim()) {
+      if (existingLink) {
+        existingLink.setAttribute("href", hrefInput.value.trim());
+        if (targetCheck.checked) existingLink.setAttribute("target", "_blank");
+        else existingLink.removeAttribute("target");
+      } else if (imgEl) {
+        const a = doc.createElement("a");
+        a.setAttribute("href", hrefInput.value.trim());
+        if (targetCheck.checked) a.setAttribute("target", "_blank");
+        imgEl.parentNode.insertBefore(a, imgEl);
+        a.appendChild(imgEl);
+      }
+    } else if (existingLink && imgEl) {
+      existingLink.parentNode.insertBefore(imgEl, existingLink);
+      existingLink.remove();
+    }
+    return { html: doc.body.innerHTML };
+  }));
 
   return frag;
 }

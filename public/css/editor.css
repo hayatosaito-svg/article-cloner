@@ -2205,6 +2205,31 @@
   background: #fff;
 }
 
+/* ── 画像手動編集パネル ── */
+.img-info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.img-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  font-size: 12px;
+}
+.img-info-label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.img-info-value {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
 /* ── 画像アップロードモーダル ── */
 .upload-modal-zone {
   display: flex;
