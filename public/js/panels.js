@@ -1406,48 +1406,271 @@ function buildImagePanel(projectId, blockIndex, block) {
   return frag;
 }
 
-// ── 画像クイック編集パネル（手動モード） ─────────────────────
+// ── 画像クイック編集パネル（手動モード — ブラッシュアップ版） ──
 function buildImageQuickPanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
   const asset = block.assets?.[0];
   const originalSrc = asset?.src || asset?.webpSrc || "";
   const blockHtml = block.html || "";
   const parsedDoc = new DOMParser().parseFromString(blockHtml, "text/html");
+  const allImgs = Array.from(parsedDoc.querySelectorAll("img, source[data-srcset]")).filter(
+    el => (el.getAttribute("src") || el.getAttribute("data-src") || el.getAttribute("data-srcset")) && el.tagName !== "PICTURE"
+  );
+  const firstImg = parsedDoc.querySelector("img");
+  let selectedImgIndex = 0;
 
-  // ── 要素分離: 画像一覧 ──
-  const imgSection = createSection("画像要素");
-  const allImgs = parsedDoc.querySelectorAll("img, picture, source[data-srcset]");
+  // ============================================================
+  // Section 1: 画像要素（折りたたみ・大プレビュー・スマートラベル）
+  // ============================================================
+  const imgSec = createCollapsibleSection("📷", "画像要素", allImgs.length, true);
+
+  // 選択中画像の大きいプレビュー
+  const selectedPreview = document.createElement("div");
+  selectedPreview.className = "bp-img-selected-preview";
+  const selectedImg = document.createElement("img");
+  const firstSrc = allImgs[0] ? (allImgs[0].getAttribute("src") || allImgs[0].getAttribute("data-src") || allImgs[0].getAttribute("data-srcset") || "") : originalSrc;
+  selectedImg.src = firstSrc || originalSrc;
+  selectedImg.onerror = () => { selectedImg.style.display = "none"; };
+  selectedPreview.appendChild(selectedImg);
+
+  // アクションバー（AI生成 & 差し替え）
+  const actionBar = document.createElement("div");
+  actionBar.className = "bp-img-action-bar";
+  const aiGenBtn = document.createElement("button");
+  aiGenBtn.className = "bp-action-btn bp-action-ai";
+  aiGenBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg> AI で類似画像生成';
+  const replaceBtn = document.createElement("button");
+  replaceBtn.className = "bp-action-btn bp-action-replace";
+  replaceBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 10V2m-3 3l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 10v3h12v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> 画像を差し替え';
+  actionBar.appendChild(aiGenBtn);
+  actionBar.appendChild(replaceBtn);
+  selectedPreview.appendChild(actionBar);
+  imgSec.body.appendChild(selectedPreview);
+
+  // サムネイル一覧（120x80px拡大、スマートラベル）
   if (allImgs.length > 0) {
-    const imgGrid = document.createElement("div");
-    imgGrid.className = "element-card-grid";
+    const thumbGrid = document.createElement("div");
+    thumbGrid.className = "bp-thumb-grid";
     allImgs.forEach((el, i) => {
       const src = el.getAttribute("src") || el.getAttribute("data-src") || el.getAttribute("data-srcset") || "";
-      if (!src || el.tagName === "PICTURE") return;
       const card = document.createElement("div");
-      card.className = "element-card";
+      card.className = "bp-thumb-card" + (i === 0 ? " bp-thumb-selected" : "");
       const thumb = document.createElement("img");
       thumb.src = src;
-      thumb.style.cssText = "width:100%;max-height:80px;object-fit:contain;border-radius:4px";
       thumb.onerror = () => { thumb.style.display = "none"; };
       card.appendChild(thumb);
-      const info = document.createElement("div");
-      info.className = "element-card-info";
-      info.textContent = `${el.tagName.toLowerCase()} [${i}]`;
-      card.appendChild(info);
-      imgGrid.appendChild(card);
-    });
-    imgSection.appendChild(imgGrid);
-  } else {
-    const noImg = document.createElement("div");
-    noImg.style.cssText = "font-size:12px;color:var(--text-muted);padding:8px";
-    noImg.textContent = "画像要素なし";
-    imgSection.appendChild(noImg);
-  }
-  frag.appendChild(imgSection);
+      const label = document.createElement("div");
+      label.className = "bp-thumb-label";
+      label.textContent = getImageElementLabel(el, i);
+      card.appendChild(label);
+      // サイズ情報
+      const sizeInfo = document.createElement("div");
+      sizeInfo.className = "bp-thumb-size";
+      const w = el.getAttribute("width") || asset?.width || "";
+      const h = el.getAttribute("height") || asset?.height || "";
+      sizeInfo.textContent = w && h ? `${w}×${h}` : "";
+      card.appendChild(sizeInfo);
 
-  // ── 要素分離: テキスト個別編集 ──
-  const textSection = createSection("テキスト要素");
+      card.addEventListener("click", () => {
+        selectedImgIndex = i;
+        thumbGrid.querySelectorAll(".bp-thumb-card").forEach(c => c.classList.remove("bp-thumb-selected"));
+        card.classList.add("bp-thumb-selected");
+        selectedImg.src = src;
+        selectedImg.style.display = "";
+        // プレビューのブロック内でこの要素をハイライト
+        const iframe = document.getElementById("preview-iframe");
+        if (iframe?.contentWindow) {
+          iframe.contentWindow.postMessage({ type: "highlightBlock", blockIndex }, "*");
+        }
+      });
+      thumbGrid.appendChild(card);
+    });
+    imgSec.body.appendChild(thumbGrid);
+  }
+
+  // AI生成 展開パネル（クリックで開閉）
+  const aiPanel = document.createElement("div");
+  aiPanel.className = "bp-ai-gen-panel";
+  aiPanel.style.display = "none";
+
+  const aiPanelContent = document.createElement("div");
+  aiPanelContent.style.cssText = "padding:10px 0";
+  // ニュアンス
+  const nuanceLabel = document.createElement("div");
+  nuanceLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:4px";
+  nuanceLabel.textContent = "ニュアンス:";
+  aiPanelContent.appendChild(nuanceLabel);
+  const nuanceRow = document.createElement("div");
+  nuanceRow.style.cssText = "display:flex;gap:4px;margin-bottom:8px";
+  let aiNuance = "same";
+  [{ v: "same", l: "ほぼ同じ" }, { v: "slight", l: "少し変える" }, { v: "big", l: "大きく変える" }].forEach((o, i) => {
+    const btn = document.createElement("button");
+    btn.className = "anim-chip" + (i === 0 ? " active" : "");
+    btn.textContent = o.l;
+    btn.addEventListener("click", () => {
+      aiNuance = o.v;
+      nuanceRow.querySelectorAll(".anim-chip").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    });
+    nuanceRow.appendChild(btn);
+  });
+  aiPanelContent.appendChild(nuanceRow);
+  // スタイル
+  const styleLabel = document.createElement("div");
+  styleLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:4px";
+  styleLabel.textContent = "スタイル:";
+  aiPanelContent.appendChild(styleLabel);
+  const styleRow = document.createElement("div");
+  styleRow.style.cssText = "display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap";
+  let aiStyle = "photo";
+  [{ v: "photo", l: "写真風" }, { v: "manga", l: "漫画風" }, { v: "illustration", l: "イラスト" }, { v: "flat", l: "フラット" }].forEach((o, i) => {
+    const btn = document.createElement("button");
+    btn.className = "anim-chip" + (i === 0 ? " active" : "");
+    btn.textContent = o.l;
+    btn.addEventListener("click", () => {
+      aiStyle = o.v;
+      styleRow.querySelectorAll(".anim-chip").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    });
+    styleRow.appendChild(btn);
+  });
+  aiPanelContent.appendChild(styleRow);
+  // 生成ボタン
+  const goBtn = document.createElement("button");
+  goBtn.className = "bp-action-btn bp-action-ai";
+  goBtn.style.cssText = "width:100%;justify-content:center;padding:10px";
+  goBtn.textContent = "生成する";
+  const aiResultGrid = document.createElement("div");
+  aiResultGrid.className = "oneclick-result-grid";
+  goBtn.addEventListener("click", async () => {
+    goBtn.disabled = true;
+    goBtn.innerHTML = '<span class="spinner"></span> 生成中...（約30秒）';
+    aiResultGrid.innerHTML = "";
+    try {
+      const result = await window.API.oneClickImage(projectId, blockIndex, {
+        nuance: aiNuance, style: aiStyle,
+        designRequirements: window._designRequirements || "",
+        genMode: "similar", provider: window._selectedProvider || "gemini",
+      });
+      if (result.ok && result.images) {
+        window.showToast(`${result.images.length}パターン生成しました`, "success");
+        result.images.forEach((imgUrl, idx) => {
+          const card = document.createElement("div");
+          card.className = "oneclick-variant-card";
+          const varImg = document.createElement("img");
+          varImg.src = imgUrl;
+          varImg.alt = `パターン ${idx + 1}`;
+          card.appendChild(varImg);
+          const applyBtn = document.createElement("button");
+          applyBtn.className = "oneclick-apply-btn";
+          applyBtn.textContent = "これを使う";
+          applyBtn.addEventListener("click", async () => {
+            applyBtn.disabled = true;
+            applyBtn.innerHTML = '<span class="spinner"></span>';
+            try {
+              await window.API.applyImage(projectId, blockIndex, { imageUrl: imgUrl });
+              window.showToast("画像を適用しました", "success");
+              window.loadPreview(true);
+              window.pushHistory?.("image_apply", `ブロック ${blockIndex} AI画像適用`);
+            } catch (err) { window.showToast(`エラー: ${err.message}`, "error"); }
+            finally { applyBtn.disabled = false; applyBtn.textContent = "これを使う"; }
+          });
+          card.appendChild(applyBtn);
+          aiResultGrid.appendChild(card);
+        });
+      }
+    } catch (err) { window.showToast(`エラー: ${err.message}`, "error"); }
+    finally { goBtn.disabled = false; goBtn.textContent = "生成する"; }
+  });
+  aiPanelContent.appendChild(goBtn);
+  aiPanelContent.appendChild(aiResultGrid);
+  aiPanel.appendChild(aiPanelContent);
+  imgSec.body.appendChild(aiPanel);
+
+  // 差し替えパネル
+  const replacePanel = document.createElement("div");
+  replacePanel.className = "bp-replace-panel";
+  replacePanel.style.display = "none";
+  const uploadZone = document.createElement("div");
+  uploadZone.className = "upload-drop-zone";
+  uploadZone.style.cssText = "margin:8px 0;padding:16px";
+  uploadZone.innerHTML = '<div class="upload-drop-icon">📁</div><div class="upload-drop-text">ドラッグ＆ドロップ or クリック</div>';
+  const uploadInput = document.createElement("input");
+  uploadInput.type = "file"; uploadInput.accept = "image/*"; uploadInput.style.display = "none";
+  uploadZone.appendChild(uploadInput);
+  uploadZone.addEventListener("click", () => uploadInput.click());
+  uploadZone.addEventListener("dragover", (e) => { e.preventDefault(); uploadZone.classList.add("dragover"); });
+  uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("dragover"));
+  uploadZone.addEventListener("drop", (e) => {
+    e.preventDefault(); uploadZone.classList.remove("dragover");
+    const file = e.dataTransfer?.files?.[0];
+    if (file && file.type.startsWith("image/")) handleFile(file);
+  });
+  const uploadPreview = document.createElement("div");
+  uploadPreview.className = "upload-preview-area";
+  function handleFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      uploadPreview.innerHTML = "";
+      const card = document.createElement("div");
+      card.className = "oneclick-variant-card";
+      const img = document.createElement("img");
+      img.src = reader.result;
+      card.appendChild(img);
+      const applyBtn = document.createElement("button");
+      applyBtn.className = "oneclick-apply-btn";
+      applyBtn.textContent = "この画像を適用";
+      applyBtn.addEventListener("click", async () => {
+        applyBtn.disabled = true;
+        applyBtn.innerHTML = '<span class="spinner"></span> アップロード中...';
+        try {
+          const uploadResult = await window.API.uploadImage(projectId, blockIndex, { imageData: reader.result, fileName: file.name });
+          if (uploadResult.ok) {
+            await window.API.applyImage(projectId, blockIndex, { imageUrl: uploadResult.imageUrl });
+            window.showToast("画像を適用しました", "success");
+            window.loadPreview(true);
+            window.pushHistory?.("image_upload", `ブロック ${blockIndex} 画像アップロード`);
+          }
+        } catch (err) { window.showToast(`エラー: ${err.message}`, "error"); }
+        finally { applyBtn.disabled = false; applyBtn.textContent = "この画像を適用"; }
+      });
+      card.appendChild(applyBtn);
+      uploadPreview.appendChild(card);
+    };
+    reader.readAsDataURL(file);
+  }
+  uploadInput.addEventListener("change", () => { const file = uploadInput.files?.[0]; if (file) handleFile(file); });
+  replacePanel.appendChild(uploadZone);
+  replacePanel.appendChild(uploadPreview);
+  imgSec.body.appendChild(replacePanel);
+
+  // ボタン切り替え
+  aiGenBtn.addEventListener("click", () => {
+    const show = aiPanel.style.display === "none";
+    aiPanel.style.display = show ? "" : "none";
+    replacePanel.style.display = "none";
+  });
+  replaceBtn.addEventListener("click", () => {
+    const show = replacePanel.style.display === "none";
+    replacePanel.style.display = show ? "" : "none";
+    aiPanel.style.display = "none";
+  });
+
+  frag.appendChild(imgSec.wrapper);
+
+  // ============================================================
+  // Section 2: テキスト要素（HTML + OCR 2段表示）
+  // ============================================================
   const textItems = extractTextNodes(blockHtml);
+  const textSec = createCollapsibleSection("📝", "テキスト要素", textItems.length, true);
+
+  // HTMLテキスト
+  if (textItems.length > 0) {
+    const htmlTextLabel = document.createElement("div");
+    htmlTextLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:4px;font-weight:600";
+    htmlTextLabel.textContent = `── HTMLテキスト（${textItems.length}）──`;
+    textSec.body.appendChild(htmlTextLabel);
+  }
   const textContainer = document.createElement("div");
   textContainer.className = "text-nodes-container";
   textItems.forEach((item) => {
@@ -1477,33 +1700,84 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
     noText.textContent = "テキストノードなし";
     textContainer.appendChild(noText);
   }
-  textSection.appendChild(textContainer);
-  frag.appendChild(textSection);
+  textSec.body.appendChild(textContainer);
 
-  // ── アニメーション付与 ──
-  const animSection = createSection("アニメーション");
+  // 画像内テキスト（OCR）
+  const ocrArea = document.createElement("div");
+  ocrArea.className = "bp-ocr-area";
+  const ocrLabel = document.createElement("div");
+  ocrLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin:10px 0 4px;font-weight:600";
+  ocrLabel.textContent = "── 画像内テキスト（OCR）──";
+  ocrArea.appendChild(ocrLabel);
+  const ocrResults = document.createElement("div");
+  ocrResults.style.cssText = "font-size:12px;color:var(--text-secondary);padding:6px 8px;background:var(--bg-tertiary);border-radius:6px;min-height:30px";
+  ocrResults.textContent = "「OCR検出」ボタンで画像内テキストを抽出";
+  ocrArea.appendChild(ocrResults);
+  const ocrBtn = document.createElement("button");
+  ocrBtn.className = "panel-btn";
+  ocrBtn.style.cssText = "margin-top:6px;font-size:11px";
+  ocrBtn.textContent = "OCR検出";
+  ocrBtn.addEventListener("click", async () => {
+    ocrBtn.disabled = true;
+    ocrBtn.innerHTML = '<span class="spinner"></span> 検出中...';
+    try {
+      const resp = await fetch(`/api/projects/${projectId}/ocr`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blockIndex }),
+      });
+      const data = await resp.json();
+      if (data.texts && data.texts.length > 0) {
+        ocrResults.innerHTML = "";
+        data.texts.forEach(t => {
+          const line = document.createElement("div");
+          line.style.cssText = "padding:2px 0;border-bottom:1px solid var(--border)";
+          line.textContent = t;
+          ocrResults.appendChild(line);
+        });
+      } else {
+        ocrResults.textContent = "テキストが検出されませんでした";
+      }
+    } catch (err) {
+      ocrResults.textContent = "OCRエラー: " + err.message;
+    } finally {
+      ocrBtn.disabled = false;
+      ocrBtn.textContent = "OCR検出";
+    }
+  });
+  ocrArea.appendChild(ocrBtn);
+  textSec.body.appendChild(ocrArea);
+
+  frag.appendChild(textSec.wrapper);
+
+  // ============================================================
+  // Section 3: アニメーション（ライブプレビュー統合）
+  // ============================================================
+  const animSec = createCollapsibleSection("🎬", "アニメーション", null, false);
+
+  let selectedAnim = "";
+  let selectedScroll = "";
+  let selectedHover = "";
+  let selectedSpeed = "0.6s";
+
+  function fireAnimPreview() {
+    triggerAnimationPreview(blockIndex, { anim: selectedAnim, scroll: selectedScroll, hover: selectedHover, speed: selectedSpeed });
+  }
 
   // CSSアニメーション
   const animLabel = document.createElement("div");
   animLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:4px";
   animLabel.textContent = "CSSアニメーション";
-  animSection.appendChild(animLabel);
+  animSec.body.appendChild(animLabel);
   const animRow = document.createElement("div");
   animRow.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px";
-  let selectedAnim = "";
-  const animations = [
-    { value: "", label: "なし" },
-    { value: "fadeIn", label: "フェードイン" },
-    { value: "slideInUp", label: "スライドアップ" },
-    { value: "slideInLeft", label: "スライド左" },
-    { value: "slideInRight", label: "スライド右" },
-    { value: "bounceIn", label: "バウンス" },
-    { value: "pulse", label: "パルス" },
-    { value: "shake", label: "シェイク" },
-    { value: "zoomIn", label: "ズームイン" },
-    { value: "flipIn", label: "フリップ" },
-  ];
-  animations.forEach(a => {
+  [
+    { value: "", label: "なし" }, { value: "fadeIn", label: "フェードイン" },
+    { value: "slideInUp", label: "スライドアップ" }, { value: "slideInLeft", label: "スライド左" },
+    { value: "slideInRight", label: "スライド右" }, { value: "bounceIn", label: "バウンス" },
+    { value: "pulse", label: "パルス" }, { value: "shake", label: "シェイク" },
+    { value: "zoomIn", label: "ズームイン" }, { value: "flipIn", label: "フリップ" },
+  ].forEach(a => {
     const btn = document.createElement("button");
     btn.className = a.value === "" ? "anim-chip active" : "anim-chip";
     btn.textContent = a.label;
@@ -1511,27 +1785,24 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
       selectedAnim = a.value;
       animRow.querySelectorAll(".anim-chip").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
+      fireAnimPreview();
     });
     animRow.appendChild(btn);
   });
-  animSection.appendChild(animRow);
+  animSec.body.appendChild(animRow);
 
   // スクロール連動
   const scrollLabel = document.createElement("div");
   scrollLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:4px";
   scrollLabel.textContent = "スクロール連動（表示時に発動）";
-  animSection.appendChild(scrollLabel);
+  animSec.body.appendChild(scrollLabel);
   const scrollRow = document.createElement("div");
   scrollRow.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px";
-  let selectedScroll = "";
-  const scrollEffects = [
-    { value: "", label: "なし" },
-    { value: "scrollFadeIn", label: "フェードイン" },
-    { value: "scrollSlideUp", label: "スライドアップ" },
-    { value: "scrollZoom", label: "ズーム" },
+  [
+    { value: "", label: "なし" }, { value: "scrollFadeIn", label: "フェードイン" },
+    { value: "scrollSlideUp", label: "スライドアップ" }, { value: "scrollZoom", label: "ズーム" },
     { value: "scrollBlur", label: "ブラー解除" },
-  ];
-  scrollEffects.forEach(s => {
+  ].forEach(s => {
     const btn = document.createElement("button");
     btn.className = s.value === "" ? "anim-chip active" : "anim-chip";
     btn.textContent = s.label;
@@ -1539,28 +1810,24 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
       selectedScroll = s.value;
       scrollRow.querySelectorAll(".anim-chip").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
+      fireAnimPreview();
     });
     scrollRow.appendChild(btn);
   });
-  animSection.appendChild(scrollRow);
+  animSec.body.appendChild(scrollRow);
 
   // ホバーエフェクト
   const hoverLabel = document.createElement("div");
   hoverLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:4px";
   hoverLabel.textContent = "ホバーエフェクト";
-  animSection.appendChild(hoverLabel);
+  animSec.body.appendChild(hoverLabel);
   const hoverRow = document.createElement("div");
   hoverRow.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px";
-  let selectedHover = "";
-  const hoverEffects = [
-    { value: "", label: "なし" },
-    { value: "hoverScale", label: "拡大" },
-    { value: "hoverBright", label: "明るく" },
-    { value: "hoverShadow", label: "影追加" },
-    { value: "hoverLift", label: "浮かせる" },
-    { value: "hoverGray", label: "グレー→カラー" },
-  ];
-  hoverEffects.forEach(h => {
+  [
+    { value: "", label: "なし" }, { value: "hoverScale", label: "拡大" },
+    { value: "hoverBright", label: "明るく" }, { value: "hoverShadow", label: "影追加" },
+    { value: "hoverLift", label: "浮かせる" }, { value: "hoverGray", label: "グレー→カラー" },
+  ].forEach(h => {
     const btn = document.createElement("button");
     btn.className = h.value === "" ? "anim-chip active" : "anim-chip";
     btn.textContent = h.label;
@@ -1568,88 +1835,144 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
       selectedHover = h.value;
       hoverRow.querySelectorAll(".anim-chip").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
+      fireAnimPreview();
     });
     hoverRow.appendChild(btn);
   });
-  animSection.appendChild(hoverRow);
+  animSec.body.appendChild(hoverRow);
 
-  // 速度
+  // 速度（セグメント型）
   const speedRow = document.createElement("div");
-  speedRow.style.cssText = "display:flex;align-items:center;gap:8px";
-  const speedLabel = document.createElement("span");
-  speedLabel.style.cssText = "font-size:11px;color:var(--text-muted)";
-  speedLabel.textContent = "速度:";
+  speedRow.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:8px";
+  const speedLbl = document.createElement("span");
+  speedLbl.style.cssText = "font-size:11px;color:var(--text-muted)";
+  speedLbl.textContent = "速度:";
+  speedRow.appendChild(speedLbl);
   const speedSelect = document.createElement("select");
   speedSelect.className = "form-input";
   speedSelect.style.cssText = "font-size:11px;padding:4px 6px;width:auto";
   [{ v: "0.3s", l: "速い" }, { v: "0.6s", l: "普通" }, { v: "1s", l: "遅い" }, { v: "1.5s", l: "とても遅い" }].forEach(o => {
     const opt = document.createElement("option");
-    opt.value = o.v;
-    opt.textContent = o.l;
+    opt.value = o.v; opt.textContent = o.l;
     if (o.v === "0.6s") opt.selected = true;
     speedSelect.appendChild(opt);
   });
-  speedRow.appendChild(speedLabel);
+  speedSelect.addEventListener("change", () => { selectedSpeed = speedSelect.value; fireAnimPreview(); });
   speedRow.appendChild(speedSelect);
-  animSection.appendChild(speedRow);
+  animSec.body.appendChild(speedRow);
 
-  frag.appendChild(animSection);
+  // プレビュー再生ボタン
+  const replayBtn = document.createElement("button");
+  replayBtn.className = "anim-preview-btn";
+  replayBtn.textContent = "▶ プレビュー再生";
+  replayBtn.addEventListener("click", fireAnimPreview);
+  animSec.body.appendChild(replayBtn);
 
-  // ── サイズ / alt / リンク ──
-  const propsSection = createSection("画像プロパティ");
-  // サイズ
-  const sizeRow = document.createElement("div");
-  sizeRow.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:8px";
-  const firstImg = parsedDoc.querySelector("img");
+  frag.appendChild(animSec.wrapper);
+
+  // ============================================================
+  // Section 4: 画像プロパティ（ラベル付き）
+  // ============================================================
+  const propsSec = createCollapsibleSection("📐", "画像プロパティ", null, false);
+
+  // 元サイズ表示
+  const origSizeInfo = document.createElement("div");
+  origSizeInfo.style.cssText = "font-size:12px;color:var(--text-secondary);margin-bottom:8px";
+  origSizeInfo.textContent = `元サイズ: ${asset?.width || "?"} × ${asset?.height || "?"} px`;
+  propsSec.body.appendChild(origSizeInfo);
+
+  // 表示幅
+  const wRow = document.createElement("div");
+  wRow.className = "bp-prop-row";
+  wRow.innerHTML = '<label class="bp-prop-label">表示幅</label>';
   const wInput = document.createElement("input");
-  wInput.type = "text";
-  wInput.className = "panel-input-sm";
+  wInput.type = "text"; wInput.className = "bp-prop-input";
   wInput.value = asset?.width || firstImg?.getAttribute("width") || "";
-  wInput.placeholder = "幅";
+  wInput.placeholder = "auto";
+  wRow.appendChild(wInput);
+  const wUnit = document.createElement("span");
+  wUnit.className = "bp-prop-unit"; wUnit.textContent = "px";
+  wRow.appendChild(wUnit);
+  propsSec.body.appendChild(wRow);
+
+  // 表示高さ
+  const hRow = document.createElement("div");
+  hRow.className = "bp-prop-row";
+  hRow.innerHTML = '<label class="bp-prop-label">表示高さ</label>';
   const hInput = document.createElement("input");
-  hInput.type = "text";
-  hInput.className = "panel-input-sm";
+  hInput.type = "text"; hInput.className = "bp-prop-input";
   hInput.value = asset?.height || firstImg?.getAttribute("height") || "";
-  hInput.placeholder = "高さ";
-  const sizeX = document.createElement("span");
-  sizeX.style.cssText = "font-size:12px;color:var(--text-muted)";
-  sizeX.textContent = "×";
-  sizeRow.appendChild(wInput);
-  sizeRow.appendChild(sizeX);
-  sizeRow.appendChild(hInput);
+  hInput.placeholder = "auto";
+  hRow.appendChild(hInput);
+  const hUnit = document.createElement("span");
+  hUnit.className = "bp-prop-unit"; hUnit.textContent = "px";
+  hRow.appendChild(hUnit);
+  propsSec.body.appendChild(hRow);
+
+  // サイズプリセット
   const presetBtns = document.createElement("div");
-  presetBtns.style.cssText = "display:flex;gap:4px;flex-wrap:wrap";
-  [{ l: "580", w: "580" }, { l: "100%", w: "100%" }, { l: "400", w: "400" }].forEach(p => {
+  presetBtns.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px";
+  [{ l: "580px", w: "580" }, { l: "100%", w: "100%" }, { l: "400px", w: "400" }].forEach(p => {
     const btn = document.createElement("button");
     btn.className = "style-preset-btn";
     btn.textContent = p.l;
-    btn.style.cssText = "font-size:10px;padding:2px 6px";
     btn.addEventListener("click", () => { wInput.value = p.w; });
     presetBtns.appendChild(btn);
   });
-  sizeRow.appendChild(presetBtns);
-  propsSection.appendChild(sizeRow);
+  propsSec.body.appendChild(presetBtns);
+
+  // object-fit
+  const fitRow = document.createElement("div");
+  fitRow.className = "bp-prop-row";
+  fitRow.innerHTML = '<label class="bp-prop-label">object-fit</label>';
+  const fitSelect = document.createElement("select");
+  fitSelect.className = "bp-prop-input";
+  fitSelect.style.width = "auto";
+  ["cover", "contain", "fill", "none"].forEach(v => {
+    const opt = document.createElement("option");
+    opt.value = v; opt.textContent = v;
+    fitSelect.appendChild(opt);
+  });
+  fitRow.appendChild(fitSelect);
+  propsSec.body.appendChild(fitRow);
+
+  // 角丸
+  const radiusRow = document.createElement("div");
+  radiusRow.className = "bp-prop-row";
+  radiusRow.innerHTML = '<label class="bp-prop-label">角丸</label>';
+  const radiusInput = document.createElement("input");
+  radiusInput.type = "number"; radiusInput.className = "bp-prop-input";
+  radiusInput.value = "0"; radiusInput.min = "0"; radiusInput.placeholder = "0";
+  radiusRow.appendChild(radiusInput);
+  const radiusUnit = document.createElement("span");
+  radiusUnit.className = "bp-prop-unit"; radiusUnit.textContent = "px";
+  radiusRow.appendChild(radiusUnit);
+  propsSec.body.appendChild(radiusRow);
 
   // alt
+  const altRow = document.createElement("div");
+  altRow.className = "bp-prop-row";
+  altRow.innerHTML = '<label class="bp-prop-label">alt</label>';
   const altInput = document.createElement("input");
-  altInput.type = "text";
-  altInput.className = "panel-input";
+  altInput.type = "text"; altInput.className = "bp-prop-input";
   altInput.value = firstImg?.getAttribute("alt") || "";
-  altInput.placeholder = "alt（代替テキスト）";
-  altInput.style.cssText = "margin-bottom:6px;font-size:12px";
-  propsSection.appendChild(altInput);
+  altInput.placeholder = "代替テキスト";
+  altRow.appendChild(altInput);
+  propsSec.body.appendChild(altRow);
 
   // リンク
   const linkEl = parsedDoc.querySelector("a");
+  const linkRow = document.createElement("div");
+  linkRow.className = "bp-prop-row";
+  linkRow.innerHTML = '<label class="bp-prop-label">リンクURL</label>';
   const hrefInput = document.createElement("input");
-  hrefInput.type = "url";
-  hrefInput.className = "panel-input";
+  hrefInput.type = "url"; hrefInput.className = "bp-prop-input";
   hrefInput.value = linkEl?.getAttribute("href") || "";
-  hrefInput.placeholder = "リンクURL（空欄でリンクなし）";
-  hrefInput.style.cssText = "margin-bottom:4px;font-size:12px";
-  propsSection.appendChild(hrefInput);
+  hrefInput.placeholder = "空欄でリンクなし";
+  linkRow.appendChild(hrefInput);
+  propsSec.body.appendChild(linkRow);
   const targetRow = document.createElement("div");
-  targetRow.style.cssText = "display:flex;align-items:center;gap:6px";
+  targetRow.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:4px";
   const targetCheck = document.createElement("input");
   targetCheck.type = "checkbox";
   targetCheck.checked = linkEl?.getAttribute("target") === "_blank";
@@ -1658,126 +1981,28 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
   targetLbl.textContent = "別タブで開く";
   targetRow.appendChild(targetCheck);
   targetRow.appendChild(targetLbl);
-  propsSection.appendChild(targetRow);
-  frag.appendChild(propsSection);
+  propsSec.body.appendChild(targetRow);
 
-  // ── コピーボタン ──
-  const copySection = createSection("コピー");
-  const copyRow = document.createElement("div");
-  copyRow.style.cssText = "display:flex;gap:6px";
-  const copyHtmlBtn = document.createElement("button");
-  copyHtmlBtn.className = "panel-btn";
-  copyHtmlBtn.textContent = "HTMLコピー";
-  copyHtmlBtn.addEventListener("click", () => {
-    navigator.clipboard.writeText(codeArea.value || blockHtml).then(() => {
-      window.showToast("HTMLをコピーしました", "success");
-    });
-  });
-  const copyBrowserBtn = document.createElement("button");
-  copyBrowserBtn.className = "panel-btn";
-  copyBrowserBtn.textContent = "ブラウザコピー";
-  copyBrowserBtn.addEventListener("click", () => {
-    const html = codeArea.value || blockHtml;
-    const blob = new Blob([html], { type: "text/html" });
-    try {
-      const item = new ClipboardItem({ "text/html": blob, "text/plain": new Blob([html], { type: "text/plain" }) });
-      navigator.clipboard.write([item]).then(() => {
-        window.showToast("ブラウザ形式でコピーしました", "success");
-      }).catch(() => {
-        navigator.clipboard.writeText(html).then(() => {
-          window.showToast("テキストとしてコピーしました", "success");
-        });
-      });
-    } catch { navigator.clipboard.writeText(html).then(() => { window.showToast("テキストとしてコピーしました", "success"); }); }
-  });
-  copyRow.appendChild(copyHtmlBtn);
-  copyRow.appendChild(copyBrowserBtn);
-  copySection.appendChild(copyRow);
-  frag.appendChild(copySection);
+  frag.appendChild(propsSec.wrapper);
 
-  // ── 画像差し替え（アップロード）──
-  const uploadSection = createSection("画像差し替え");
-  const uploadZone = document.createElement("div");
-  uploadZone.className = "upload-drop-zone";
-  uploadZone.innerHTML = '<div class="upload-drop-icon">📁</div><div class="upload-drop-text">ドラッグ＆ドロップ or クリック</div>';
-  const uploadInput = document.createElement("input");
-  uploadInput.type = "file";
-  uploadInput.accept = "image/*";
-  uploadInput.style.display = "none";
-  uploadZone.appendChild(uploadInput);
-  uploadZone.addEventListener("click", () => uploadInput.click());
-  uploadZone.addEventListener("dragover", (e) => { e.preventDefault(); uploadZone.classList.add("dragover"); });
-  uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("dragover"));
-  uploadZone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    uploadZone.classList.remove("dragover");
-    const file = e.dataTransfer?.files?.[0];
-    if (file && file.type.startsWith("image/")) handleFile(file);
-  });
-  const uploadPreview = document.createElement("div");
-  uploadPreview.className = "upload-preview-area";
-
-  function handleFile(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      uploadPreview.innerHTML = "";
-      const card = document.createElement("div");
-      card.className = "oneclick-variant-card";
-      const img = document.createElement("img");
-      img.src = reader.result;
-      card.appendChild(img);
-      const applyBtn = document.createElement("button");
-      applyBtn.className = "oneclick-apply-btn";
-      applyBtn.textContent = "この画像を適用";
-      applyBtn.addEventListener("click", async () => {
-        applyBtn.disabled = true;
-        applyBtn.innerHTML = '<span class="spinner"></span> アップロード中...';
-        try {
-          const uploadResult = await window.API.uploadImage(projectId, blockIndex, {
-            imageData: reader.result,
-            fileName: file.name,
-          });
-          if (uploadResult.ok) {
-            await window.API.applyImage(projectId, blockIndex, { imageUrl: uploadResult.imageUrl });
-            window.showToast("画像を適用しました", "success");
-            window.loadPreview(true);
-            window.pushHistory?.("image_upload", `ブロック ${blockIndex} 画像アップロード`);
-          }
-        } catch (err) {
-          window.showToast(`エラー: ${err.message}`, "error");
-        } finally {
-          applyBtn.disabled = false;
-          applyBtn.textContent = "この画像を適用";
-        }
-      });
-      card.appendChild(applyBtn);
-      uploadPreview.appendChild(card);
-    };
-    reader.readAsDataURL(file);
-  }
-  uploadInput.addEventListener("change", () => {
-    const file = uploadInput.files?.[0];
-    if (file) handleFile(file);
-  });
-  uploadSection.appendChild(uploadZone);
-  uploadSection.appendChild(uploadPreview);
-  frag.appendChild(uploadSection);
-
-  // ── HTMLソース ──
-  const htmlSection = createSection("HTMLソース");
+  // ============================================================
+  // Section 5: HTMLソース（折りたたみ）
+  // ============================================================
+  const htmlSec = createCollapsibleSection("&lt;/&gt;", "HTMLソース", null, false);
   const codeArea = document.createElement("textarea");
   codeArea.className = "panel-code";
   codeArea.value = blockHtml;
   codeArea.rows = 6;
-  htmlSection.appendChild(codeArea);
-  frag.appendChild(htmlSection);
+  htmlSec.body.appendChild(codeArea);
+  frag.appendChild(htmlSec.wrapper);
 
-  // ── 保存 ──
+  // ============================================================
+  // 保存
+  // ============================================================
   frag.appendChild(buildSaveRow(projectId, blockIndex, () => {
     if (codeArea.value !== blockHtml) {
       return { html: codeArea.value };
     }
-    // テキスト変更を反映
     let html = applyTextChanges(blockHtml, textItems);
     const doc = new DOMParser().parseFromString(html, "text/html");
     const imgEl = doc.querySelector("img");
@@ -1786,8 +2011,9 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
       else imgEl.removeAttribute("alt");
       if (wInput.value) imgEl.style.width = String(wInput.value).includes("%") ? wInput.value : wInput.value + "px";
       if (hInput.value) imgEl.style.height = hInput.value + "px";
+      if (radiusInput.value && radiusInput.value !== "0") imgEl.style.borderRadius = radiusInput.value + "px";
+      if (fitSelect.value !== "cover") imgEl.style.objectFit = fitSelect.value;
     }
-    // リンク
     const existingA = doc.querySelector("a");
     const docImg = doc.querySelector("img");
     if (hrefInput.value.trim()) {
@@ -1812,55 +2038,25 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
     let styleTag = doc.querySelector("style") || null;
     let cssRules = "";
     const animId = `anim-${blockIndex}-${Date.now().toString(36)}`;
-    if (selectedAnim || selectedScroll || selectedHover) {
-      targetEl.classList.add(animId);
-    }
-    // CSSアニメーション
+    if (selectedAnim || selectedScroll || selectedHover) targetEl.classList.add(animId);
     if (selectedAnim) {
-      const keyframes = {
-        fadeIn: `@keyframes fadeIn{from{opacity:0}to{opacity:1}}`,
-        slideInUp: `@keyframes slideInUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}`,
-        slideInLeft: `@keyframes slideInLeft{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}`,
-        slideInRight: `@keyframes slideInRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}`,
-        bounceIn: `@keyframes bounceIn{0%{opacity:0;transform:scale(0.3)}50%{opacity:1;transform:scale(1.05)}70%{transform:scale(0.9)}100%{transform:scale(1)}}`,
-        pulse: `@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}`,
-        shake: `@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}`,
-        zoomIn: `@keyframes zoomIn{from{opacity:0;transform:scale(0.5)}to{opacity:1;transform:scale(1)}}`,
-        flipIn: `@keyframes flipIn{from{opacity:0;transform:rotateY(-90deg)}to{opacity:1;transform:rotateY(0)}}`,
-      };
-      cssRules += (keyframes[selectedAnim] || "") + `\n.${animId}{animation:${selectedAnim} ${duration} ease both;}\n`;
+      const kf = { fadeIn:`@keyframes fadeIn{from{opacity:0}to{opacity:1}}`, slideInUp:`@keyframes slideInUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}`, slideInLeft:`@keyframes slideInLeft{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}`, slideInRight:`@keyframes slideInRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}`, bounceIn:`@keyframes bounceIn{0%{opacity:0;transform:scale(0.3)}50%{opacity:1;transform:scale(1.05)}70%{transform:scale(0.9)}100%{transform:scale(1)}}`, pulse:`@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}`, shake:`@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}`, zoomIn:`@keyframes zoomIn{from{opacity:0;transform:scale(0.5)}to{opacity:1;transform:scale(1)}}`, flipIn:`@keyframes flipIn{from{opacity:0;transform:rotateY(-90deg)}to{opacity:1;transform:rotateY(0)}}` };
+      cssRules += (kf[selectedAnim]||"") + `\n.${animId}{animation:${selectedAnim} ${duration} ease both;}\n`;
     }
-    // スクロール連動
     if (selectedScroll) {
-      const scrollKeyframes = {
-        scrollFadeIn: `@keyframes scrollFadeIn{from{opacity:0}to{opacity:1}}`,
-        scrollSlideUp: `@keyframes scrollSlideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}`,
-        scrollZoom: `@keyframes scrollZoom{from{opacity:0;transform:scale(0.8)}to{opacity:1;transform:scale(1)}}`,
-        scrollBlur: `@keyframes scrollBlur{from{opacity:0;filter:blur(10px)}to{opacity:1;filter:blur(0)}}`,
-      };
-      cssRules += (scrollKeyframes[selectedScroll] || "") + `\n.${animId}.scroll-visible{animation:${selectedScroll} ${duration} ease both;}\n.${animId}{opacity:0;}\n`;
-      // IntersectionObserverスクリプトを追加
+      const skf = { scrollFadeIn:`@keyframes scrollFadeIn{from{opacity:0}to{opacity:1}}`, scrollSlideUp:`@keyframes scrollSlideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}`, scrollZoom:`@keyframes scrollZoom{from{opacity:0;transform:scale(0.8)}to{opacity:1;transform:scale(1)}}`, scrollBlur:`@keyframes scrollBlur{from{opacity:0;filter:blur(10px)}to{opacity:1;filter:blur(0)}}` };
+      cssRules += (skf[selectedScroll]||"") + `\n.${animId}.scroll-visible{animation:${selectedScroll} ${duration} ease both;}\n.${animId}{opacity:0;}\n`;
       const script = doc.createElement("script");
       script.textContent = `(function(){var el=document.querySelector('.${animId}');if(el){new IntersectionObserver(function(e){e.forEach(function(entry){if(entry.isIntersecting){el.classList.add('scroll-visible');}}); },{threshold:0.15}).observe(el);}})();`;
       doc.body.appendChild(script);
     }
-    // ホバーエフェクト
     if (selectedHover) {
-      const hoverStyles = {
-        hoverScale: `.${animId}:hover{transform:scale(1.05);transition:transform ${duration} ease;}`,
-        hoverBright: `.${animId}:hover{filter:brightness(1.15);transition:filter ${duration} ease;}`,
-        hoverShadow: `.${animId}:hover{box-shadow:0 8px 25px rgba(0,0,0,0.2);transition:box-shadow ${duration} ease;}`,
-        hoverLift: `.${animId}:hover{transform:translateY(-4px);box-shadow:0 6px 20px rgba(0,0,0,0.15);transition:all ${duration} ease;}`,
-        hoverGray: `.${animId}{filter:grayscale(100%);transition:filter ${duration} ease;}\n.${animId}:hover{filter:grayscale(0%);}`,
-      };
-      cssRules += (hoverStyles[selectedHover] || "") + "\n";
+      const hs = { hoverScale:`.${animId}:hover{transform:scale(1.05);transition:transform ${duration} ease;}`, hoverBright:`.${animId}:hover{filter:brightness(1.15);transition:filter ${duration} ease;}`, hoverShadow:`.${animId}:hover{box-shadow:0 8px 25px rgba(0,0,0,0.2);transition:box-shadow ${duration} ease;}`, hoverLift:`.${animId}:hover{transform:translateY(-4px);box-shadow:0 6px 20px rgba(0,0,0,0.15);transition:all ${duration} ease;}`, hoverGray:`.${animId}{filter:grayscale(100%);transition:filter ${duration} ease;}\n.${animId}:hover{filter:grayscale(0%);}` };
+      cssRules += (hs[selectedHover]||"") + "\n";
     }
     if (cssRules) {
-      if (!styleTag) {
-        styleTag = doc.createElement("style");
-        doc.body.insertBefore(styleTag, doc.body.firstChild);
-      }
-      styleTag.textContent = (styleTag.textContent || "") + "\n" + cssRules;
+      if (!styleTag) { styleTag = doc.createElement("style"); doc.body.insertBefore(styleTag, doc.body.firstChild); }
+      styleTag.textContent = (styleTag.textContent||"") + "\n" + cssRules;
     }
     return { html: doc.body.innerHTML, text: textItems.map(t => t.currentText).join(" ") };
   }));
@@ -3064,6 +3260,51 @@ function createSection(title) {
   titleEl.textContent = title;
   section.appendChild(titleEl);
   return section;
+}
+
+/**
+ * 折りたたみ可能セクション
+ * @param {string} icon - 絵文字アイコン
+ * @param {string} title - セクションタイトル
+ * @param {number|string} count - バッジに表示する数
+ * @param {boolean} openByDefault - 初期展開状態
+ * @returns {{ wrapper: HTMLElement, body: HTMLElement }}
+ */
+function createCollapsibleSection(icon, title, count, openByDefault = true) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "bp-section" + (openByDefault ? " bp-open" : "");
+
+  const header = document.createElement("div");
+  header.className = "bp-section-header";
+  header.innerHTML = `<span class="bp-section-arrow">${openByDefault ? "▼" : "▶"}</span><span>${icon} ${title}</span>${count != null ? `<span class="bp-section-badge">${count}</span>` : ""}<span style="flex:1"></span><span class="bp-section-toggle">折り畳み</span>`;
+  wrapper.appendChild(header);
+
+  const body = document.createElement("div");
+  body.className = "bp-section-body";
+  if (!openByDefault) body.style.display = "none";
+  wrapper.appendChild(body);
+
+  header.addEventListener("click", () => {
+    const isOpen = wrapper.classList.toggle("bp-open");
+    body.style.display = isOpen ? "" : "none";
+    header.querySelector(".bp-section-arrow").textContent = isOpen ? "▼" : "▶";
+  });
+
+  return { wrapper, body };
+}
+
+/**
+ * 画像要素のラベルを生成
+ */
+function getImageElementLabel(el, index) {
+  const tag = el.tagName?.toLowerCase() || "";
+  if (tag === "source") {
+    const media = el.getAttribute("media") || "";
+    if (media.includes("min-width")) return "PC用 source";
+    return "SP用 source";
+  }
+  if (tag === "img") return "メイン画像";
+  return `${tag} [${index}]`;
 }
 
 function buildSaveRow(projectId, blockIndex, getData) {

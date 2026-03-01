@@ -1443,6 +1443,96 @@ app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
   }
 });
 
+// POST /api/projects/:id/ocr - OCR text extraction from block images
+app.post("/api/projects/:id/ocr", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const idx = parseInt(req.body.blockIndex, 10);
+  const block = project.blocks[idx];
+  if (!block) return res.status(404).json({ error: "Block not found" });
+
+  // Collect image sources from block HTML
+  const cheerio = await import("cheerio");
+  const $ = cheerio.load(block.html || "");
+  const imgSrcs = [];
+  $("img").each((_, el) => {
+    const src = $(el).attr("data-src") || $(el).attr("src") || "";
+    if (src) imgSrcs.push(src);
+  });
+  $("source[data-srcset]").each((_, el) => {
+    const src = $(el).attr("data-srcset") || "";
+    if (src) imgSrcs.push(src);
+  });
+
+  if (imgSrcs.length === 0) {
+    return res.json({ texts: [] });
+  }
+
+  // Use Gemini to OCR the first few images
+  const texts = [];
+  const maxImages = Math.min(imgSrcs.length, 3);
+
+  for (let i = 0; i < maxImages; i++) {
+    let imgSrc = imgSrcs[i];
+    try {
+      let base64, mimeType;
+
+      // Check if it's a local asset
+      if (imgSrc.startsWith("/projects/") || imgSrc.startsWith("projects/")) {
+        const localPath = path.join(PROJECT_ROOT, "data", imgSrc.replace(/^\//, ""));
+        if (!existsSync(localPath)) continue;
+        const buf = await readFile(localPath);
+        base64 = buf.toString("base64");
+        mimeType = imgSrc.endsWith(".webp") ? "image/webp" : imgSrc.endsWith(".png") ? "image/png" : "image/jpeg";
+      } else if (imgSrc.startsWith("http")) {
+        // Remote image
+        const imgResp = await fetch(imgSrc);
+        if (!imgResp.ok) continue;
+        const buf = Buffer.from(await imgResp.arrayBuffer());
+        base64 = buf.toString("base64");
+        mimeType = imgResp.headers.get("content-type") || "image/jpeg";
+      } else {
+        continue;
+      }
+
+      // Get a Gemini key
+      let apiKey;
+      for (let k = 1; k <= 3; k++) {
+        const kk = process.env[`GEMINI_API_KEY_${k}`];
+        if (kk) { apiKey = kk; break; }
+      }
+      if (!apiKey) apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) return res.status(400).json({ error: "Gemini APIキーが未設定です" });
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+      const geminiResp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: "この画像内に含まれるテキスト（文字）をすべて抽出してください。テキストが見つからない場合は空を返してください。抽出したテキストのみを返し、説明は不要です。改行で区切ってください。" },
+              { inline_data: { mime_type: mimeType, data: base64 } },
+            ],
+          }],
+        }),
+      });
+
+      if (!geminiResp.ok) continue;
+      const data = await geminiResp.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      if (text.trim()) {
+        text.trim().split("\n").filter(l => l.trim()).forEach(l => texts.push(l.trim()));
+      }
+    } catch (err) {
+      console.warn(`[ocr] Error processing image ${i}: ${err.message}`);
+    }
+  }
+
+  res.json({ texts });
+});
+
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, projects: projects.size, uptime: process.uptime() });
