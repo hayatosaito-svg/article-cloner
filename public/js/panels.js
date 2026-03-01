@@ -61,16 +61,31 @@ async function openEditPanel(projectId, blockIndex, blockType) {
 
   body.innerHTML = "";
 
-  if (currentMode === "ai" && (blockType === "text" || blockType === "heading")) {
+  // テキスト/見出し/画像はデフォルトでAI編集タブ
+  const aiDefaultTypes = ["text", "heading", "image"];
+  const effectiveMode = aiDefaultTypes.includes(blockType) && currentMode === "manual"
+    ? "ai" : currentMode;
+
+  if (effectiveMode === "ai" && (blockType === "text" || blockType === "heading")) {
+    // AI編集タブをアクティブに見せる
+    document.querySelectorAll(".mode-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.mode === "ai");
+    });
     body.appendChild(buildAiTextPanel(projectId, blockIndex, block));
+  } else if (effectiveMode === "ai" && blockType === "image") {
+    // 画像AI編集（デフォルト）
+    document.querySelectorAll(".mode-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.mode === "ai");
+    });
+    body.appendChild(buildImagePanel(projectId, blockIndex, block));
+  } else if (effectiveMode !== "ai" && blockType === "image") {
+    // 画像ブロック編集（クイック編集）
+    body.appendChild(buildImageQuickPanel(projectId, blockIndex, block));
   } else {
     switch (blockType) {
       case "text":
       case "heading":
         body.appendChild(buildTextPanel(projectId, blockIndex, block));
-        break;
-      case "image":
-        body.appendChild(buildImagePanel(projectId, blockIndex, block));
         break;
       case "cta_link":
         body.appendChild(buildCtaPanel(projectId, blockIndex, block));
@@ -157,6 +172,31 @@ function buildAiTextPanel(projectId, blockIndex, block) {
   currentSection.appendChild(currentText);
   frag.appendChild(currentSection);
 
+  // クイックプリセット
+  const presetSection = createSection("クイック指示");
+  const presetRow = document.createElement("div");
+  presetRow.style.cssText = "display:flex;flex-wrap:wrap;gap:6px";
+  const presets = [
+    "トンマナを変えて大人っぽく",
+    "煽りを強めて",
+    "文章を短くして",
+    "もっと具体的に",
+    "別商品に差し替えて",
+    "信頼感を出して",
+  ];
+  presets.forEach((p) => {
+    const chip = document.createElement("button");
+    chip.className = "panel-btn";
+    chip.style.cssText = "font-size:11px;padding:4px 10px;border-radius:12px";
+    chip.textContent = p;
+    chip.addEventListener("click", () => {
+      aiInput.value = p;
+    });
+    presetRow.appendChild(chip);
+  });
+  presetSection.appendChild(presetRow);
+  frag.appendChild(presetSection);
+
   // AI指示入力
   const aiSection = document.createElement("div");
   aiSection.className = "ai-prompt-section";
@@ -170,6 +210,27 @@ function buildAiTextPanel(projectId, blockIndex, block) {
   aiInput.placeholder = "例：トンマナを変えて大人っぽくして / もっと煽りを強めて / 文章を短くして / 別商品に差し替えて...";
   aiInput.rows = 3;
   aiSection.appendChild(aiInput);
+
+  // カスタムプロンプト（詳細指示）
+  const customSection = document.createElement("div");
+  customSection.style.marginTop = "8px";
+  const customToggle = document.createElement("button");
+  customToggle.className = "panel-btn";
+  customToggle.style.cssText = "font-size:11px;width:100%;text-align:left;padding:6px 10px";
+  customToggle.textContent = "▶ カスタムプロンプト（詳細指示）";
+  const customArea = document.createElement("textarea");
+  customArea.className = "panel-textarea";
+  customArea.placeholder = "AIへの詳細な追加指示。例：\n・商品名を「○○」に変更\n・ターゲットは30代女性\n・数字やデータを含めて\n・HTML構造は維持して";
+  customArea.rows = 4;
+  customArea.style.display = "none";
+  customToggle.addEventListener("click", () => {
+    const open = customArea.style.display !== "none";
+    customArea.style.display = open ? "none" : "block";
+    customToggle.textContent = open ? "▶ カスタムプロンプト（詳細指示）" : "▼ カスタムプロンプト（詳細指示）";
+  });
+  customSection.appendChild(customToggle);
+  customSection.appendChild(customArea);
+  aiSection.appendChild(customSection);
 
   const aiBtnRow = document.createElement("div");
   aiBtnRow.className = "panel-btn-row";
@@ -192,8 +253,9 @@ function buildAiTextPanel(projectId, blockIndex, block) {
     aiBtn.innerHTML = '<span class="spinner"></span> AI処理中...';
 
     try {
+      const customPrompt = customArea.value.trim();
       const result = await window.API.aiRewrite(projectId, blockIndex, {
-        instruction,
+        instruction: customPrompt ? `${instruction}\n\n追加指示: ${customPrompt}` : instruction,
         text: block.text,
         designRequirements: window._designRequirements || "",
       });
@@ -976,6 +1038,116 @@ function buildImagePanel(projectId, blockIndex, block) {
   advancedContent.appendChild(promptSection);
 
   frag.appendChild(advancedContent);
+
+  // HTMLソース
+  const htmlSection = createSection("HTMLソース");
+  const codeArea = document.createElement("textarea");
+  codeArea.className = "panel-code";
+  codeArea.value = block.html || "";
+  codeArea.rows = 6;
+  htmlSection.appendChild(codeArea);
+  frag.appendChild(htmlSection);
+
+  frag.appendChild(buildSaveRow(projectId, blockIndex, () => ({ html: codeArea.value })));
+
+  return frag;
+}
+
+// ── 画像クイック編集パネル（手動モード） ─────────────────────
+function buildImageQuickPanel(projectId, blockIndex, block) {
+  const frag = document.createDocumentFragment();
+  const asset = block.assets?.[0];
+  const originalSrc = asset?.src || asset?.webpSrc || "";
+
+  // 元画像プレビュー
+  const previewSection = createSection("元画像");
+  if (asset) {
+    const box = document.createElement("div");
+    box.className = "image-preview-box";
+    const img = document.createElement("img");
+    img.src = originalSrc;
+    img.alt = "元画像";
+    img.onerror = () => { img.style.display = "none"; };
+    box.appendChild(img);
+    if (asset.width && asset.height) {
+      const dims = document.createElement("div");
+      dims.style.cssText = "font-size:11px; color:var(--text-muted); padding:6px; text-align:center";
+      dims.textContent = `${asset.width} x ${asset.height}`;
+      box.appendChild(dims);
+    }
+    previewSection.appendChild(box);
+  }
+  frag.appendChild(previewSection);
+
+  // 手持ち画像アップロード
+  const uploadSection = createSection("手持ち画像で差し替え");
+  const uploadZone = document.createElement("div");
+  uploadZone.className = "upload-drop-zone";
+  uploadZone.innerHTML = '<div class="upload-drop-icon">📁</div><div class="upload-drop-text">画像をドラッグ＆ドロップ<br>またはクリックして選択</div>';
+  const uploadInput = document.createElement("input");
+  uploadInput.type = "file";
+  uploadInput.accept = "image/*";
+  uploadInput.style.display = "none";
+  uploadZone.appendChild(uploadInput);
+  uploadZone.addEventListener("click", () => uploadInput.click());
+  uploadZone.addEventListener("dragover", (e) => { e.preventDefault(); uploadZone.classList.add("dragover"); });
+  uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("dragover"));
+  uploadZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove("dragover");
+    const file = e.dataTransfer?.files?.[0];
+    if (file && file.type.startsWith("image/")) handleFile(file);
+  });
+  const uploadPreview = document.createElement("div");
+  uploadPreview.className = "upload-preview-area";
+
+  function handleFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      uploadPreview.innerHTML = "";
+      const card = document.createElement("div");
+      card.className = "oneclick-variant-card";
+      const img = document.createElement("img");
+      img.src = reader.result;
+      card.appendChild(img);
+      const applyBtn = document.createElement("button");
+      applyBtn.className = "oneclick-apply-btn";
+      applyBtn.textContent = "この画像を適用";
+      applyBtn.addEventListener("click", async () => {
+        applyBtn.disabled = true;
+        applyBtn.innerHTML = '<span class="spinner"></span> アップロード中...';
+        try {
+          const uploadResult = await window.API.uploadImage(projectId, blockIndex, {
+            imageData: reader.result,
+            fileName: file.name,
+          });
+          if (uploadResult.ok) {
+            await window.API.applyImage(projectId, blockIndex, { imageUrl: uploadResult.imageUrl });
+            window.showToast("画像を適用しました", "success");
+            window.loadPreview(true);
+            window.pushHistory?.("image_upload", `ブロック ${blockIndex} 画像アップロード`);
+          }
+        } catch (err) {
+          window.showToast(`エラー: ${err.message}`, "error");
+        } finally {
+          applyBtn.disabled = false;
+          applyBtn.textContent = "この画像を適用";
+        }
+      });
+      card.appendChild(applyBtn);
+      uploadPreview.appendChild(card);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  uploadInput.addEventListener("change", () => {
+    const file = uploadInput.files?.[0];
+    if (file) handleFile(file);
+  });
+
+  uploadSection.appendChild(uploadZone);
+  uploadSection.appendChild(uploadPreview);
+  frag.appendChild(uploadSection);
 
   // HTMLソース
   const htmlSection = createSection("HTMLソース");
