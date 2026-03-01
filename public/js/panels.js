@@ -71,8 +71,8 @@ async function openEditPanel(projectId, blockIndex, blockType) {
     return;
   }
 
-  // テキスト/見出し/画像/動画はデフォルトでAI編集タブ
-  const aiDefaultTypes = ["text", "heading", "image", "video"];
+  // テキスト/見出しのみデフォルトでAI編集タブ（画像/動画は手動モードも使える）
+  const aiDefaultTypes = ["text", "heading"];
   const effectiveMode = aiDefaultTypes.includes(blockType) && currentMode === "manual"
     ? "ai" : currentMode;
 
@@ -1458,14 +1458,16 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
   copyBrowserBtn.addEventListener("click", () => {
     const html = codeArea.value || blockHtml;
     const blob = new Blob([html], { type: "text/html" });
-    const item = new ClipboardItem({ "text/html": blob, "text/plain": new Blob([html], { type: "text/plain" }) });
-    navigator.clipboard.write([item]).then(() => {
-      window.showToast("ブラウザ形式でコピーしました", "success");
-    }).catch(() => {
-      navigator.clipboard.writeText(html).then(() => {
-        window.showToast("テキストとしてコピーしました", "success");
+    try {
+      const item = new ClipboardItem({ "text/html": blob, "text/plain": new Blob([html], { type: "text/plain" }) });
+      navigator.clipboard.write([item]).then(() => {
+        window.showToast("ブラウザ形式でコピーしました", "success");
+      }).catch(() => {
+        navigator.clipboard.writeText(html).then(() => {
+          window.showToast("テキストとしてコピーしました", "success");
+        });
       });
-    });
+    } catch { navigator.clipboard.writeText(html).then(() => { window.showToast("テキストとしてコピーしました", "success"); }); }
   });
   copyRow.appendChild(copyHtmlBtn);
   copyRow.appendChild(copyBrowserBtn);
@@ -1976,15 +1978,18 @@ function buildVideoQuickPanel(projectId, blockIndex, block) {
   copyBrowserBtn.className = "panel-btn";
   copyBrowserBtn.textContent = "ブラウザコピー";
   copyBrowserBtn.addEventListener("click", () => {
-    const blob = new Blob([codeArea.value], { type: "text/html" });
-    const item = new ClipboardItem({ "text/html": blob, "text/plain": new Blob([codeArea.value], { type: "text/plain" }) });
-    navigator.clipboard.write([item]).then(() => {
-      window.showToast("ブラウザ形式でコピーしました", "success");
-    }).catch(() => {
-      navigator.clipboard.writeText(codeArea.value).then(() => {
-        window.showToast("テキストとしてコピーしました", "success");
+    const html = codeArea.value;
+    const blob = new Blob([html], { type: "text/html" });
+    try {
+      const item = new ClipboardItem({ "text/html": blob, "text/plain": new Blob([html], { type: "text/plain" }) });
+      navigator.clipboard.write([item]).then(() => {
+        window.showToast("ブラウザ形式でコピーしました", "success");
+      }).catch(() => {
+        navigator.clipboard.writeText(html).then(() => {
+          window.showToast("テキストとしてコピーしました", "success");
+        });
       });
-    });
+    } catch { navigator.clipboard.writeText(html).then(() => { window.showToast("テキストとしてコピーしました", "success"); }); }
   });
   copyRow.appendChild(copyHtmlBtn);
   copyRow.appendChild(copyBrowserBtn);
