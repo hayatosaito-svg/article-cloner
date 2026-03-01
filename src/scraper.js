@@ -56,8 +56,9 @@ export async function scrape(url, options = {}) {
 
     // ページ読み込み
     console.log("[scraper] Loading page...");
-    await page.goto(url, { waitUntil: "networkidle", timeout: 60000 });
-    await sleep(500);
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
+    // DOMロード後、追加リソース読み込みを待つ
+    await sleep(3000);
 
     // スクロールしてlazy loadを完全展開
     console.log(`[scraper] Scrolling to load lazy content (${scrollIterations} iterations)...`);
