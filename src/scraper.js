@@ -63,11 +63,11 @@ export async function scrape(url, options = {}) {
     // スクロールしてlazy loadを完全展開
     console.log(`[scraper] Scrolling to load lazy content (${scrollIterations} iterations)...`);
     for (let i = 0; i < scrollIterations; i++) {
-      await page.evaluate((step, total) => {
+      await page.evaluate(({ step, total }) => {
         const totalHeight = document.body.scrollHeight;
         const stepSize = totalHeight / total;
         window.scrollTo(0, stepSize * (step + 1));
-      }, i, scrollIterations);
+      }, { step: i, total: scrollIterations });
       await sleep(scrollDelay);
     }
     // 最後にページ末端まで
