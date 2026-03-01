@@ -6,6 +6,7 @@
  *
  * ブロックタイプ:
  *   image / video / text / widget / spacer / cta_link / heading
+ *   quiz / review / fv / comparison
  */
 import * as cheerio from "cheerio";
 import { readFile, writeFile } from "fs/promises";
@@ -67,15 +68,48 @@ function classifyBlock($, $el, index) {
   const outerHtml = $.html($el);
   const innerText = $el.text().trim();
   const style = $el.attr("style") || "";
+  const classes = ($el.attr("class") || "").toLowerCase();
+
+  // CSS抽出（全ブロック共通）
+  const $styles = $el.find("style");
+  let css = "";
+  $styles.each((_, s) => { css += $(s).html() + "\n"; });
+  if (style) css += `/* inline */ ${style}`;
+  css = css.trim();
 
   // SBカスタムウィジェット
   if ($el.find(".sb-custom").length > 0 || $el.hasClass("sb-custom")) {
-    return parseSbWidget($, $el, index);
+    const w = parseSbWidget($, $el, index);
+    w.css = css;
+    return w;
+  }
+
+  // アンケート/クイズ
+  if ($el.find('input[type="radio"], input[type="checkbox"]').length > 0
+      || /question|quiz|survey|アンケート/.test(classes)) {
+    return { index, type: "quiz", html: outerHtml, text: innerText, style, css };
+  }
+
+  // レビュー/口コミ
+  if (/review|口コミ|レビュー|体験談|感想/.test(classes + innerText.slice(0, 100))) {
+    return { index, type: "review", html: outerHtml, text: innerText, style, css };
+  }
+
+  // FV（ファーストビュー）— index===0 かつ画像あり
+  if (index === 0 && $el.find('img, picture').length > 0) {
+    return { index, type: "fv", html: outerHtml, text: innerText, style, css, assets: extractImageAssets($, $el) };
+  }
+
+  // 比較表
+  if ($el.find('table').length > 0 || /比較|ランキング|compare/.test(classes + innerText)) {
+    return { index, type: "comparison", html: outerHtml, text: innerText, style, css };
   }
 
   // 動画ブロック
   if ($el.find("video").length > 0 || tagName === "video") {
-    return parseVideoBlock($, $el, index);
+    const v = parseVideoBlock($, $el, index);
+    v.css = css;
+    return v;
   }
 
   // 画像ブロック (picture or img)
@@ -90,10 +124,13 @@ function classifyBlock($, $el, index) {
         href,
         html: outerHtml,
         style,
+        css,
         assets: extractImageAssets($, $el),
       };
     }
-    return parseImageBlock($, $el, index);
+    const imgBlock = parseImageBlock($, $el, index);
+    imgBlock.css = css;
+    return imgBlock;
   }
 
   // 空行/スペーサー
@@ -101,7 +138,7 @@ function classifyBlock($, $el, index) {
     innerText === "" &&
     ($el.find("br").length > 0 || outerHtml.trim() === "<div><br></div>")
   ) {
-    return { index, type: "spacer", html: outerHtml };
+    return { index, type: "spacer", html: outerHtml, css };
   }
 
   // テキストブロック
@@ -114,6 +151,7 @@ function classifyBlock($, $el, index) {
       text: innerText,
       html: outerHtml,
       style,
+      css,
       fontSize: extractFontSize($, $el),
       hasStrong: $el.find("strong, b").length > 0,
       hasColor: style.includes("color") || $el.find("[style*='color']").length > 0,
@@ -121,7 +159,7 @@ function classifyBlock($, $el, index) {
   }
 
   // その他
-  return { index, type: "spacer", html: outerHtml };
+  return { index, type: "spacer", html: outerHtml, css };
 }
 
 /**

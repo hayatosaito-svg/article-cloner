@@ -423,6 +423,11 @@
   border-color: rgba(139, 92, 246, 0.3);
   color: #a78bfa;
 }
+.mode-btn[data-mode="block"].active {
+  background: rgba(236, 72, 153, 0.12);
+  border-color: rgba(236, 72, 153, 0.3);
+  color: #ec4899;
+}
 
 .edit-panel-body {
   flex: 1;
@@ -2093,4 +2098,52 @@
 }
 .we-color-btn {
   padding: 4px !important;
+}
+
+/* ── 3パネルビュー（ブロック編集モード） ── */
+.text-nodes-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.text-node-row {
+  position: relative;
+}
+.text-node-input {
+  width: 100%;
+  border: 2px solid #FF69B4;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  overflow: hidden;
+  font-family: var(--font);
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.text-node-input:focus {
+  border-color: #ec4899;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(236,72,153,0.15);
+}
+.text-node-input[readonly] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pane-css-editor {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  border: none;
+  border-radius: 6px;
+  padding: 10px;
+}
+.pane-css-editor[readonly] {
+  opacity: 0.7;
 }

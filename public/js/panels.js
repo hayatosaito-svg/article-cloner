@@ -2,7 +2,7 @@
  * panels.js - ブロック編集パネル（手動モード / AIモード対応）
  */
 
-let currentMode = "manual"; // "manual" | "ai"
+let currentMode = "manual"; // "manual" | "ai" | "block"
 
 // ── Debounce付き自動保存 ─────────────────────────────────
 let _autoSaveTimer = null;
@@ -60,6 +60,16 @@ async function openEditPanel(projectId, blockIndex, blockType) {
   }
 
   body.innerHTML = "";
+
+  // ブロック編集モード: 全ブロックタイプ共通で3パネルビュー
+  if (currentMode === "block") {
+    document.querySelectorAll(".mode-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.mode === "block");
+    });
+    body.appendChild(build3PanePanel(projectId, blockIndex, block));
+    panel.classList.add("open");
+    return;
+  }
 
   // テキスト/見出し/画像はデフォルトでAI編集タブ
   const aiDefaultTypes = ["text", "heading", "image"];
@@ -1411,6 +1421,197 @@ function buildSpacerPanel(block) {
   frag.appendChild(htmlSection);
 
   return frag;
+}
+
+// ── 3パネル編集ビュー（CSS / テキスト内容 / HTMLソース） ──────
+
+function build3PanePanel(projectId, blockIndex, block) {
+  const frag = document.createDocumentFragment();
+  const blockHtml = block.html || "";
+
+  // ── CSSパネル ──
+  const cssSection = createSection("ウィジェットCSS");
+  const cssArea = document.createElement("textarea");
+  cssArea.className = "panel-code pane-css-editor";
+  cssArea.value = extractCssFromHtml(blockHtml);
+  cssArea.rows = 6;
+  cssArea.readOnly = true;
+  cssSection.appendChild(cssArea);
+  frag.appendChild(cssSection);
+
+  // ── テキスト内容パネル ──
+  const textSection = createSection("テキスト内容");
+  const textItems = extractTextNodes(blockHtml);
+  const textContainer = document.createElement("div");
+  textContainer.className = "text-nodes-container";
+
+  // HTMLソースパネル（先に作成、テキスト変更時に参照するため）
+  const codeArea = document.createElement("textarea");
+  codeArea.className = "panel-code";
+  codeArea.value = blockHtml;
+  codeArea.rows = 8;
+  codeArea.readOnly = true;
+
+  textItems.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "text-node-row";
+    const input = document.createElement("textarea");
+    input.className = "text-node-input";
+    input.value = item.currentText;
+    input.rows = 1;
+    input.style.height = "auto";
+    input.style.height = input.scrollHeight + "px";
+    input.addEventListener("input", () => {
+      item.currentText = input.value;
+      input.style.height = "auto";
+      input.style.height = input.scrollHeight + "px";
+      const newHtml = applyTextChanges(blockHtml, textItems);
+      codeArea.value = newHtml;
+      autoSave(projectId, blockIndex, () => ({
+        html: newHtml,
+        text: textItems.map(t => t.currentText).join(" "),
+      }));
+    });
+    row.appendChild(input);
+    textContainer.appendChild(row);
+  });
+
+  if (textItems.length === 0) {
+    const noText = document.createElement("div");
+    noText.style.cssText = "color:var(--text-muted);font-size:12px;padding:8px";
+    noText.textContent = "テキストノードなし";
+    textContainer.appendChild(noText);
+  }
+
+  textSection.appendChild(textContainer);
+  frag.appendChild(textSection);
+
+  // ── モード切替ボタン（HTML編集 / クイック編集） ──
+  const modeBtnRow = document.createElement("div");
+  modeBtnRow.style.cssText = "display:flex;gap:8px;margin:8px 0";
+  const htmlEditBtn = document.createElement("button");
+  htmlEditBtn.className = "widget-edit-btn";
+  htmlEditBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M5 3l-3 5 3 5M11 3l3 5-3 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> HTML編集';
+  const quickEditBtn = document.createElement("button");
+  quickEditBtn.className = "widget-edit-btn";
+  quickEditBtn.style.background = "rgba(236,72,153,0.15)";
+  quickEditBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3z" stroke="currentColor" stroke-width="1.5"/></svg> クイック編集';
+
+  htmlEditBtn.addEventListener("click", () => {
+    cssArea.readOnly = false;
+    codeArea.readOnly = false;
+    cssArea.style.opacity = "1";
+    codeArea.style.opacity = "1";
+    textContainer.querySelectorAll(".text-node-input").forEach(t => {
+      t.readOnly = true;
+      t.style.opacity = "0.5";
+    });
+    htmlEditBtn.style.background = "rgba(236,72,153,0.15)";
+    quickEditBtn.style.background = "";
+  });
+
+  quickEditBtn.addEventListener("click", () => {
+    cssArea.readOnly = true;
+    codeArea.readOnly = true;
+    cssArea.style.opacity = "0.7";
+    codeArea.style.opacity = "0.7";
+    textContainer.querySelectorAll(".text-node-input").forEach(t => {
+      t.readOnly = false;
+      t.style.opacity = "1";
+    });
+    quickEditBtn.style.background = "rgba(236,72,153,0.15)";
+    htmlEditBtn.style.background = "";
+  });
+
+  modeBtnRow.appendChild(htmlEditBtn);
+  modeBtnRow.appendChild(quickEditBtn);
+  frag.appendChild(modeBtnRow);
+
+  // ── HTMLソースパネル ──
+  const htmlSection = createSection("HTMLソース");
+  codeArea.addEventListener("input", () => {
+    autoSave(projectId, blockIndex, () => ({ html: codeArea.value }));
+  });
+  htmlSection.appendChild(codeArea);
+  frag.appendChild(htmlSection);
+
+  // 保存ボタン
+  frag.appendChild(buildSaveRow(projectId, blockIndex, () => {
+    if (!codeArea.readOnly) {
+      return { html: codeArea.value };
+    }
+    const newHtml = applyTextChanges(blockHtml, textItems);
+    return { html: newHtml, text: textItems.map(t => t.currentText).join(" ") };
+  }));
+
+  return frag;
+}
+
+// ── テキスト抽出ユーティリティ（3パネルビュー用） ─────────────
+
+/**
+ * HTMLからテキストノードを抽出（双方向バインド用）
+ */
+function extractTextNodes(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const results = [];
+  const walker = document.createTreeWalker(
+    doc.body,
+    NodeFilter.SHOW_TEXT,
+    {
+      acceptNode(node) {
+        const text = node.textContent?.trim();
+        if (!text) return NodeFilter.FILTER_REJECT;
+        const parent = node.parentElement;
+        if (parent?.closest("script, style, noscript")) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    }
+  );
+  let idx = 0;
+  let current;
+  while ((current = walker.nextNode())) {
+    const parent = current.parentElement;
+    results.push({
+      id: `text-${String(idx).padStart(3, "0")}`,
+      originalText: current.textContent.trim(),
+      currentText: current.textContent.trim(),
+      parentTag: parent?.tagName || "",
+      parentClass: parent?.className || "",
+    });
+    idx++;
+  }
+  return results;
+}
+
+/**
+ * テキスト変更をHTMLに反映
+ */
+function applyTextChanges(html, textItems) {
+  let result = html;
+  for (const item of textItems) {
+    if (item.currentText !== item.originalText) {
+      result = result.replace(item.originalText, item.currentText);
+    }
+  }
+  return result;
+}
+
+/**
+ * HTMLからCSSを抽出
+ */
+function extractCssFromHtml(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  let css = "";
+  doc.querySelectorAll("style").forEach(s => {
+    css += s.textContent + "\n";
+  });
+  doc.querySelectorAll("[style]").forEach(el => {
+    const tag = el.tagName.toLowerCase();
+    const cls = el.className ? "." + el.className.split(" ")[0] : "";
+    css += `/* inline */ ${tag}${cls} { ${el.getAttribute("style")} }\n`;
+  });
+  return css.trim();
 }
 
 // ── ヘルパー ───────────────────────────────────────────────
