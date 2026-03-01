@@ -1845,6 +1845,56 @@ function build3PanePanel(projectId, blockIndex, block) {
     aiPromptInput.style.cssText = "min-height:auto;margin-bottom:8px";
     aiImgSection.appendChild(aiPromptInput);
 
+    // 参考画像アップロード
+    const refSection = document.createElement("div");
+    refSection.style.cssText = "margin-bottom:8px";
+    const refLabel = document.createElement("div");
+    refLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:4px";
+    refLabel.textContent = "参考画像（ローカルからアップロード・任意）";
+    refSection.appendChild(refLabel);
+    const refRow = document.createElement("div");
+    refRow.style.cssText = "display:flex;gap:8px;align-items:center";
+    const refUploadBtn = document.createElement("button");
+    refUploadBtn.className = "panel-btn";
+    refUploadBtn.style.cssText = "font-size:11px;padding:5px 10px";
+    refUploadBtn.textContent = "📁 参考画像を選択";
+    const refInput = document.createElement("input");
+    refInput.type = "file";
+    refInput.accept = "image/*";
+    refInput.style.display = "none";
+    const refInfo = document.createElement("span");
+    refInfo.style.cssText = "font-size:11px;color:var(--text-muted)";
+    let refLocalPath = null;
+    refUploadBtn.addEventListener("click", () => refInput.click());
+    refInput.addEventListener("change", async () => {
+      const file = refInput.files?.[0];
+      if (!file) return;
+      refUploadBtn.disabled = true;
+      refUploadBtn.textContent = "アップロード中...";
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const result = await window.API.uploadFree(projectId, { imageData: reader.result, fileName: file.name });
+          if (result.ok) {
+            refLocalPath = result.localPath;
+            refInfo.textContent = `✓ ${file.name}`;
+            window.showToast("参考画像をアップロードしました", "success");
+          }
+        } catch (err) {
+          window.showToast(`アップロードエラー: ${err.message}`, "error");
+        } finally {
+          refUploadBtn.disabled = false;
+          refUploadBtn.textContent = "📁 参考画像を選択";
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    refRow.appendChild(refUploadBtn);
+    refRow.appendChild(refInput);
+    refRow.appendChild(refInfo);
+    refSection.appendChild(refRow);
+    aiImgSection.appendChild(refSection);
+
     // 生成ボタン
     const aiGenBtn = document.createElement("button");
     aiGenBtn.className = "oneclick-main-btn";
@@ -1858,13 +1908,26 @@ function build3PanePanel(projectId, blockIndex, block) {
       aiGenBtn.innerHTML = '<span class="spinner"></span> 生成中...（約30秒）';
       aiResultGrid.innerHTML = "";
       try {
-        const result = await window.API.oneClickImage(projectId, blockIndex, {
-          nuance: "same",
-          style: ai3PaneStyle,
-          designRequirements: window._designRequirements || "",
-          customPrompt: aiPromptInput.value.trim(),
-          genMode: ai3PaneMode,
-        });
+        let result;
+        if (refLocalPath) {
+          // 参考画像からAI生成
+          result = await window.API.aiFromReference(projectId, {
+            localPath: refLocalPath,
+            style: ai3PaneStyle,
+            genMode: ai3PaneMode,
+            customPrompt: aiPromptInput.value.trim(),
+            designRequirements: window._designRequirements || "",
+          });
+        } else {
+          // 既存画像からAI生成
+          result = await window.API.oneClickImage(projectId, blockIndex, {
+            nuance: "same",
+            style: ai3PaneStyle,
+            designRequirements: window._designRequirements || "",
+            customPrompt: aiPromptInput.value.trim(),
+            genMode: ai3PaneMode,
+          });
+        }
         if (result.ok && result.images) {
           window.showToast(`${result.images.length}パターン生成しました`, "success");
           result.images.forEach((imgUrl, i) => {

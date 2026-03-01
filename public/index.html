@@ -183,6 +183,10 @@ GEMINI_API_KEY_1=your_key_here<br><br>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         <span>+ブロック</span>
       </button>
+      <button class="toolbar-btn" id="btn-upload-image" title="画像アップロード">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 10V2m-3 3l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 10v3h12v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>画像UP</span>
+      </button>
       <button class="toolbar-btn" id="btn-text-modify" title="一括テキスト差し替え">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         <span>リンク差替</span>
@@ -773,6 +777,65 @@ GEMINI_API_KEY_1=your_key_here<br><br>
     <div class="modal-footer">
       <button class="btn-secondary" data-close-modal="modal-exit-popup">キャンセル</button>
       <button class="btn-primary" id="btn-save-exit-popup">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 画像アップロードモーダル -->
+<div id="modal-upload-image" class="modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content" style="max-width:560px">
+    <div class="modal-header">
+      <h3>画像アップロード</h3>
+      <button class="modal-close" data-close-modal="modal-upload-image">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="upload-modal-zone" id="upload-modal-zone">
+        <div class="upload-drop-icon">📁</div>
+        <div class="upload-drop-text">画像をドラッグ＆ドロップ<br>またはクリックして選択</div>
+        <input type="file" id="upload-modal-file" accept="image/*" style="display:none">
+      </div>
+      <div id="upload-modal-preview" class="upload-modal-preview" style="display:none">
+        <img id="upload-modal-img" style="max-width:100%;border-radius:6px">
+        <div class="upload-modal-info" id="upload-modal-info"></div>
+      </div>
+      <div id="upload-modal-actions" class="upload-modal-actions" style="display:none">
+        <div class="form-section">
+          <label class="form-label">挿入位置</label>
+          <select id="upload-insert-position" class="form-input">
+            <option value="end">末尾に追加</option>
+          </select>
+        </div>
+        <button class="btn-primary upload-action-btn" id="btn-upload-insert">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          新規画像ブロックとして挿入
+        </button>
+        <div class="upload-divider"><span>または</span></div>
+        <div class="form-section">
+          <label class="form-label">参考画像からAI生成</label>
+          <div class="upload-ai-options">
+            <div class="upload-ai-mode-row">
+              <button class="panel-btn primary" data-ref-mode="similar">類似生成</button>
+              <button class="panel-btn" data-ref-mode="tonmana">トンマナ変更</button>
+              <button class="panel-btn" data-ref-mode="new">新規生成</button>
+            </div>
+            <div class="upload-ai-style-row">
+              <button class="oneclick-radio active" data-ref-style="photo">写真風</button>
+              <button class="oneclick-radio" data-ref-style="manga">漫画風</button>
+              <button class="oneclick-radio" data-ref-style="illustration">イラスト</button>
+              <button class="oneclick-radio" data-ref-style="flat">フラット</button>
+            </div>
+            <textarea id="upload-ai-prompt" class="panel-textarea" placeholder="追加指示（任意）..." rows="2"></textarea>
+          </div>
+        </div>
+        <button class="btn-primary upload-action-btn" id="btn-upload-ai-gen" style="background:linear-gradient(135deg,#8b5cf6,#ec4899)">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          参考画像からAI生成
+        </button>
+        <div id="upload-ai-results" class="oneclick-result-grid"></div>
+      </div>
     </div>
   </div>
 </div>

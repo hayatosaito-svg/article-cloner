@@ -718,6 +718,215 @@ document.getElementById("btn-insert-block")?.addEventListener("click", async () 
   }
 });
 
+// ── 画像アップロードモーダル ──────────────────────────────
+let _uploadedImageData = null; // { imageData, fileName, imageUrl, localPath }
+
+document.getElementById("btn-upload-image")?.addEventListener("click", () => {
+  openUploadImageModal();
+});
+
+function openUploadImageModal() {
+  _uploadedImageData = null;
+  const zone = document.getElementById("upload-modal-zone");
+  const preview = document.getElementById("upload-modal-preview");
+  const actions = document.getElementById("upload-modal-actions");
+  const results = document.getElementById("upload-ai-results");
+  const fileInput = document.getElementById("upload-modal-file");
+  zone.classList.remove("has-file");
+  zone.style.display = "";
+  preview.style.display = "none";
+  actions.style.display = "none";
+  results.innerHTML = "";
+  fileInput.value = "";
+
+  // 挿入位置を更新
+  const select = document.getElementById("upload-insert-position");
+  select.innerHTML = '<option value="end">末尾に追加</option>';
+  if (state.projectData?.blocks) {
+    state.projectData.blocks.forEach((b) => {
+      const opt = document.createElement("option");
+      opt.value = b.index;
+      opt.textContent = `ブロック ${b.index} (${b.type}) の後`;
+      select.appendChild(opt);
+    });
+  }
+
+  // リセット AI options
+  document.querySelectorAll("[data-ref-mode]").forEach((b, i) => {
+    b.className = i === 0 ? "panel-btn primary" : "panel-btn";
+  });
+  document.querySelectorAll("[data-ref-style]").forEach((b, i) => {
+    b.className = i === 0 ? "oneclick-radio active" : "oneclick-radio";
+  });
+  document.getElementById("upload-ai-prompt").value = "";
+
+  openModal("modal-upload-image");
+}
+
+// ドラッグ＆ドロップ / クリック
+const uploadZoneEl = document.getElementById("upload-modal-zone");
+const uploadFileEl = document.getElementById("upload-modal-file");
+
+uploadZoneEl?.addEventListener("click", () => uploadFileEl?.click());
+uploadZoneEl?.addEventListener("dragover", (e) => { e.preventDefault(); uploadZoneEl.classList.add("dragover"); });
+uploadZoneEl?.addEventListener("dragleave", () => uploadZoneEl.classList.remove("dragover"));
+uploadZoneEl?.addEventListener("drop", (e) => {
+  e.preventDefault();
+  uploadZoneEl.classList.remove("dragover");
+  const file = e.dataTransfer?.files?.[0];
+  if (file && file.type.startsWith("image/")) handleUploadModalFile(file);
+});
+uploadFileEl?.addEventListener("change", () => {
+  const file = uploadFileEl?.files?.[0];
+  if (file) handleUploadModalFile(file);
+});
+
+async function handleUploadModalFile(file) {
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const imageData = reader.result;
+
+    // プレビュー表示
+    const zone = document.getElementById("upload-modal-zone");
+    const preview = document.getElementById("upload-modal-preview");
+    const actions = document.getElementById("upload-modal-actions");
+    const img = document.getElementById("upload-modal-img");
+    const info = document.getElementById("upload-modal-info");
+
+    zone.style.display = "none";
+    preview.style.display = "block";
+    actions.style.display = "flex";
+    img.src = imageData;
+    info.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+
+    // サーバーにアップロード
+    try {
+      const result = await window.API.uploadFree(state.projectId, { imageData, fileName: file.name });
+      if (result.ok) {
+        _uploadedImageData = { imageData, fileName: file.name, imageUrl: result.imageUrl, localPath: result.localPath };
+        showToast("画像をアップロードしました", "success");
+      }
+    } catch (err) {
+      showToast(`アップロードエラー: ${err.message}`, "error");
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// 新規画像ブロックとして挿入
+document.getElementById("btn-upload-insert")?.addEventListener("click", async () => {
+  if (!_uploadedImageData || !state.projectId) return;
+  const btn = document.getElementById("btn-upload-insert");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 挿入中...';
+  try {
+    const posVal = document.getElementById("upload-insert-position").value;
+    const afterIndex = posVal === "end" ? null : parseInt(posVal, 10);
+    const imgHtml = `<div style="text-align:center"><picture><img src="${_uploadedImageData.imageUrl}" style="max-width:100%;height:auto" alt="uploaded image"></picture></div>`;
+    const result = await window.API.insertBlock(state.projectId, {
+      afterIndex,
+      html: imgHtml,
+      type: "image",
+    });
+    if (result.ok) {
+      showToast(`画像ブロック ${result.insertedIndex} に挿入しました`, "success");
+      closeModal("modal-upload-image");
+      await loadEditor(result.insertedIndex);
+      pushHistory("image_insert", `画像ブロック ${result.insertedIndex} を挿入`);
+    }
+  } catch (err) {
+    showToast(`エラー: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> 新規画像ブロックとして挿入';
+  }
+});
+
+// AI生成モード選択
+document.querySelectorAll("[data-ref-mode]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-ref-mode]").forEach((b) => b.className = "panel-btn");
+    btn.className = "panel-btn primary";
+  });
+});
+document.querySelectorAll("[data-ref-style]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-ref-style]").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+  });
+});
+
+// 参考画像からAI生成
+document.getElementById("btn-upload-ai-gen")?.addEventListener("click", async () => {
+  if (!_uploadedImageData?.localPath || !state.projectId) {
+    showToast("先に画像をアップロードしてください", "error");
+    return;
+  }
+  const btn = document.getElementById("btn-upload-ai-gen");
+  const resultsEl = document.getElementById("upload-ai-results");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> AI生成中...（約30秒）';
+  resultsEl.innerHTML = "";
+
+  const genMode = document.querySelector("[data-ref-mode].primary")?.dataset.refMode || "similar";
+  const style = document.querySelector("[data-ref-style].active")?.dataset.refStyle || "photo";
+  const customPrompt = document.getElementById("upload-ai-prompt")?.value.trim() || "";
+
+  try {
+    const result = await window.API.aiFromReference(state.projectId, {
+      localPath: _uploadedImageData.localPath,
+      style,
+      genMode,
+      customPrompt,
+      designRequirements: window._designRequirements || "",
+    });
+    if (result.ok && result.images) {
+      showToast(`${result.images.length}パターン生成しました`, "success");
+      result.images.forEach((imgUrl, i) => {
+        const card = document.createElement("div");
+        card.className = "oneclick-variant-card";
+        const varImg = document.createElement("img");
+        varImg.src = imgUrl;
+        varImg.alt = `生成パターン ${i + 1}`;
+        card.appendChild(varImg);
+
+        // ブロック挿入ボタン
+        const insertBtn = document.createElement("button");
+        insertBtn.className = "oneclick-apply-btn";
+        insertBtn.textContent = "ブロック挿入";
+        insertBtn.addEventListener("click", async () => {
+          insertBtn.disabled = true;
+          insertBtn.innerHTML = '<span class="spinner"></span>';
+          try {
+            const posVal = document.getElementById("upload-insert-position").value;
+            const afterIndex = posVal === "end" ? null : parseInt(posVal, 10);
+            const imgHtml = `<div style="text-align:center"><picture><img src="${imgUrl}" style="max-width:100%;height:auto" alt="AI generated"></picture></div>`;
+            const r = await window.API.insertBlock(state.projectId, { afterIndex, html: imgHtml, type: "image" });
+            if (r.ok) {
+              showToast(`画像ブロック ${r.insertedIndex} に挿入`, "success");
+              closeModal("modal-upload-image");
+              await loadEditor(r.insertedIndex);
+              pushHistory("image_ai_insert", `AI画像ブロック ${r.insertedIndex} を挿入`);
+            }
+          } catch (err) {
+            showToast(`エラー: ${err.message}`, "error");
+          } finally {
+            insertBtn.disabled = false;
+            insertBtn.textContent = "ブロック挿入";
+          }
+        });
+        card.appendChild(insertBtn);
+        resultsEl.appendChild(card);
+      });
+    }
+  } catch (err) {
+    showToast(`AI生成エラー: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg> 参考画像からAI生成';
+  }
+});
+
 // Widget sidebar
 document.getElementById("btn-open-widgets")?.addEventListener("click", () => {
   openWidgetSidebar();

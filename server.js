@@ -1165,6 +1165,58 @@ app.post("/api/projects/:id/upload-image/:idx", async (req, res) => {
   }
 });
 
+// POST /api/projects/:id/upload-free - Upload image (no block required) for insert or reference
+app.post("/api/projects/:id/upload-free", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
+
+  const { imageData, fileName } = req.body;
+  if (!imageData) return res.status(400).json({ error: "imageData is required" });
+
+  try {
+    const matches = imageData.match(/^data:image\/(\w+);base64,(.+)$/);
+    if (!matches) return res.status(400).json({ error: "Invalid image data format" });
+
+    const ext = matches[1] === "jpeg" ? "jpg" : matches[1];
+    const buffer = Buffer.from(matches[2], "base64");
+
+    const outFile = `upload_free_${Date.now()}.${ext}`;
+    const outputPath = path.join(project.dirs.images, outFile);
+    await writeFile(outputPath, buffer);
+
+    const imageUrl = `/api/projects/${project.id}/generated-images/${outFile}`;
+    res.json({ ok: true, imageUrl, localPath: outputPath });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/projects/:id/ai-from-reference - Generate AI image from uploaded reference
+app.post("/api/projects/:id/ai-from-reference", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
+
+  const { localPath, style = "photo", genMode = "similar", designRequirements = "", customPrompt = "", width = 580, height = 580 } = req.body;
+  if (!localPath || !existsSync(localPath)) return res.status(400).json({ error: "Reference image not found" });
+
+  try {
+    const results = [];
+    for (let i = 0; i < 2; i++) {
+      const outputPath = path.join(project.dirs.images, `ref_gen_${i}_${Date.now()}.jpg`);
+      await generateImageFromReference(localPath, {
+        nuance: "same", style, width, height, outputPath, designRequirements, customPrompt, genMode,
+      });
+      results.push(`/api/projects/${project.id}/generated-images/${path.basename(outputPath)}`);
+      if (i < 1) await new Promise(r => setTimeout(r, 2000));
+    }
+    res.json({ ok: true, images: results, width, height });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Serve generated images
 app.get("/api/projects/:id/generated-images/:file", (req, res) => {
   const project = projects.get(req.params.id);

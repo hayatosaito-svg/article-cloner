@@ -75,6 +75,21 @@ export const API = {
     });
   },
 
+  async uploadFree(projectId, data) {
+    return fetchJson(`/api/projects/${projectId}/upload-free`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async aiFromReference(projectId, data) {
+    return fetchJson(`/api/projects/${projectId}/ai-from-reference`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      timeout: 120000,
+    });
+  },
+
   async insertBlock(projectId, data) {
     return fetchJson(`/api/projects/${projectId}/blocks/insert`, {
       method: "POST",
