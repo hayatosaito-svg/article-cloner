@@ -2,7 +2,7 @@
  * panels.js - ブロック編集パネル（手動モード / AIモード対応）
  */
 
-let currentMode = "manual"; // "manual" | "ai" | "block"
+let currentMode = "manual"; // "manual" | "ai"
 
 // ── Debounce付き自動保存 ─────────────────────────────────
 let _autoSaveTimer = null;
@@ -39,6 +39,205 @@ document.querySelectorAll(".mode-btn").forEach((btn) => {
   });
 });
 
+// ── ライブアニメーションプレビュー ──────────────────────────
+function triggerAnimationPreview(blockIndex, animConfig) {
+  const iframe = document.getElementById("preview-iframe");
+  if (!iframe || !iframe.contentWindow) return;
+  iframe.contentWindow.postMessage({
+    type: "previewAnimation",
+    blockIndex,
+    anim: animConfig.anim,
+    scroll: animConfig.scroll,
+    hover: animConfig.hover,
+    speed: animConfig.speed,
+  }, "*");
+}
+
+function clearAnimationPreview(blockIndex) {
+  const iframe = document.getElementById("preview-iframe");
+  if (!iframe || !iframe.contentWindow) return;
+  iframe.contentWindow.postMessage({
+    type: "clearAnimationPreview",
+    blockIndex,
+  }, "*");
+}
+
+// ── 共通アニメーションセクション ──────────────────────────────
+function buildAnimationSection(blockIndex) {
+  const section = document.createElement("div");
+  section.className = "panel-section";
+  const titleEl = document.createElement("div");
+  titleEl.className = "panel-section-title";
+  titleEl.textContent = "アニメーション";
+  section.appendChild(titleEl);
+
+  let selectedAnim = "";
+  let selectedScroll = "";
+  let selectedHover = "";
+  let selectedSpeed = "0.6s";
+
+  function firePreview() {
+    triggerAnimationPreview(blockIndex, {
+      anim: selectedAnim,
+      scroll: selectedScroll,
+      hover: selectedHover,
+      speed: selectedSpeed,
+    });
+  }
+
+  // CSSアニメーション
+  const animLabel = document.createElement("div");
+  animLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:4px";
+  animLabel.textContent = "CSSアニメーション";
+  section.appendChild(animLabel);
+  const animRow = document.createElement("div");
+  animRow.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px";
+  const animations = [
+    { value: "", label: "なし" },
+    { value: "fadeIn", label: "フェードイン" },
+    { value: "slideInUp", label: "スライドアップ" },
+    { value: "slideInLeft", label: "スライド左" },
+    { value: "slideInRight", label: "スライド右" },
+    { value: "bounceIn", label: "バウンス" },
+    { value: "pulse", label: "パルス" },
+    { value: "shake", label: "シェイク" },
+    { value: "zoomIn", label: "ズームイン" },
+    { value: "flipIn", label: "フリップ" },
+  ];
+  animations.forEach(a => {
+    const btn = document.createElement("button");
+    btn.className = a.value === "" ? "anim-chip active" : "anim-chip";
+    btn.textContent = a.label;
+    btn.addEventListener("click", () => {
+      selectedAnim = a.value;
+      animRow.querySelectorAll(".anim-chip").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      firePreview();
+    });
+    animRow.appendChild(btn);
+  });
+  section.appendChild(animRow);
+
+  // スクロール連動
+  const scrollLabel = document.createElement("div");
+  scrollLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:4px";
+  scrollLabel.textContent = "スクロール連動（表示時に発動）";
+  section.appendChild(scrollLabel);
+  const scrollRow = document.createElement("div");
+  scrollRow.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px";
+  const scrollEffects = [
+    { value: "", label: "なし" },
+    { value: "scrollFadeIn", label: "フェードイン" },
+    { value: "scrollSlideUp", label: "スライドアップ" },
+    { value: "scrollZoom", label: "ズーム" },
+    { value: "scrollBlur", label: "ブラー解除" },
+  ];
+  scrollEffects.forEach(s => {
+    const btn = document.createElement("button");
+    btn.className = s.value === "" ? "anim-chip active" : "anim-chip";
+    btn.textContent = s.label;
+    btn.addEventListener("click", () => {
+      selectedScroll = s.value;
+      scrollRow.querySelectorAll(".anim-chip").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      firePreview();
+    });
+    scrollRow.appendChild(btn);
+  });
+  section.appendChild(scrollRow);
+
+  // ホバーエフェクト
+  const hoverLabel = document.createElement("div");
+  hoverLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:4px";
+  hoverLabel.textContent = "ホバーエフェクト";
+  section.appendChild(hoverLabel);
+  const hoverRow = document.createElement("div");
+  hoverRow.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px";
+  const hoverEffects = [
+    { value: "", label: "なし" },
+    { value: "hoverScale", label: "拡大" },
+    { value: "hoverBright", label: "明るく" },
+    { value: "hoverShadow", label: "影追加" },
+    { value: "hoverLift", label: "浮かせる" },
+    { value: "hoverGray", label: "グレー→カラー" },
+  ];
+  hoverEffects.forEach(h => {
+    const btn = document.createElement("button");
+    btn.className = h.value === "" ? "anim-chip active" : "anim-chip";
+    btn.textContent = h.label;
+    btn.addEventListener("click", () => {
+      selectedHover = h.value;
+      hoverRow.querySelectorAll(".anim-chip").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      firePreview();
+    });
+    hoverRow.appendChild(btn);
+  });
+  section.appendChild(hoverRow);
+
+  // 速度
+  const speedRow = document.createElement("div");
+  speedRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px";
+  const speedLabel = document.createElement("span");
+  speedLabel.style.cssText = "font-size:11px;color:var(--text-muted)";
+  speedLabel.textContent = "速度:";
+  const speedSelect = document.createElement("select");
+  speedSelect.className = "form-input";
+  speedSelect.style.cssText = "font-size:11px;padding:4px 6px;width:auto";
+  [{ v: "0.3s", l: "速い" }, { v: "0.6s", l: "普通" }, { v: "1s", l: "遅い" }, { v: "1.5s", l: "とても遅い" }].forEach(o => {
+    const opt = document.createElement("option");
+    opt.value = o.v;
+    opt.textContent = o.l;
+    if (o.v === "0.6s") opt.selected = true;
+    speedSelect.appendChild(opt);
+  });
+  speedSelect.addEventListener("change", () => {
+    selectedSpeed = speedSelect.value;
+    firePreview();
+  });
+  speedRow.appendChild(speedLabel);
+  speedRow.appendChild(speedSelect);
+  section.appendChild(speedRow);
+
+  // プレビューボタン
+  const previewBtn = document.createElement("button");
+  previewBtn.className = "anim-preview-btn";
+  previewBtn.textContent = "プレビュー再生";
+  previewBtn.addEventListener("click", firePreview);
+  section.appendChild(previewBtn);
+
+  return {
+    section,
+    getValues: () => ({ anim: selectedAnim, scroll: selectedScroll, hover: selectedHover, speed: selectedSpeed }),
+  };
+}
+
+// ── 折りたたみ3パネルビュー ──────────────────────────────────
+function buildCollapsible3Pane(projectId, blockIndex, block) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "collapsible-3pane";
+
+  const header = document.createElement("div");
+  header.className = "collapsible-3pane-header";
+  header.innerHTML = '<span>▶</span><span>CSS / テキスト / HTMLソース</span>';
+  wrapper.appendChild(header);
+
+  const body = document.createElement("div");
+  body.className = "collapsible-3pane-body";
+
+  header.addEventListener("click", () => {
+    wrapper.classList.toggle("open");
+    header.querySelector("span").textContent = wrapper.classList.contains("open") ? "▼" : "▶";
+    // 初回展開時にコンテンツをビルド
+    if (wrapper.classList.contains("open") && body.children.length === 0) {
+      body.appendChild(build3PanePanel(projectId, blockIndex, block));
+    }
+  });
+
+  wrapper.appendChild(body);
+  return wrapper;
+}
+
 async function openEditPanel(projectId, blockIndex, blockType) {
   const panel = document.getElementById("edit-panel");
   const body = document.getElementById("edit-panel-body");
@@ -61,66 +260,78 @@ async function openEditPanel(projectId, blockIndex, blockType) {
 
   body.innerHTML = "";
 
-  // ブロック編集モード: 全ブロックタイプ共通で3パネルビュー
-  if (currentMode === "block") {
-    document.querySelectorAll(".mode-btn").forEach((b) => {
-      b.classList.toggle("active", b.dataset.mode === "block");
-    });
-    body.appendChild(build3PanePanel(projectId, blockIndex, block));
-    panel.classList.add("open");
-    return;
-  }
-
   // テキスト/見出しのみデフォルトでAI編集タブ（画像/動画は手動モードも使える）
   const aiDefaultTypes = ["text", "heading"];
   const effectiveMode = aiDefaultTypes.includes(blockType) && currentMode === "manual"
     ? "ai" : currentMode;
 
-  if (effectiveMode === "ai" && (blockType === "text" || blockType === "heading")) {
-    // AI編集タブをアクティブに見せる
-    document.querySelectorAll(".mode-btn").forEach((b) => {
-      b.classList.toggle("active", b.dataset.mode === "ai");
-    });
-    body.appendChild(buildAiTextPanel(projectId, blockIndex, block));
-  } else if (effectiveMode === "ai" && blockType === "image") {
-    // 画像AI編集（デフォルト）
-    document.querySelectorAll(".mode-btn").forEach((b) => {
-      b.classList.toggle("active", b.dataset.mode === "ai");
-    });
-    body.appendChild(buildImagePanel(projectId, blockIndex, block));
-  } else if (effectiveMode !== "ai" && blockType === "image") {
-    // 画像ブロック編集（手動）
-    body.appendChild(buildImageQuickPanel(projectId, blockIndex, block));
-  } else if (effectiveMode === "ai" && blockType === "video") {
-    // 動画AI編集（既存パネル）
-    document.querySelectorAll(".mode-btn").forEach((b) => {
-      b.classList.toggle("active", b.dataset.mode === "ai");
-    });
-    body.appendChild(buildVideoPanel(projectId, blockIndex, block));
-  } else if (effectiveMode !== "ai" && blockType === "video") {
-    // 動画手動編集
-    body.appendChild(buildVideoQuickPanel(projectId, blockIndex, block));
-  } else {
-    switch (blockType) {
-      case "text":
-      case "heading":
-        body.appendChild(buildTextPanel(projectId, blockIndex, block));
-        break;
-      case "cta_link":
-        body.appendChild(buildCtaPanel(projectId, blockIndex, block));
-        break;
-      case "widget":
-        body.appendChild(buildWidgetPanel(projectId, blockIndex, block));
-        break;
-      case "spacer":
-        body.appendChild(buildSpacerPanel(block));
-        break;
-      default:
-        body.innerHTML = `<div class="panel-section"><p>タイプ: ${blockType}</p></div>`;
+  // モードボタンのアクティブ状態を更新
+  document.querySelectorAll(".mode-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.mode === effectiveMode);
+  });
+
+  if (effectiveMode === "ai") {
+    // ── AI編集モード ──
+    if (blockType === "text" || blockType === "heading") {
+      body.appendChild(buildAiTextPanel(projectId, blockIndex, block));
+    } else if (blockType === "image") {
+      body.appendChild(buildImagePanel(projectId, blockIndex, block));
+    } else if (blockType === "video") {
+      body.appendChild(buildVideoPanel(projectId, blockIndex, block));
+    } else {
+      // その他のタイプはAIモードでもマニュアルパネルにフォール
+      body.appendChild(buildManualPanelContent(projectId, blockIndex, block, blockType));
     }
+  } else {
+    // ── 手動編集モード（アニメーション + 3パネル統合） ──
+    body.appendChild(buildManualPanelContent(projectId, blockIndex, block, blockType));
   }
 
   panel.classList.add("open");
+}
+
+// 手動モード: 各ブロックタイプのパネル + アニメーション + 折りたたみ3パネル
+function buildManualPanelContent(projectId, blockIndex, block, blockType) {
+  const frag = document.createDocumentFragment();
+
+  // ブロックタイプ別パネル
+  switch (blockType) {
+    case "text":
+    case "heading":
+      frag.appendChild(buildTextPanel(projectId, blockIndex, block));
+      break;
+    case "image":
+      frag.appendChild(buildImageQuickPanel(projectId, blockIndex, block));
+      break;
+    case "video":
+      frag.appendChild(buildVideoQuickPanel(projectId, blockIndex, block));
+      break;
+    case "cta_link":
+      frag.appendChild(buildCtaPanel(projectId, blockIndex, block));
+      break;
+    case "widget":
+      frag.appendChild(buildWidgetPanel(projectId, blockIndex, block));
+      break;
+    case "spacer":
+      frag.appendChild(buildSpacerPanel(block));
+      break;
+    default:
+      const defaultEl = document.createElement("div");
+      defaultEl.className = "panel-section";
+      defaultEl.innerHTML = `<p>タイプ: ${blockType}</p>`;
+      frag.appendChild(defaultEl);
+  }
+
+  // 共通アニメーションセクション（image/videoは既存の持っているので追加しない）
+  if (blockType !== "image" && blockType !== "video") {
+    const animResult = buildAnimationSection(blockIndex);
+    frag.appendChild(animResult.section);
+  }
+
+  // 折りたたみ3パネルビュー（CSS/テキスト/HTMLソース）
+  frag.appendChild(buildCollapsible3Pane(projectId, blockIndex, block));
+
+  return frag;
 }
 
 window.openEditPanel = openEditPanel;

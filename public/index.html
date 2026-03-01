@@ -274,6 +274,24 @@ GEMINI_API_KEY_1=your_key_here<br><br>
         <iframe id="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
       </div>
     </div>
+    <!-- 編集パネル (flex child inside split-pane) -->
+    <div id="edit-panel" class="edit-panel">
+      <div class="edit-panel-header">
+        <div class="edit-panel-title">
+          <span class="edit-panel-type" id="edit-panel-type">text</span>
+          <span>ブロック <span id="edit-panel-index">0</span></span>
+        </div>
+        <button class="edit-panel-close" id="edit-panel-close">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <!-- 編集モード切替 (2モード: 手動/AI) -->
+      <div class="edit-mode-toggle">
+        <button class="mode-btn active" data-mode="manual">手動編集</button>
+        <button class="mode-btn" data-mode="ai">AI編集</button>
+      </div>
+      <div class="edit-panel-body" id="edit-panel-body"></div>
+    </div>
   </div>
 
   <!-- 右サイドバー（常時表示アイコン列） -->
@@ -437,26 +455,6 @@ GEMINI_API_KEY_1=your_key_here<br><br>
       <button class="btn-primary" id="btn-widget-register-save">登録</button>
     </div>
   </div>
-</div>
-
-<!-- 編集パネル (スライドアウト) -->
-<div id="edit-panel" class="edit-panel">
-  <div class="edit-panel-header">
-    <div class="edit-panel-title">
-      <span class="edit-panel-type" id="edit-panel-type">text</span>
-      <span>ブロック <span id="edit-panel-index">0</span></span>
-    </div>
-    <button class="edit-panel-close" id="edit-panel-close">
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-    </button>
-  </div>
-  <!-- 編集モード切替 -->
-  <div class="edit-mode-toggle">
-    <button class="mode-btn active" data-mode="manual">手動編集</button>
-    <button class="mode-btn" data-mode="ai">AI編集</button>
-    <button class="mode-btn" data-mode="block">ブロック編集</button>
-  </div>
-  <div class="edit-panel-body" id="edit-panel-body"></div>
 </div>
 
 <!-- テキスト一括差し替えモーダル -->

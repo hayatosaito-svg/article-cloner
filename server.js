@@ -560,6 +560,29 @@ ${headTagsBlock}
     background: #fff;
   }
   img, video { max-width: 100%; height: auto; display: block; }
+
+  /* ── Animation Keyframes for Live Preview ── */
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes slideInUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes slideInLeft{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}
+  @keyframes slideInRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+  @keyframes bounceIn{0%{opacity:0;transform:scale(0.3)}50%{opacity:1;transform:scale(1.05)}70%{transform:scale(0.9)}100%{transform:scale(1)}}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+  @keyframes zoomIn{from{opacity:0;transform:scale(0.5)}to{opacity:1;transform:scale(1)}}
+  @keyframes flipIn{from{opacity:0;transform:rotateY(-90deg)}to{opacity:1;transform:rotateY(0)}}
+  @keyframes scrollFadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes scrollSlideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes scrollZoom{from{opacity:0;transform:scale(0.8)}to{opacity:1;transform:scale(1)}}
+  @keyframes scrollBlur{from{opacity:0;filter:blur(10px)}to{opacity:1;filter:blur(0)}}
+
+  /* Hover effect classes */
+  .hoverScale{transition:transform 0.3s ease}.hoverScale:hover{transform:scale(1.05)}
+  .hoverBright{transition:filter 0.3s ease}.hoverBright:hover{filter:brightness(1.15)}
+  .hoverShadow{transition:box-shadow 0.3s ease}.hoverShadow:hover{box-shadow:0 8px 25px rgba(0,0,0,0.2)}
+  .hoverLift{transition:all 0.3s ease}.hoverLift:hover{transform:translateY(-4px);box-shadow:0 6px 20px rgba(0,0,0,0.15)}
+  .hoverGray{filter:grayscale(100%);transition:filter 0.3s ease}.hoverGray:hover{filter:grayscale(0%)}
+
   .block-overlay {
     position: absolute;
     inset: 0;
@@ -723,6 +746,52 @@ ${html}
       document.querySelectorAll('.block-wrapper.active').forEach(function(w) { w.classList.remove('active'); });
       var el = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
       if (el) el.classList.add('active');
+    }
+
+    // ── Live Animation Preview ──
+    if (e.data.type === 'previewAnimation') {
+      var el = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
+      if (!el) return;
+      var content = el.children[0];
+      if (!content) content = el;
+      // Clear existing animation state
+      content.style.animation = '';
+      content.style.transition = '';
+      content.style.transform = '';
+      content.style.opacity = '';
+      content.style.filter = '';
+      content.className = content.className.replace(/\\bhover\\w+\\b/g, '').trim();
+      void content.offsetWidth; // force reflow
+
+      var speed = e.data.speed || '0.6s';
+
+      // CSS animation
+      if (e.data.anim) {
+        content.style.animation = e.data.anim + ' ' + speed + ' ease forwards';
+      }
+      // Scroll-linked (instant fire for preview)
+      if (e.data.scroll) {
+        content.style.animation = e.data.scroll + ' ' + speed + ' ease forwards';
+      }
+      // Hover effect (add class)
+      if (e.data.hover) {
+        content.classList.add(e.data.hover);
+      }
+      // Scroll into view
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    if (e.data.type === 'clearAnimationPreview') {
+      var el = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
+      if (el) {
+        var content = el.children[0] || el;
+        content.style.animation = '';
+        content.style.transition = '';
+        content.style.transform = '';
+        content.style.opacity = '';
+        content.style.filter = '';
+        content.className = content.className.replace(/\\bhover\\w+\\b/g, '').trim();
+      }
     }
   });
 

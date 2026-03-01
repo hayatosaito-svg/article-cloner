@@ -85,8 +85,8 @@
 }
 
 .pane-left {
-  width: 38%;
-  min-width: 280px;
+  width: 25%;
+  min-width: 220px;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border);
 }
@@ -331,25 +331,23 @@
     0 8px 40px rgba(0,0,0,0.1);
 }
 
-/* ── Edit Panel (slide-out) ──────────────────────────────── */
+/* ── Edit Panel (flex child inside split-pane) ───────────── */
 
 .edit-panel {
-  position: fixed;
-  top: 0;
-  right: -420px;
-  width: 400px;
+  width: 0;
+  min-width: 0;
   height: 100%;
   background: var(--bg-secondary);
   border-left: 1px solid var(--border);
-  box-shadow: -8px 0 40px rgba(0,0,0,0.1);
-  z-index: 50;
   display: flex;
   flex-direction: column;
-  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .edit-panel.open {
-  right: 0;
+  width: 380px;
+  min-width: 380px;
 }
 
 .edit-panel-header {
@@ -2359,4 +2357,47 @@
 .upload-ai-style-row .oneclick-radio {
   font-size: 11px;
   padding: 5px 10px;
+}
+
+/* ── Collapsible 3-Pane (manual mode integrated) ─────────── */
+
+.collapsible-3pane {
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+}
+.collapsible-3pane-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  user-select: none;
+}
+.collapsible-3pane-header:hover {
+  color: var(--text-secondary);
+}
+.collapsible-3pane-body {
+  display: none;
+}
+.collapsible-3pane.open .collapsible-3pane-body {
+  display: block;
+}
+
+/* ── Animation preview button ──────────────────────────────── */
+
+.anim-preview-btn {
+  background: rgba(236,72,153,0.12);
+  color: #ec4899;
+  border: 1px solid rgba(236,72,153,0.3);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.anim-preview-btn:hover {
+  background: rgba(236,72,153,0.2);
 }
