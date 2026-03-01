@@ -138,28 +138,36 @@ function buildAiTextPanel(projectId, blockIndex, block) {
   const providerSection = createSection("AIプロバイダー");
   const providerRow = document.createElement("div");
   providerRow.style.cssText = "display:flex;gap:6px";
+  const providers = window._availableProviders || [];
   const providerGemini = document.createElement("button");
-  providerGemini.className = "panel-btn primary";
+  providerGemini.className = providers.includes("gemini") ? "panel-btn primary" : "panel-btn";
   providerGemini.textContent = "Gemini";
   providerGemini.dataset.provider = "gemini";
-  const providerPixai = document.createElement("button");
-  providerPixai.className = "panel-btn";
-  providerPixai.textContent = "nanobanana";
-  providerPixai.dataset.provider = "nanobanana";
-  providerPixai.style.opacity = "0.5";
-  providerPixai.title = "準備中 — APIキー設定後に利用可能";
-  let selectedProvider = "gemini";
+  if (!providers.includes("gemini")) { providerGemini.style.opacity = "0.5"; providerGemini.title = "Gemini APIキー未設定"; }
+  const providerOpenAI = document.createElement("button");
+  providerOpenAI.className = "panel-btn";
+  providerOpenAI.textContent = "OpenAI";
+  providerOpenAI.dataset.provider = "openai";
+  if (!providers.includes("openai")) { providerOpenAI.style.opacity = "0.5"; providerOpenAI.title = "OpenAI APIキー未設定"; }
+  let selectedProvider = window._selectedProvider || (providers.includes("gemini") ? "gemini" : providers.includes("openai") ? "openai" : "gemini");
+  if (selectedProvider === "openai") { providerOpenAI.className = "panel-btn primary"; providerGemini.className = "panel-btn"; }
+  window._selectedProvider = selectedProvider;
   providerGemini.addEventListener("click", () => {
+    if (!providers.includes("gemini")) { window.showToast("Gemini APIキーを設定してください", "info"); return; }
     selectedProvider = "gemini";
+    window._selectedProvider = "gemini";
     providerGemini.className = "panel-btn primary";
-    providerPixai.className = "panel-btn";
-    providerPixai.style.opacity = "0.5";
+    providerOpenAI.className = "panel-btn";
   });
-  providerPixai.addEventListener("click", () => {
-    window.showToast("nanobanana連携は準備中です。APIキー設定後に利用できます。", "info");
+  providerOpenAI.addEventListener("click", () => {
+    if (!providers.includes("openai")) { window.showToast("OpenAI APIキーを設定してください", "info"); return; }
+    selectedProvider = "openai";
+    window._selectedProvider = "openai";
+    providerOpenAI.className = "panel-btn primary";
+    providerGemini.className = "panel-btn";
   });
   providerRow.appendChild(providerGemini);
-  providerRow.appendChild(providerPixai);
+  providerRow.appendChild(providerOpenAI);
   providerSection.appendChild(providerRow);
   frag.appendChild(providerSection);
 
@@ -274,6 +282,7 @@ function buildAiTextPanel(projectId, blockIndex, block) {
         instruction: customPrompt ? `${instruction}\n\n追加指示: ${customPrompt}` : instruction,
         text: block.text,
         designRequirements: window._designRequirements || "",
+        provider: selectedProvider,
       });
 
       if (result.ok) {
@@ -918,18 +927,18 @@ function buildImagePanel(projectId, blockIndex, block) {
     try {
       const customPrompt = promptInput.value.trim();
       let result;
+      const aiProvider = window._selectedProvider || "gemini";
       if (imgPanelRefPath) {
-        // 参考画像からAI生成
         result = await window.API.aiFromReference(projectId, {
           localPath: imgPanelRefPath,
           style,
           genMode: selectedGenMode,
           customPrompt,
           designRequirements: window._designRequirements || "",
+          provider: aiProvider,
         });
       } else {
-        // 既存画像からAI生成
-        result = await window.API.oneClickImage(projectId, blockIndex, { nuance, style, designRequirements: window._designRequirements || "", customPrompt, genMode: selectedGenMode });
+        result = await window.API.oneClickImage(projectId, blockIndex, { nuance, style, designRequirements: window._designRequirements || "", customPrompt, genMode: selectedGenMode, provider: aiProvider });
       }
       if (result.ok && result.images) {
         window.showToast(`${result.images.length}パターン生成しました`, "success");
@@ -1088,7 +1097,7 @@ function buildImagePanel(projectId, blockIndex, block) {
     descBtn.disabled = true;
     descBtn.innerHTML = '<span class="spinner"></span> 分析中...';
     try {
-      const result = await window.API.describeImage(projectId, blockIndex);
+      const result = await window.API.describeImage(projectId, blockIndex, { provider: window._selectedProvider || "gemini" });
       descArea.value = result.description;
     } catch (err) {
       window.showToast(`エラー: ${err.message}`, "error");
@@ -1131,6 +1140,7 @@ function buildImagePanel(projectId, blockIndex, block) {
       const result = await window.API.generateImage(projectId, blockIndex, {
         prompt: prompt || undefined,
         description: desc || undefined,
+        provider: window._selectedProvider || "gemini",
       });
       if (result.ok) {
         window.showToast("画像を生成しました", "success");
@@ -2594,23 +2604,24 @@ function build3PanePanel(projectId, blockIndex, block) {
       aiResultGrid.innerHTML = "";
       try {
         let result;
+        const prov3 = window._selectedProvider || "gemini";
         if (refLocalPath) {
-          // 参考画像からAI生成
           result = await window.API.aiFromReference(projectId, {
             localPath: refLocalPath,
             style: ai3PaneStyle,
             genMode: ai3PaneMode,
             customPrompt: aiPromptInput.value.trim(),
             designRequirements: window._designRequirements || "",
+            provider: prov3,
           });
         } else {
-          // 既存画像からAI生成
           result = await window.API.oneClickImage(projectId, blockIndex, {
             nuance: "same",
             style: ai3PaneStyle,
             designRequirements: window._designRequirements || "",
             customPrompt: aiPromptInput.value.trim(),
             genMode: ai3PaneMode,
+            provider: prov3,
           });
         }
         if (result.ok && result.images) {

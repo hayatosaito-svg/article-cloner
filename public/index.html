@@ -52,10 +52,29 @@
       <div class="api-key-body" id="api-key-body">
         <p class="api-key-desc">AI画像生成・テキスト書き換えに必要です。<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="api-key-link">Google AI Studio</a> で無料で取得できます。</p>
         <div class="api-key-input-row">
-          <input type="password" id="api-key-input" class="api-key-input" placeholder="APIキーをペースト..." autocomplete="off" spellcheck="false">
+          <input type="password" id="api-key-input" class="api-key-input" placeholder="Gemini APIキーをペースト..." autocomplete="off" spellcheck="false">
           <button id="btn-save-key" class="btn-save-key">保存</button>
         </div>
         <div class="api-key-hint" id="api-key-hint"></div>
+      </div>
+    </div>
+
+    <!-- OpenAI APIキー設定カード -->
+    <div class="api-key-card" id="openai-key-card">
+      <div class="api-key-header">
+        <div class="api-key-status" id="openai-key-status">
+          <span class="status-dot"></span>
+          <span class="api-key-status-text">確認中...</span>
+        </div>
+        <span class="api-key-label">OpenAI API</span>
+      </div>
+      <div class="api-key-body" id="openai-key-body">
+        <p class="api-key-desc">DALL-E 3画像生成・GPT-4oテキスト書き換え。<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" class="api-key-link">OpenAI Platform</a> で取得できます。</p>
+        <div class="api-key-input-row">
+          <input type="password" id="openai-key-input" class="api-key-input" placeholder="sk-... をペースト..." autocomplete="off" spellcheck="false">
+          <button id="btn-save-openai-key" class="btn-save-key">保存</button>
+        </div>
+        <div class="api-key-hint" id="openai-key-hint"></div>
       </div>
     </div>
 

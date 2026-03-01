@@ -30,9 +30,10 @@ export const API = {
     });
   },
 
-  async describeImage(projectId, idx) {
+  async describeImage(projectId, idx, data = {}) {
     return fetchJson(`/api/projects/${projectId}/describe-image/${idx}`, {
       method: "POST",
+      body: JSON.stringify(data),
     });
   },
 

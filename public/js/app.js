@@ -1477,7 +1477,7 @@ async function checkStatus() {
       statusEl.querySelector(".api-key-status-text").textContent = `接続済 (${data.geminiKeyCount}キー)`;
       card.classList.add("connected");
       body.classList.add("collapsed");
-      hint.innerHTML = '<span style="color:var(--green)">AI機能が使えます。</span> キーを追加したい場合は下の入力欄を使ってください。';
+      hint.innerHTML = '<span style="color:var(--green)">AI機能が使えます。</span>';
     } else {
       statusEl.classList.add("disconnected");
       statusEl.classList.remove("connected");
@@ -1486,6 +1486,32 @@ async function checkStatus() {
       body.classList.remove("collapsed");
       hint.innerHTML = '';
     }
+
+    // OpenAI status
+    const oaiStatusEl = document.getElementById("openai-key-status");
+    const oaiCard = document.getElementById("openai-key-card");
+    const oaiBody = document.getElementById("openai-key-body");
+    const oaiHint = document.getElementById("openai-key-hint");
+    if (oaiStatusEl) {
+      if (data.openai) {
+        oaiStatusEl.classList.add("connected");
+        oaiStatusEl.classList.remove("disconnected");
+        oaiStatusEl.querySelector(".api-key-status-text").textContent = "接続済";
+        oaiCard?.classList.add("connected");
+        oaiBody?.classList.add("collapsed");
+        if (oaiHint) oaiHint.innerHTML = '<span style="color:var(--green)">OpenAI機能が使えます。</span>';
+      } else {
+        oaiStatusEl.classList.add("disconnected");
+        oaiStatusEl.classList.remove("connected");
+        oaiStatusEl.querySelector(".api-key-status-text").textContent = "未設定";
+        oaiCard?.classList.remove("connected");
+        oaiBody?.classList.remove("collapsed");
+        if (oaiHint) oaiHint.innerHTML = '';
+      }
+    }
+
+    // Store available providers globally
+    window._availableProviders = data.providers || [];
   } catch {
     const statusEl = document.getElementById("api-key-status");
     if (statusEl) {
@@ -1543,6 +1569,55 @@ document.getElementById("btn-save-key")?.addEventListener("click", async () => {
 // Enter key to save
 document.getElementById("api-key-input")?.addEventListener("keydown", (e) => {
   if (e.key === "Enter") document.getElementById("btn-save-key")?.click();
+});
+
+// OpenAI key card toggle
+document.getElementById("openai-key-card")?.querySelector(".api-key-header")?.addEventListener("click", () => {
+  document.getElementById("openai-key-body")?.classList.toggle("collapsed");
+});
+
+// Save OpenAI API key
+document.getElementById("btn-save-openai-key")?.addEventListener("click", async () => {
+  const input = document.getElementById("openai-key-input");
+  const btn = document.getElementById("btn-save-openai-key");
+  const hint = document.getElementById("openai-key-hint");
+  const key = input.value.trim();
+
+  if (!key) {
+    hint.innerHTML = '<span style="color:var(--red)">APIキーを入力してください</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "確認中...";
+  hint.innerHTML = '<span style="color:var(--text-muted)">APIキーを検証しています...</span>';
+
+  try {
+    const res = await fetch("/api/set-openai-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key }),
+    });
+    const data = await res.json();
+
+    if (res.ok && data.ok) {
+      hint.innerHTML = '<span style="color:var(--green)">OpenAI APIキーを保存しました!</span>';
+      input.value = "";
+      showToast("OpenAI APIキーを設定しました", "success");
+      await checkStatus();
+    } else {
+      hint.innerHTML = `<span style="color:var(--red)">${escapeHtml(data.error || "保存に失敗しました")}</span>`;
+    }
+  } catch (err) {
+    hint.innerHTML = `<span style="color:var(--red)">エラー: ${escapeHtml(err.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "保存";
+  }
+});
+
+document.getElementById("openai-key-input")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("btn-save-openai-key")?.click();
 });
 
 // ── Sidebar Event Handlers ─────────────────────────────────

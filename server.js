@@ -12,7 +12,7 @@ import fetch from "node-fetch";
 import { scrape } from "./src/scraper.js";
 import { parseHtml } from "./src/parser.js";
 import { applyTextModifications, analyzeForReplacement, applyBlockReplacements } from "./src/text-modifier.js";
-import { describeImage, generateImage, generateImageFromReference, buildImagePrompt } from "./src/image-generator.js";
+import { describeImage, generateImage, generateImageFromReference, buildImagePrompt, aiRewriteText, getAvailableProviders } from "./src/image-generator.js";
 import { buildSbHtml, validateSbHtml } from "./src/html-builder.js";
 import {
   PROJECT_ROOT, SCRAPED_DIR, ANALYSIS_DIR, IMAGES_DIR, FINAL_DIR,
@@ -991,7 +991,8 @@ app.post("/api/projects/:id/describe-image/:idx", async (req, res) => {
       .join(" ")
       .slice(0, 200);
 
-    const description = await describeImage(assetEntry.localPath, context);
+    const provider = req.body?.provider || "gemini";
+    const description = await describeImage(assetEntry.localPath, context, provider);
     res.json({ description });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1008,7 +1009,7 @@ app.post("/api/projects/:id/generate-image/:idx", async (req, res) => {
   const block = project.blocks[idx];
   if (!block) return res.status(404).json({ error: "Block not found" });
 
-  const { prompt, description } = req.body;
+  const { prompt, description, provider } = req.body;
   const asset = block.assets?.[0];
   const width = asset?.width || 580;
   const height = asset?.height || 580;
@@ -1020,7 +1021,7 @@ app.post("/api/projects/:id/generate-image/:idx", async (req, res) => {
       `block_${idx}_${Date.now()}.jpg`
     );
 
-    await generateImage(finalPrompt, { width, height, outputPath });
+    await generateImage(finalPrompt, { width, height, outputPath, provider: provider || "gemini" });
 
     const generatedUrl = `/api/projects/${project.id}/generated-images/${path.basename(outputPath)}`;
     res.json({ ok: true, imageUrl: generatedUrl });
@@ -1053,7 +1054,7 @@ app.post("/api/projects/:id/one-click-image/:idx", async (req, res) => {
     return res.status(400).json({ error: "Asset file not found on disk" });
   }
 
-  const { nuance = "same", style = "photo", designRequirements = "", customPrompt = "", genMode = "similar" } = req.body;
+  const { nuance = "same", style = "photo", designRequirements = "", customPrompt = "", genMode = "similar", provider = "gemini" } = req.body;
   const width = asset.width || 580;
   const height = asset.height || 580;
 
@@ -1065,7 +1066,7 @@ app.post("/api/projects/:id/one-click-image/:idx", async (req, res) => {
         `block_${idx}_oneclick_${i}_${Date.now()}.jpg`
       );
       await generateImageFromReference(assetEntry.localPath, {
-        nuance, style, width, height, outputPath, designRequirements, customPrompt, genMode,
+        nuance, style, width, height, outputPath, designRequirements, customPrompt, genMode, provider,
       });
       results.push(`/api/projects/${project.id}/generated-images/${path.basename(outputPath)}`);
       // Delay between generations for rate limiting
@@ -1201,7 +1202,7 @@ app.post("/api/projects/:id/ai-from-reference", async (req, res) => {
   if (!project) return res.status(404).json({ error: "Project not found" });
   if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
 
-  const { localPath, style = "photo", genMode = "similar", designRequirements = "", customPrompt = "", width = 580, height = 580 } = req.body;
+  const { localPath, style = "photo", genMode = "similar", designRequirements = "", customPrompt = "", width = 580, height = 580, provider = "gemini" } = req.body;
   if (!localPath || !existsSync(localPath)) return res.status(400).json({ error: "Reference image not found" });
 
   try {
@@ -1209,7 +1210,7 @@ app.post("/api/projects/:id/ai-from-reference", async (req, res) => {
     for (let i = 0; i < 2; i++) {
       const outputPath = path.join(project.dirs.images, `ref_gen_${i}_${Date.now()}.jpg`);
       await generateImageFromReference(localPath, {
-        nuance: "same", style, width, height, outputPath, designRequirements, customPrompt, genMode,
+        nuance: "same", style, width, height, outputPath, designRequirements, customPrompt, genMode, provider,
       });
       results.push(`/api/projects/${project.id}/generated-images/${path.basename(outputPath)}`);
       if (i < 1) await new Promise(r => setTimeout(r, 2000));
@@ -1359,47 +1360,14 @@ app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
   const block = project.blocks[idx];
   if (!block) return res.status(404).json({ error: "Block not found" });
 
-  const { instruction, text, designRequirements } = req.body;
+  const { instruction, text, designRequirements, provider = "gemini" } = req.body;
   if (!instruction) return res.status(400).json({ error: "instruction is required" });
 
   const sourceText = text || block.text || "";
   if (!sourceText) return res.status(400).json({ error: "No text to rewrite" });
 
-  // Use Gemini API for text rewriting
-  const keys = [];
-  for (let i = 1; i <= 3; i++) {
-    const k = process.env[`GEMINI_API_KEY_${i}`];
-    if (k) keys.push(k);
-  }
-  if (keys.length === 0 && process.env.GEMINI_API_KEY) keys.push(process.env.GEMINI_API_KEY);
-  if (keys.length === 0) return res.status(400).json({ error: "GEMINI_API_KEY が未設定です。.envファイルに追加してください。" });
-
-  const key = keys[Math.floor(Math.random() * keys.length)];
-  const designContext = designRequirements ? `\nデザイン要件: ${designRequirements}\n上記のトーン・雰囲気に合わせて書き換えてください。` : "";
-  const prompt = `以下のテキストを指示に従って書き換えてください。HTMLのインラインスタイル（font-size, color, strong等）は必ず保持してください。書き換え後のテキストのみを返してください。余計な説明は不要です。
-${designContext}
-指示: ${instruction}
-
-元テキスト:
-${sourceText}`;
-
   try {
-    const apiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-        }),
-      }
-    );
-
-    if (!apiRes.ok) throw new Error(`Gemini API error: ${apiRes.status}`);
-
-    const data = await apiRes.json();
-    const rewritten = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
+    const rewritten = await aiRewriteText(sourceText, instruction, designRequirements || "", provider);
     res.json({ ok: true, original: sourceText, rewritten });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1419,10 +1387,13 @@ app.get("/api/status", (req, res) => {
     if (k) keys.push(i);
   }
   if (keys.length === 0 && process.env.GEMINI_API_KEY) keys.push(0);
+  const hasOpenAI = !!process.env.OPENAI_API_KEY;
   res.json({
     gemini: keys.length > 0,
     geminiKeyCount: keys.length,
-    version: "1.1.0",
+    openai: hasOpenAI,
+    providers: getAvailableProviders(),
+    version: "1.2.0",
   });
 });
 
@@ -1490,6 +1461,45 @@ app.post("/api/set-key", async (req, res) => {
   }
 
   res.json({ ok: true, message: "APIキーを保存しました" });
+});
+
+// POST /api/set-openai-key - Save OpenAI API key at runtime
+app.post("/api/set-openai-key", async (req, res) => {
+  const { key } = req.body;
+  if (!key || typeof key !== "string" || !key.trim().startsWith("sk-")) {
+    return res.status(400).json({ error: "有効なOpenAI APIキーを入力してください（sk-で始まる）" });
+  }
+
+  const trimmedKey = key.trim();
+
+  // Quick validation
+  try {
+    const testRes = await fetch("https://api.openai.com/v1/models", {
+      headers: { Authorization: `Bearer ${trimmedKey}` },
+    });
+    if (!testRes.ok) {
+      return res.status(400).json({ error: "OpenAI APIキーが無効です" });
+    }
+  } catch {
+    return res.status(400).json({ error: "APIキーの検証に失敗しました" });
+  }
+
+  process.env.OPENAI_API_KEY = trimmedKey;
+
+  // Persist to .env
+  try {
+    const envPath = path.join(PROJECT_ROOT, ".env");
+    let envContent = "";
+    if (existsSync(envPath)) envContent = await readFile(envPath, "utf-8");
+    if (envContent.includes("OPENAI_API_KEY=")) {
+      envContent = envContent.replace(/OPENAI_API_KEY=.*/, `OPENAI_API_KEY=${trimmedKey}`);
+    } else {
+      envContent += `\nOPENAI_API_KEY=${trimmedKey}`;
+    }
+    await writeFile(envPath, envContent.trim() + "\n", "utf-8");
+  } catch {}
+
+  res.json({ ok: true, message: "OpenAI APIキーを保存しました" });
 });
 
 // ── Cloudflare Pages 公開 ─────────────────────────────────
