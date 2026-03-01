@@ -1505,7 +1505,7 @@ app.post("/api/projects/:id/ocr", async (req, res) => {
       if (!apiKey) apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) return res.status(400).json({ error: "Gemini APIキーが未設定です" });
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
       const geminiResp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

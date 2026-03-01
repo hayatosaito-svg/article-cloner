@@ -11,9 +11,9 @@ import { writeFile, readFile } from "fs/promises";
 import path from "path";
 import { sleep } from "./utils.js";
 
-const GEMINI_MODEL = "gemini-2.0-flash-exp";
-const GEMINI_FLASH_MODEL = "gemini-2.0-flash";
-const GEMINI_IMAGE_MODEL = "imagen-3.0-generate-002";
+const GEMINI_IMAGE_GEN_MODEL = "gemini-2.5-flash-image";
+const GEMINI_FLASH_MODEL = "gemini-2.5-flash";
+const GEMINI_IMAGEN_MODEL = "imagen-3.0-generate-002";
 
 /**
  * Gemini APIキーをローテーション（遅延読み込み対応）
@@ -185,7 +185,7 @@ async function generateImageGemini(prompt, options = {}) {
   const height = options.height || 580;
 
   // 1) Try Imagen 3.0
-  const imagenUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:predict?key=${key}`;
+  const imagenUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGEN_MODEL}:predict?key=${key}`;
 
   try {
     const resp = await fetch(imagenUrl, {
@@ -231,8 +231,8 @@ async function generateImageGeminiNative(prompt, options = {}) {
   const width = options.width || 580;
   const height = options.height || 580;
 
-  // Try gemini-2.0-flash-exp first, fallback to gemini-2.0-flash
-  for (const model of [GEMINI_MODEL, GEMINI_FLASH_MODEL]) {
+  // Try gemini-2.5-flash-image (native image gen model)
+  for (const model of [GEMINI_IMAGE_GEN_MODEL]) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
     try {
@@ -335,8 +335,8 @@ async function generateImageFromReferenceGemini(imagePath, options = {}) {
 
   const prompt = buildReferencePrompt(nuance, style, options, designRequirements);
 
-  // Try gemini-2.0-flash-exp first, then gemini-2.0-flash
-  for (const model of [GEMINI_MODEL, GEMINI_FLASH_MODEL]) {
+  // Try gemini-2.5-flash-image for reference-based generation
+  for (const model of [GEMINI_IMAGE_GEN_MODEL]) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
     try {
@@ -348,7 +348,7 @@ async function generateImageFromReferenceGemini(imagePath, options = {}) {
             { text: prompt },
             { inline_data: { mime_type: mimeType, data: base64 } },
           ] }],
-          generationConfig: { responseModalities: ["IMAGE"] },
+          generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
         }),
       });
 
