@@ -2180,6 +2180,22 @@
   line-height: 1.2;
 }
 
+/* ── サイズ調整入力 ── */
+.panel-input-sm {
+  width: 70px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+.panel-input-sm:focus {
+  border-color: #ec4899;
+  outline: none;
+}
+
 /* ── ウィジェットインラインプレビュー ── */
 .widget-inline-preview {
   width: 100%;
