@@ -980,7 +980,7 @@ app.post("/api/projects/:id/one-click-image/:idx", async (req, res) => {
     return res.status(400).json({ error: "Asset file not found on disk" });
   }
 
-  const { nuance = "same", style = "photo", designRequirements = "", customPrompt = "" } = req.body;
+  const { nuance = "same", style = "photo", designRequirements = "", customPrompt = "", genMode = "similar" } = req.body;
   const width = asset.width || 580;
   const height = asset.height || 580;
 
@@ -992,7 +992,7 @@ app.post("/api/projects/:id/one-click-image/:idx", async (req, res) => {
         `block_${idx}_oneclick_${i}_${Date.now()}.jpg`
       );
       await generateImageFromReference(assetEntry.localPath, {
-        nuance, style, width, height, outputPath, designRequirements, customPrompt,
+        nuance, style, width, height, outputPath, designRequirements, customPrompt, genMode,
       });
       results.push(`/api/projects/${project.id}/generated-images/${path.basename(outputPath)}`);
       // Delay between generations for rate limiting

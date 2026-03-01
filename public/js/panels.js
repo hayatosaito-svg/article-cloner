@@ -718,6 +718,51 @@ function buildImagePanel(projectId, blockIndex, block) {
   imgDesignSection.appendChild(imgDesignHint);
   frag.appendChild(imgDesignSection);
 
+  // ── 現在テキスト表示 ──
+  const textInfoSection = createSection("現在テキスト");
+  const textInfoArea = document.createElement("div");
+  textInfoArea.style.cssText = "font-size:12px;color:var(--text-secondary);line-height:1.6;padding:8px 10px;background:var(--bg-tertiary);border-radius:6px;max-height:80px;overflow-y:auto;white-space:pre-wrap;word-break:break-all";
+  textInfoArea.textContent = block.text || "(テキストなし)";
+  textInfoSection.appendChild(textInfoArea);
+  frag.appendChild(textInfoSection);
+
+  // ── 現在画像情報 ──
+  const imgInfoSection = createSection("現在画像");
+  const imgInfoRow = document.createElement("div");
+  imgInfoRow.style.cssText = "font-size:11px;color:var(--text-muted);padding:4px 0";
+  imgInfoRow.textContent = asset ? `${asset.width || "?"}×${asset.height || "?"} / ${asset.type || "image"} / ${(originalSrc.split("/").pop() || "").slice(0, 30)}` : "画像情報なし";
+  imgInfoSection.appendChild(imgInfoRow);
+  frag.appendChild(imgInfoSection);
+
+  // ── 画像生成モード選択 ──
+  const genModeSection = createSection("生成モード");
+  const genModeRow = document.createElement("div");
+  genModeRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
+  let selectedGenMode = "similar";
+  const genModes = [
+    { value: "similar", label: "類似生成", desc: "元画像に近い画像を生成" },
+    { value: "tonmana", label: "トンマナ変更", desc: "構図維持、色味・雰囲気だけ変更" },
+    { value: "new", label: "新規生成", desc: "ゼロから新しい画像を生成" },
+  ];
+  const genModeDesc = document.createElement("div");
+  genModeDesc.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:4px";
+  genModeDesc.textContent = genModes[0].desc;
+  genModes.forEach((mode) => {
+    const btn = document.createElement("button");
+    btn.className = mode.value === "similar" ? "panel-btn primary" : "panel-btn";
+    btn.textContent = mode.label;
+    btn.addEventListener("click", () => {
+      selectedGenMode = mode.value;
+      genModeRow.querySelectorAll(".panel-btn").forEach(b => { b.className = "panel-btn"; });
+      btn.className = "panel-btn primary";
+      genModeDesc.textContent = mode.desc;
+    });
+    genModeRow.appendChild(btn);
+  });
+  genModeSection.appendChild(genModeRow);
+  genModeSection.appendChild(genModeDesc);
+  frag.appendChild(genModeSection);
+
   // ── ワンクリックAI画像生成 ──
   const oneClickSection = document.createElement("div");
   oneClickSection.className = "panel-section oneclick-section";
@@ -792,7 +837,15 @@ function buildImagePanel(projectId, blockIndex, block) {
   // メインボタン
   const mainBtn = document.createElement("button");
   mainBtn.className = "oneclick-main-btn";
-  mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2v14M2 9h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> AIで類似画像を生成';
+  const mainBtnLabels = { similar: "AIで類似画像を生成", tonmana: "トンマナを変更して生成", new: "新規画像を生成" };
+  mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2v14M2 9h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> ' + mainBtnLabels.similar;
+
+  // 生成モード変更時にボタンラベルを更新
+  genModeRow.addEventListener("click", () => {
+    setTimeout(() => {
+      mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2v14M2 9h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> ' + (mainBtnLabels[selectedGenMode] || mainBtnLabels.similar);
+    }, 0);
+  });
 
   // 生成結果エリア
   const resultGrid = document.createElement("div");
@@ -808,7 +861,7 @@ function buildImagePanel(projectId, blockIndex, block) {
 
     try {
       const customPrompt = promptInput.value.trim();
-      const result = await window.API.oneClickImage(projectId, blockIndex, { nuance, style, designRequirements: window._designRequirements || "", customPrompt });
+      const result = await window.API.oneClickImage(projectId, blockIndex, { nuance, style, designRequirements: window._designRequirements || "", customPrompt, genMode: selectedGenMode });
       if (result.ok && result.images) {
         window.showToast(`${result.images.length}パターン生成しました`, "success");
         resultGrid.innerHTML = "";
@@ -848,7 +901,7 @@ function buildImagePanel(projectId, blockIndex, block) {
       window.showToast(`エラー: ${err.message}`, "error");
     } finally {
       mainBtn.disabled = false;
-      mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2v14M2 9h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> AIで類似画像を生成';
+      mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2v14M2 9h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> ' + (mainBtnLabels[selectedGenMode] || mainBtnLabels.similar);
     }
   });
 

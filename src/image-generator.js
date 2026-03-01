@@ -353,9 +353,21 @@ export async function generateImageFromReference(imagePath, options = {}) {
   };
 
   const customPrompt = options.customPrompt || "";
+  const genMode = options.genMode || "similar";
   const designContext = designRequirements ? `\nデザイン要件: ${designRequirements}` : "";
   const customContext = customPrompt ? `\n追加指示: ${customPrompt}` : "";
-  const prompt = `${nuancePrompts[nuance] || nuancePrompts.same}\n${styleModifiers[style] || styleModifiers.photo}${designContext}${customContext}\n画像内にテキストや文字は一切含めないでください。日本の商品広告LP用の画像として適切な品質にしてください。`;
+
+  // 生成モード別プロンプト
+  let modePrompt;
+  if (genMode === "tonmana") {
+    modePrompt = "この画像の構図・レイアウト・被写体の配置はそのまま維持してください。色味・トーン・雰囲気（トーン&マナー）だけを変更した画像を生成してください。構図は絶対に変えないでください。";
+  } else if (genMode === "new") {
+    modePrompt = "この画像のテーマ・用途を参考にしつつ、構図・被写体・背景を全て新しくデザインした、全く新しい画像を生成してください。元画像にとらわれず自由にクリエイティブしてください。";
+  } else {
+    modePrompt = nuancePrompts[nuance] || nuancePrompts.same;
+  }
+
+  const prompt = `${modePrompt}\n${styleModifiers[style] || styleModifiers.photo}${designContext}${customContext}\n画像内にテキストや文字は一切含めないでください。日本の商品広告LP用の画像として適切な品質にしてください。`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
 
