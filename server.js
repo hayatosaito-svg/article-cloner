@@ -44,6 +44,14 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: "50mb" }));
+
+// APP_MODE=ad-manager → ルート(/)で広告マネージャーを返す（static より先に定義）
+if (process.env.APP_MODE === "ad-manager") {
+  app.get("/", (req, res) => {
+    res.sendFile(path.join(PROJECT_ROOT, "public", "ad-manager.html"));
+  });
+}
+
 app.use(express.static(path.join(PROJECT_ROOT, "public")));
 
 // ── AI Usage Counter ──────────────────────────────────────
@@ -1461,7 +1469,7 @@ app.put("/api/projects/:id/apply-image/:idx", (req, res) => {
   res.json({ ok: true });
 });
 
-// POST /api/projects/:id/upload-image/:idx - Upload local image and apply to block
+// POST /api/projects/:id/upload-image/:idx - Upload local image/video and apply to block
 app.post("/api/projects/:id/upload-image/:idx", async (req, res) => {
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
@@ -1475,14 +1483,26 @@ app.post("/api/projects/:id/upload-image/:idx", async (req, res) => {
   if (!imageData) return res.status(400).json({ error: "imageData is required" });
 
   try {
-    // imageData is base64 data URL: "data:image/jpeg;base64,/9j/..."
-    const matches = imageData.match(/^data:image\/(\w+);base64,(.+)$/);
-    if (!matches) return res.status(400).json({ error: "Invalid image data format" });
+    // Support both image and video data URLs
+    const matches = imageData.match(/^data:(image|video)\/(\w+);base64,(.+)$/);
+    if (!matches) return res.status(400).json({ error: "Invalid media data format" });
 
-    const ext = matches[1] === "jpeg" ? "jpg" : matches[1];
-    const buffer = Buffer.from(matches[2], "base64");
+    const mediaType = matches[1]; // "image" or "video"
+    let ext = matches[2];
+    if (ext === "jpeg") ext = "jpg";
+    if (ext === "quicktime") ext = "mov";
+    const buffer = Buffer.from(matches[3], "base64");
 
-    // Resize with sharp (maintain aspect, max quality)
+    if (mediaType === "video") {
+      // Video: save directly without resizing
+      const outFile = `block_${idx}_upload_${Date.now()}.${ext}`;
+      const outputPath = path.join(project.dirs.images, outFile);
+      await writeFile(outputPath, buffer);
+      const imageUrl = `/api/projects/${project.id}/generated-images/${outFile}`;
+      return res.json({ ok: true, imageUrl, mediaType: "video" });
+    }
+
+    // Image: resize with sharp
     const asset = block.assets?.[0];
     const width = asset?.width || 580;
     const height = asset?.height || 580;
@@ -1498,13 +1518,13 @@ app.post("/api/projects/:id/upload-image/:idx", async (req, res) => {
     await writeFile(outputPath, resized);
 
     const imageUrl = `/api/projects/${project.id}/generated-images/${outFile}`;
-    res.json({ ok: true, imageUrl, width, height });
+    res.json({ ok: true, imageUrl, width, height, mediaType: "image" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/projects/:id/upload-free - Upload image (no block required) for insert or reference
+// POST /api/projects/:id/upload-free - Upload image/video (no block required) for insert or reference
 app.post("/api/projects/:id/upload-free", async (req, res) => {
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
@@ -1514,18 +1534,22 @@ app.post("/api/projects/:id/upload-free", async (req, res) => {
   if (!imageData) return res.status(400).json({ error: "imageData is required" });
 
   try {
-    const matches = imageData.match(/^data:image\/(\w+);base64,(.+)$/);
-    if (!matches) return res.status(400).json({ error: "Invalid image data format" });
+    // Support both image and video data URLs
+    const matches = imageData.match(/^data:(image|video)\/(\w+);base64,(.+)$/);
+    if (!matches) return res.status(400).json({ error: "Invalid media data format" });
 
-    const ext = matches[1] === "jpeg" ? "jpg" : matches[1];
-    const buffer = Buffer.from(matches[2], "base64");
+    const mediaType = matches[1]; // "image" or "video"
+    let ext = matches[2];
+    if (ext === "jpeg") ext = "jpg";
+    if (ext === "quicktime") ext = "mov";
+    const buffer = Buffer.from(matches[3], "base64");
 
     const outFile = `upload_free_${Date.now()}.${ext}`;
     const outputPath = path.join(project.dirs.images, outFile);
     await writeFile(outputPath, buffer);
 
     const imageUrl = `/api/projects/${project.id}/generated-images/${outFile}`;
-    res.json({ ok: true, imageUrl, localPath: outputPath });
+    res.json({ ok: true, imageUrl, localPath: outputPath, mediaType });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
