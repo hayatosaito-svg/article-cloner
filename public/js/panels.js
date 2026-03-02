@@ -1194,24 +1194,39 @@ function buildImagePanel(projectId, blockIndex, block) {
   const imgProviderSection = createSection("AIプロバイダー");
   const imgProviderRow = document.createElement("div");
   imgProviderRow.style.cssText = "display:flex;gap:6px";
-  const imgProviderGemini = document.createElement("button");
-  imgProviderGemini.className = "panel-btn primary";
-  imgProviderGemini.textContent = "Gemini";
+  const imgProviders = window._availableProviders || [];
+
   const imgProviderPixai = document.createElement("button");
   imgProviderPixai.className = "panel-btn";
-  imgProviderPixai.textContent = "nanobanana";
-  imgProviderPixai.style.opacity = "0.5";
-  imgProviderPixai.title = "準備中 — APIキー設定後に利用可能";
-  imgProviderGemini.addEventListener("click", () => {
-    imgProviderGemini.className = "panel-btn primary";
-    imgProviderPixai.className = "panel-btn";
-    imgProviderPixai.style.opacity = "0.5";
-  });
+  imgProviderPixai.textContent = "PixAI";
+  if (!imgProviders.includes("pixai")) { imgProviderPixai.style.opacity = "0.5"; imgProviderPixai.title = "PixAI APIキー未設定"; }
+
+  const imgProviderGemini = document.createElement("button");
+  imgProviderGemini.className = "panel-btn";
+  imgProviderGemini.textContent = "Gemini";
+  if (!imgProviders.includes("gemini")) { imgProviderGemini.style.opacity = "0.5"; imgProviderGemini.title = "Gemini APIキー未設定"; }
+
+  // デフォルト: PixAI優先
+  let imgSelectedProvider = window._selectedProvider || (imgProviders.includes("pixai") ? "pixai" : "gemini");
+  function updateImgProviderBtns() {
+    imgProviderPixai.className = imgSelectedProvider === "pixai" ? "panel-btn primary" : "panel-btn";
+    imgProviderPixai.style.opacity = imgSelectedProvider === "pixai" || imgProviders.includes("pixai") ? "1" : "0.5";
+    imgProviderGemini.className = imgSelectedProvider === "gemini" ? "panel-btn primary" : "panel-btn";
+    imgProviderGemini.style.opacity = imgSelectedProvider === "gemini" || imgProviders.includes("gemini") ? "1" : "0.5";
+  }
+  updateImgProviderBtns();
+
   imgProviderPixai.addEventListener("click", () => {
-    window.showToast("nanobanana連携は準備中です。APIキー設定後に利用できます。", "info");
+    if (!imgProviders.includes("pixai")) { window.showToast("PixAI APIキーを設定してください", "info"); return; }
+    imgSelectedProvider = "pixai"; window._selectedProvider = "pixai"; updateImgProviderBtns();
   });
-  imgProviderRow.appendChild(imgProviderGemini);
+  imgProviderGemini.addEventListener("click", () => {
+    if (!imgProviders.includes("gemini")) { window.showToast("Gemini APIキーを設定してください", "info"); return; }
+    imgSelectedProvider = "gemini"; window._selectedProvider = "gemini"; updateImgProviderBtns();
+  });
+
   imgProviderRow.appendChild(imgProviderPixai);
+  imgProviderRow.appendChild(imgProviderGemini);
   imgProviderSection.appendChild(imgProviderRow);
   frag.appendChild(imgProviderSection);
 

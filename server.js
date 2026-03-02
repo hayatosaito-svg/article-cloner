@@ -1123,7 +1123,7 @@ app.post("/api/projects/:id/one-click-image/:idx", async (req, res) => {
     return res.status(400).json({ error: "Asset file not found on disk" });
   }
 
-  const { nuance = "same", style = "photo", designRequirements = "", customPrompt = "", genMode = "similar", provider = "gemini" } = req.body;
+  const { nuance = "same", style = "photo", designRequirements = "", customPrompt = "", genMode = "similar", provider = "pixai" } = req.body;
   const width = asset.width || 580;
   const height = asset.height || 580;
 
@@ -1271,7 +1271,7 @@ app.post("/api/projects/:id/ai-from-reference", async (req, res) => {
   if (!project) return res.status(404).json({ error: "Project not found" });
   if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
 
-  const { localPath, style = "photo", genMode = "similar", designRequirements = "", customPrompt = "", width = 580, height = 580, provider = "gemini" } = req.body;
+  const { localPath, style = "photo", genMode = "similar", designRequirements = "", customPrompt = "", width = 580, height = 580, provider = "pixai" } = req.body;
   if (!localPath || !existsSync(localPath)) return res.status(400).json({ error: "Reference image not found" });
 
   try {

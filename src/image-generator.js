@@ -245,8 +245,8 @@ async function generateImageGeminiNative(prompt, options = {}) {
   const width = options.width || 580;
   const height = options.height || 580;
 
-  // Try gemini-2.5-flash-image (native image gen model)
-  for (const model of [GEMINI_IMAGE_GEN_MODEL]) {
+  // Try multiple models for native image generation
+  for (const model of [GEMINI_IMAGE_GEN_MODEL, "gemini-2.5-flash-preview-image", "gemini-2.0-flash-exp"]) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
     try {
@@ -517,8 +517,8 @@ async function generateImageFromReferenceGemini(imagePath, options = {}) {
 
   const prompt = buildReferencePrompt(nuance, style, options, designRequirements);
 
-  // Try gemini-2.5-flash-image for reference-based generation
-  for (const model of [GEMINI_IMAGE_GEN_MODEL]) {
+  // Try multiple models for reference-based generation
+  for (const model of [GEMINI_IMAGE_GEN_MODEL, "gemini-2.5-flash-preview-image", "gemini-2.0-flash-exp"]) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
     try {
