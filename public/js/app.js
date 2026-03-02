@@ -985,6 +985,21 @@ document.getElementById("btn-upload-ai-gen")?.addEventListener("click", async ()
   }
 });
 
+// Widget mode toggle
+window._widgetMode = false;
+document.getElementById("btn-widget-mode")?.addEventListener("click", () => {
+  window._widgetMode = !window._widgetMode;
+  const btn = document.getElementById("btn-widget-mode");
+  btn.classList.toggle("active", window._widgetMode);
+  if (window._widgetMode) {
+    openWidgetSidebar();
+    window.showToast?.("ウィジェットモード ON", "info");
+  } else {
+    document.getElementById("widget-sidebar")?.classList.remove("open");
+    window.showToast?.("通常モードに戻りました", "info");
+  }
+});
+
 // Widget sidebar
 document.getElementById("btn-open-widgets")?.addEventListener("click", () => {
   openWidgetSidebar();
@@ -1514,7 +1529,18 @@ function escapeHtml(str) {
 function closeEditPanel() {
   document.getElementById("edit-panel")?.classList.remove("open");
   document.getElementById("widget-sidebar")?.classList.remove("open");
+  document.body.classList.remove("panel-open");
 }
+
+// Sync panel-open class on body whenever edit-panel open state changes
+(function observeEditPanel() {
+  const panel = document.getElementById("edit-panel");
+  if (!panel) return;
+  const observer = new MutationObserver(() => {
+    document.body.classList.toggle("panel-open", panel.classList.contains("open"));
+  });
+  observer.observe(panel, { attributes: true, attributeFilter: ["class"] });
+})();
 
 window.escapeHtml = escapeHtml;
 window.closeEditPanel = closeEditPanel;

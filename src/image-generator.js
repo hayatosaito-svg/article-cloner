@@ -685,7 +685,7 @@ async function generateImageFromReferenceOpenAI(imagePath, options = {}) {
 
 export async function aiRewriteText(sourceText, instruction, designRequirements = "", provider = "nanobanana") {
   if (provider === "openai") return aiRewriteTextOpenAI(sourceText, instruction, designRequirements);
-  // nanobanana uses Gemini engine
+  // pixai is image-only, fallback to Gemini for text rewrite
   return aiRewriteTextGemini(sourceText, instruction, designRequirements);
 }
 
@@ -830,4 +830,97 @@ function buildReferencePrompt(nuance, style, options, designRequirements) {
 
 export function videoToImagePrompt(videoContext) {
   return `Create a still image that represents: ${videoContext}. Style: Japanese advertisement, professional photography, clean layout. No text in the image.`;
+}
+
+// ── composeImages ──
+
+/**
+ * 2枚の画像をレイアウトに従って1枚に合成
+ * @param {string} image1Path - 1枚目の画像パス
+ * @param {string} image2Path - 2枚目の画像パス
+ * @param {string} layoutId - レイアウトID ("h2", "v2", "l-shape", etc.)
+ * @param {object} options - { width, height, outputPath, gap }
+ */
+export async function composeImages(image1Path, image2Path, layoutId, options = {}) {
+  const width = options.width || 580;
+  const height = options.height || 580;
+  const outputPath = options.outputPath || `composed_${Date.now()}.jpg`;
+  const gap = options.gap || 4;
+
+  // Define cell regions based on layout
+  const regions = getLayoutRegions(layoutId, width, height, gap);
+
+  // Resize each image to fit its cell, then composite
+  const composites = [];
+  const images = [image1Path, image2Path];
+
+  for (let i = 0; i < Math.min(regions.length, images.length); i++) {
+    const r = regions[i];
+    const resized = await sharp(images[i])
+      .resize(r.width, r.height, { fit: "cover" })
+      .toBuffer();
+    composites.push({ input: resized, left: r.left, top: r.top });
+  }
+
+  // Create base canvas and composite images
+  const canvas = sharp({
+    create: { width, height, channels: 3, background: { r: 255, g: 255, b: 255 } },
+  }).jpeg({ quality: 90 });
+
+  const result = await canvas.composite(composites).toBuffer();
+  await writeFile(outputPath, result);
+  return outputPath;
+}
+
+function getLayoutRegions(layoutId, w, h, gap) {
+  const halfW = Math.floor((w - gap) / 2);
+  const halfH = Math.floor((h - gap) / 2);
+
+  switch (layoutId) {
+    case "h2": // 横2分割
+      return [
+        { left: 0, top: 0, width: halfW, height: h },
+        { left: halfW + gap, top: 0, width: w - halfW - gap, height: h },
+      ];
+    case "v2": // 縦2分割
+      return [
+        { left: 0, top: 0, width: w, height: halfH },
+        { left: 0, top: halfH + gap, width: w, height: h - halfH - gap },
+      ];
+    case "l-shape": // L字型: 上が大きく、下が2分割
+      return [
+        { left: 0, top: 0, width: w, height: halfH },
+        { left: 0, top: halfH + gap, width: halfW, height: h - halfH - gap },
+      ];
+    case "l-shape-r": // 逆L字型: 上が2分割、下が大きい
+      return [
+        { left: 0, top: 0, width: halfW, height: halfH },
+        { left: 0, top: halfH + gap, width: w, height: h - halfH - gap },
+      ];
+    case "big-left": // 大左+小右
+      return [
+        { left: 0, top: 0, width: Math.floor(w * 2 / 3), height: h },
+        { left: Math.floor(w * 2 / 3) + gap, top: 0, width: w - Math.floor(w * 2 / 3) - gap, height: h },
+      ];
+    case "big-right": // 大右+小左
+      return [
+        { left: 0, top: 0, width: Math.floor(w / 3), height: h },
+        { left: Math.floor(w / 3) + gap, top: 0, width: w - Math.floor(w / 3) - gap, height: h },
+      ];
+    case "manga3": // 漫画3コマ (2 images: top-left big, bottom strip)
+      return [
+        { left: 0, top: 0, width: w, height: halfH },
+        { left: 0, top: halfH + gap, width: w, height: h - halfH - gap },
+      ];
+    case "diagonal": // 斜め2分割 (approximate with left/right)
+      return [
+        { left: 0, top: 0, width: halfW, height: h },
+        { left: halfW + gap, top: 0, width: w - halfW - gap, height: h },
+      ];
+    default: // fallback: 横2分割
+      return [
+        { left: 0, top: 0, width: halfW, height: h },
+        { left: halfW + gap, top: 0, width: w - halfW - gap, height: h },
+      ];
+  }
 }

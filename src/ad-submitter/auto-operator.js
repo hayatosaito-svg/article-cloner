@@ -55,22 +55,63 @@ export class AutoOperator {
     this.config = { ...this.config, ...updates };
     await mkdir(path.dirname(CONFIG_PATH), { recursive: true });
     await writeFile(CONFIG_PATH, JSON.stringify(this.config, null, 2));
-    return this.config;
+    const check = this.validateBeforeRun();
+    return { ...this.config, _validation: check };
   }
 
   getConfig() {
     return this.config;
   }
 
+  // ── 安全バリデーション（上限未設定で配信不可） ──────
+  validateBeforeRun() {
+    const errors = [];
+    const c = this.config;
+
+    if (!c.dailyBudgetLimit || c.dailyBudgetLimit <= 0) {
+      errors.push("本日の上限予算が設定されていません");
+    }
+    if (!c.targetCPA || c.targetCPA <= 0) {
+      errors.push("目標CPAが設定されていません");
+    }
+    if (!c.maxCPA || c.maxCPA <= 0) {
+      errors.push("撤退CPA（限界CPA）が設定されていません");
+    }
+    if (c.maxCPA && c.targetCPA && c.maxCPA < c.targetCPA) {
+      errors.push("撤退CPAは目標CPA以上に設定してください");
+    }
+    if (!c.targetROAS || c.targetROAS <= 0) {
+      errors.push("目標ROASが設定されていません");
+    }
+    if (c.dailyBudgetLimit && c.dailyBudgetLimit > 10000000) {
+      errors.push("上限予算が1,000万円を超えています。意図的な場合は確認してください");
+    }
+
+    // 対象媒体が1つもない
+    const anyEnabled = Object.values(c.platforms || {}).some(p => p?.enabled);
+    if (!anyEnabled) {
+      errors.push("対象媒体が1つも選択されていません");
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+
   // ── スケジューラ ──────────────────────────────────
   async start() {
     await this.loadConfig();
+
+    // 上限バリデーション（未設定なら起動拒否）
+    const check = this.validateBeforeRun();
+    if (!check.valid) {
+      return { status: "error", errors: check.errors };
+    }
+
     if (this.running) return { status: "already_running" };
     this.running = true;
     this.config.enabled = true;
     await this.saveConfig({ enabled: true });
     this.scheduleNext();
-    this.log("system", "自動運用を開始しました", {});
+    this.log("system", `自動運用を開始しました（上限: ¥${this.config.dailyBudgetLimit.toLocaleString()} / 目標CPA: ¥${this.config.targetCPA.toLocaleString()} / 撤退CPA: ¥${this.config.maxCPA.toLocaleString()}）`, {});
     return { status: "started" };
   }
 
@@ -476,6 +517,11 @@ export class AutoOperator {
 
   // ── 手動実行（即時判定） ───────────────────────────
   async executeNow() {
+    await this.loadConfig();
+    const check = this.validateBeforeRun();
+    if (!check.valid) {
+      throw new Error(check.errors.join("、"));
+    }
     return await this.runCycle();
   }
 }

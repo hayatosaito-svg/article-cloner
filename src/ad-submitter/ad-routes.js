@@ -218,6 +218,9 @@ export function createAdRoutes(getProject) {
   router.post("/api/auto-operator/start", async (req, res) => {
     try {
       const result = await autoOperator.start();
+      if (result.status === "error") {
+        return res.status(400).json({ error: result.errors.join("\n"), errors: result.errors });
+      }
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -246,7 +249,8 @@ export function createAdRoutes(getProject) {
       const decisions = await autoOperator.executeNow();
       res.json({ ok: true, decisions });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      // validateBeforeRun の throw を 400 で返す
+      res.status(400).json({ error: err.message });
     }
   });
 

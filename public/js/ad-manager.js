@@ -671,8 +671,12 @@ const AdManager = {
       },
     };
     try {
-      await API.saveAutoOperatorConfig(config);
-      this.toast("運用パラメータを保存しました", "success");
+      const result = await API.saveAutoOperatorConfig(config);
+      if (result.config?._validation && !result.config._validation.valid) {
+        this.toast("保存しました（注意: " + result.config._validation.errors.join("、") + "）", "error");
+      } else {
+        this.toast("運用パラメータを保存しました", "success");
+      }
     } catch (err) {
       this.toast(err.message, "error");
     }
@@ -688,8 +692,14 @@ const AdManager = {
       } else {
         // 最新の設定を保存してから開始
         await this.saveAutoConfig();
-        await API.startAutoOperator();
-        this.toast("自動運用を開始しました", "success");
+        try {
+          await API.startAutoOperator();
+          this.toast("自動運用を開始しました", "success");
+        } catch (startErr) {
+          // バリデーションエラー表示
+          this.toast("開始できません:\n" + startErr.message, "error");
+          return;
+        }
       }
       this.refreshAutoStatus();
     } catch (err) {
@@ -703,7 +713,7 @@ const AdManager = {
     try {
       await this.saveAutoConfig();
       const result = await API.autoExecuteNow();
-      this.toast(`判定完了: ${result.decisions?.length || 0}件のアクション`, "success");
+      this.toast(`判定完了: ${(result.decisions || []).length}件のアクション`, "success");
       this.loadAutoLogs();
       this.refreshAutoStatus();
     } catch (err) {

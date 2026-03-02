@@ -106,6 +106,29 @@ export const API = {
     });
   },
 
+  async generateVideo(projectId, idx, data) {
+    return fetchJson(`/api/projects/${projectId}/generate-video/${idx}`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      timeout: 200000,
+    });
+  },
+
+  async describeVideo(projectId, idx, data = {}) {
+    return fetchJson(`/api/projects/${projectId}/describe-video/${idx}`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      timeout: 30000,
+    });
+  },
+
+  async uploadVideo(projectId, idx, data) {
+    return fetchJson(`/api/projects/${projectId}/upload-video/${idx}`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
   async insertBlock(projectId, data) {
     return fetchJson(`/api/projects/${projectId}/blocks/insert`, {
       method: "POST",

@@ -12,7 +12,7 @@ import fetch from "node-fetch";
 import { scrape } from "./src/scraper.js";
 import { parseHtml } from "./src/parser.js";
 import { applyTextModifications, analyzeForReplacement, applyBlockReplacements } from "./src/text-modifier.js";
-import { describeImage, generateImage, generateImageFromReference, generateVideo, buildImagePrompt, aiRewriteText, getAvailableProviders } from "./src/image-generator.js";
+import { describeImage, generateImage, generateImageFromReference, generateVideo, buildImagePrompt, aiRewriteText, getAvailableProviders, composeImages } from "./src/image-generator.js";
 import { buildSbHtml, validateSbHtml } from "./src/html-builder.js";
 import {
   PROJECT_ROOT, SCRAPED_DIR, ANALYSIS_DIR, IMAGES_DIR, FINAL_DIR,
@@ -45,6 +45,12 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.static(path.join(PROJECT_ROOT, "public")));
+
+// ── AI Usage Counter ──────────────────────────────────────
+const apiUsage = {};
+function trackAiUsage(endpoint) {
+  apiUsage[endpoint] = (apiUsage[endpoint] || 0) + 1;
+}
 
 // ── Project Store ──────────────────────────────────────────
 const projects = new Map();
@@ -458,6 +464,10 @@ app.post("/api/projects/:id/blocks/reorder", (req, res) => {
 app.get("/api/projects/:id/tag-settings", (req, res) => {
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
+  // Ensure defaults for projects restored from disk without tagSettings
+  if (!project.tagSettings) {
+    project.tagSettings = { headTags: "", bodyTags: "", noindex: false, jsHead: "", jsBody: "", masterCss: "" };
+  }
   res.json(project.tagSettings);
 });
 
@@ -1202,7 +1212,7 @@ ${html}
     }
 
     if (e.data.type === 'elementUpdate') {
-      // Update overlay position/style for a specific element
+      // Update overlay position/style + real-time text/animation preview
       document.querySelectorAll('.ai-element-overlay').forEach(function(o) { o.remove(); });
       var wrapper = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
       if (!wrapper) return;
@@ -1212,26 +1222,55 @@ ${html}
 
       var div = document.createElement('div');
       div.className = 'ai-element-overlay';
-      div.style.cssText = 'position:absolute;pointer-events:none;z-index:2000;';
+      div.style.cssText = 'position:absolute;pointer-events:none;z-index:2000;display:flex;align-items:center;justify-content:center;overflow:hidden;';
       div.style.left = bb.x + '%';
       div.style.top = bb.y + '%';
       div.style.width = bb.width + '%';
       div.style.height = bb.height + '%';
       div.style.border = '2px solid #ec4899';
-      div.style.background = 'rgba(236,72,153,0.1)';
+      div.style.background = 'rgba(236,72,153,0.08)';
       div.style.borderRadius = '3px';
       if (!e.data.visible) div.style.display = 'none';
       div.style.zIndex = 2000 + (e.data.zIndex || 0);
       content.style.position = 'relative';
-      content.appendChild(div);
 
-      // Show text content preview if text type
+      // Apply styles
+      var fontSizes = { small: '10px', medium: '14px', large: '20px', xlarge: '28px' };
       if (e.data.style) {
-        var fontSizes = { small: '10px', medium: '14px', large: '20px', xlarge: '28px' };
         div.style.fontSize = fontSizes[e.data.style.fontSize] || '14px';
+        div.style.fontWeight = e.data.style.fontWeight || 'normal';
         if (e.data.style.color) div.style.color = e.data.style.color;
         if (e.data.style.backgroundColor) div.style.background = e.data.style.backgroundColor + '33';
       }
+
+      // Show text content inside overlay
+      if (e.data.content) {
+        div.textContent = e.data.content;
+        div.style.pointerEvents = 'none';
+        div.style.textShadow = '0 0 3px rgba(255,255,255,0.8)';
+        div.style.padding = '2px 4px';
+        div.style.wordBreak = 'break-word';
+      }
+      content.appendChild(div);
+
+      // Also update actual text in the block DOM
+      if (e.data.content) {
+        var textNodes = [];
+        var treeWalker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, null, false);
+        var tn;
+        while (tn = treeWalker.nextNode()) {
+          if (tn.textContent.trim() && !tn.parentElement.closest('.ai-element-overlay') && !tn.parentElement.closest('style') && !tn.parentElement.closest('script')) {
+            textNodes.push(tn);
+          }
+        }
+        // Try to find matching text node and update it
+        var elIdx = e.data.elementIndex || 0;
+        if (textNodes[elIdx]) {
+          textNodes[elIdx].textContent = e.data.content;
+        }
+      }
+
+      wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   });
 })();
@@ -1256,6 +1295,7 @@ app.get("/api/projects/:id/assets/:file", (req, res) => {
 
 // POST /api/projects/:id/describe-image/:idx - AI describe image
 app.post("/api/projects/:id/describe-image/:idx", async (req, res) => {
+  trackAiUsage("describe-image");
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
 
@@ -1294,6 +1334,7 @@ app.post("/api/projects/:id/describe-image/:idx", async (req, res) => {
 
 // POST /api/projects/:id/generate-image/:idx - Generate image
 app.post("/api/projects/:id/generate-image/:idx", async (req, res) => {
+  trackAiUsage("generate-image");
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
   if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
@@ -1325,6 +1366,7 @@ app.post("/api/projects/:id/generate-image/:idx", async (req, res) => {
 
 // POST /api/projects/:id/one-click-image/:idx - One-click AI image generation
 app.post("/api/projects/:id/one-click-image/:idx", async (req, res) => {
+  trackAiUsage("one-click-image");
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
   if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
@@ -1491,6 +1533,7 @@ app.post("/api/projects/:id/upload-free", async (req, res) => {
 
 // POST /api/projects/:id/ai-from-reference - Generate AI image from uploaded reference
 app.post("/api/projects/:id/ai-from-reference", async (req, res) => {
+  trackAiUsage("ai-from-reference");
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
   if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
@@ -1509,6 +1552,182 @@ app.post("/api/projects/:id/ai-from-reference", async (req, res) => {
       if (i < 1) await new Promise(r => setTimeout(r, 2000));
     }
     res.json({ ok: true, images: results, width, height });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/projects/:id/describe-uploaded - Describe uploaded reference image
+app.post("/api/projects/:id/describe-uploaded", async (req, res) => {
+  trackAiUsage("describe-uploaded");
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const { localPath, provider } = req.body;
+  if (!localPath || !existsSync(localPath)) {
+    return res.status(400).json({ error: "Image file not found" });
+  }
+
+  try {
+    const description = await describeImage(localPath, "", provider || "nanobanana");
+    res.json({ description });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/projects/:id/compose-images - Compose two images into one
+app.post("/api/projects/:id/compose-images", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
+
+  const { image1Path, image2Path, layout, width, height } = req.body;
+
+  // Resolve paths: could be URLs (/api/projects/.../generated-images/xxx) or absolute paths
+  const resolve = (p) => {
+    if (p && p.startsWith("/api/projects/")) {
+      const file = p.split("/").pop();
+      return path.join(project.dirs.images, file);
+    }
+    return p;
+  };
+
+  const abs1 = resolve(image1Path);
+  const abs2 = resolve(image2Path);
+
+  if (!abs1 || !existsSync(abs1)) return res.status(400).json({ error: "image1 not found" });
+  if (!abs2 || !existsSync(abs2)) return res.status(400).json({ error: "image2 not found" });
+
+  try {
+    const outFile = `composed_${Date.now()}.jpg`;
+    const outputPath = path.join(project.dirs.images, outFile);
+
+    await composeImages(abs1, abs2, layout || "h2", {
+      width: width || 580,
+      height: height || 580,
+      outputPath,
+    });
+
+    const imageUrl = `/api/projects/${project.id}/generated-images/${outFile}`;
+    res.json({ ok: true, imageUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/projects/:id/generate-video/:idx - Generate video with VEO3
+app.post("/api/projects/:id/generate-video/:idx", async (req, res) => {
+  trackAiUsage("generate-video");
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
+
+  const idx = parseInt(req.params.idx, 10);
+  const { prompt, resolution = "720p", duration = "6", format = "mp4" } = req.body;
+  if (!prompt) return res.status(400).json({ error: "prompt is required" });
+
+  try {
+    const ext = format === "gif" ? "gif" : "mp4";
+    const outFile = `block_${idx}_video_${Date.now()}.${ext}`;
+    const outputPath = path.join(project.dirs.images, outFile);
+
+    await generateVideo(prompt, { outputPath, resolution, durationSeconds: duration });
+
+    // GIF変換が必要な場合
+    if (format === "gif") {
+      // ffmpegが利用可能な場合のみ（なければmp4のまま）
+      try {
+        const { execSync } = await import("child_process");
+        const gifFile = `block_${idx}_video_${Date.now()}.gif`;
+        const gifPath = path.join(project.dirs.images, gifFile);
+        execSync(`ffmpeg -i "${outputPath}" -vf "fps=10,scale=480:-1:flags=lanczos" -y "${gifPath}"`, { timeout: 30000 });
+        const videoUrl = `/api/projects/${project.id}/generated-images/${gifFile}`;
+        return res.json({ ok: true, videoUrl, format: "gif" });
+      } catch {
+        // ffmpeg not available, return mp4
+      }
+    }
+
+    const videoUrl = `/api/projects/${project.id}/generated-images/${outFile}`;
+    res.json({ ok: true, videoUrl, format: "mp4" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/projects/:id/describe-video/:idx - Describe existing video for prompt
+app.post("/api/projects/:id/describe-video/:idx", async (req, res) => {
+  trackAiUsage("describe-video");
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const idx = parseInt(req.params.idx, 10);
+  const block = project.blocks[idx];
+  if (!block) return res.status(404).json({ error: "Block not found" });
+
+  const { localPath } = req.body;
+
+  // Use localPath if provided (uploaded video), otherwise try block's video asset
+  let filePath = localPath;
+  if (!filePath) {
+    const videoAsset = block.assets?.find(a => a.type === "video");
+    const assetEntry = videoAsset && project.assets?.find(a => a.originalUrl === videoAsset.src);
+    filePath = assetEntry?.localPath;
+  }
+
+  if (!filePath || !existsSync(filePath)) {
+    return res.status(400).json({ error: "Video file not found" });
+  }
+
+  try {
+    // For video, extract a frame and describe it
+    const context = block.text || project.blocks.slice(Math.max(0, idx - 2), idx + 3)
+      .filter(b => b.text).map(b => b.text).join(" ").slice(0, 200);
+
+    // Try to extract a frame with ffmpeg, if not available describe text context
+    let description = "";
+    try {
+      const { execSync } = await import("child_process");
+      const framePath = path.join(project.dirs.images, `frame_tmp_${Date.now()}.jpg`);
+      execSync(`ffmpeg -i "${filePath}" -ss 1 -vframes 1 -y "${framePath}"`, { timeout: 10000 });
+      if (existsSync(framePath)) {
+        description = await describeImage(framePath, context);
+        // Clean up temp frame
+        await import("fs/promises").then(fs => fs.unlink(framePath)).catch(() => {});
+      }
+    } catch {
+      description = context ? `動画コンテンツ: ${context}` : "商品紹介動画";
+    }
+
+    res.json({ description });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/projects/:id/upload-video/:idx - Upload video file
+app.post("/api/projects/:id/upload-video/:idx", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
+
+  const idx = parseInt(req.params.idx, 10);
+  const { videoData, fileName } = req.body;
+  if (!videoData) return res.status(400).json({ error: "videoData is required" });
+
+  try {
+    const matches = videoData.match(/^data:(video\/\w+);base64,(.+)$/);
+    if (!matches) return res.status(400).json({ error: "Invalid video data format" });
+
+    const buffer = Buffer.from(matches[2], "base64");
+    const ext = fileName?.split(".").pop() || "mp4";
+    const outFile = `block_${idx}_upload_${Date.now()}.${ext}`;
+    const outputPath = path.join(project.dirs.images, outFile);
+    await writeFile(outputPath, buffer);
+
+    const videoUrl = `/api/projects/${project.id}/generated-images/${outFile}`;
+    res.json({ ok: true, videoUrl, localPath: outputPath });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1546,6 +1765,7 @@ app.get("/api/projects/:id/text-blocks", (req, res) => {
 
 // POST /api/projects/:id/text-modify - Bulk text replacement
 app.post("/api/projects/:id/text-modify", (req, res) => {
+  trackAiUsage("text-modify");
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
 
@@ -1646,6 +1866,7 @@ app.get("/api/projects/:id/export", (req, res) => {
 
 // POST /api/projects/:id/ai-rewrite/:idx - AI text rewrite
 app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
+  trackAiUsage("ai-rewrite");
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
 
@@ -1653,10 +1874,20 @@ app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
   const block = project.blocks[idx];
   if (!block) return res.status(404).json({ error: "Block not found" });
 
-  const { instruction, text, designRequirements, provider = "nanobanana" } = req.body;
+  const { instruction, text, html: reqHtml, designRequirements, provider = "nanobanana" } = req.body;
   if (!instruction) return res.status(400).json({ error: "instruction is required" });
 
-  const sourceText = text || block.text || "";
+  let sourceText = text || block.text || "";
+  // HTMLからテキスト抽出のフォールバック
+  if (!sourceText) {
+    const htmlSource = reqHtml || block.html || "";
+    if (htmlSource) {
+      const cheerio = await import("cheerio");
+      const $ = cheerio.load(htmlSource);
+      $("style, script").remove();
+      sourceText = ($.text() || "").replace(/\s+/g, " ").trim();
+    }
+  }
   if (!sourceText) return res.status(400).json({ error: "No text to rewrite" });
 
   try {
@@ -1710,6 +1941,7 @@ app.post("/api/projects/:id/ocr", async (req, res) => {
 
 // POST /api/projects/:id/extract-elements/:idx - AI Vision element extraction
 app.post("/api/projects/:id/extract-elements/:idx", async (req, res) => {
+  trackAiUsage("extract-elements");
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
 
@@ -1983,6 +2215,7 @@ app.post("/api/search-images", async (req, res) => {
 
 // POST /api/projects/:id/auto-keywords/:idx - AI generates search keywords from image
 app.post("/api/projects/:id/auto-keywords/:idx", async (req, res) => {
+  trackAiUsage("auto-keywords");
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
   const idx = parseInt(req.params.idx, 10);
@@ -2418,6 +2651,12 @@ app.delete("/api/widget-templates/:id", async (req, res) => {
   templates = templates.filter((t) => t.id !== req.params.id);
   await saveWidgetTemplates(templates);
   res.json({ ok: true });
+});
+
+// GET /api/usage-stats - AI usage statistics
+app.get("/api/usage-stats", (req, res) => {
+  const total = Object.values(apiUsage).reduce((s, n) => s + n, 0);
+  res.json({ usage: apiUsage, total });
 });
 
 // ── 広告入稿ルート ────────────────────────────────

@@ -212,6 +212,10 @@ GEMINI_API_KEY_1=your_key_here<br><br>
       </button>
     </div>
     <div class="toolbar-right">
+      <button class="toolbar-btn widget-mode-toggle" id="btn-widget-mode" title="ウィジェットモード切替">
+        <span class="widget-mode-indicator"></span>
+        <span>ウィジェット</span>
+      </button>
       <button class="toolbar-btn" id="btn-tag-settings" title="タグ設定">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3h10v2H3zM5 7h6v2H5zM4 11h8v2H4z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>タグ設定</span>
@@ -281,9 +285,14 @@ GEMINI_API_KEY_1=your_key_here<br><br>
           <span class="edit-panel-type" id="edit-panel-type">text</span>
           <span>ブロック <span id="edit-panel-index">0</span></span>
         </div>
-        <button class="edit-panel-close" id="edit-panel-close">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        </button>
+        <div style="display:flex;align-items:center;gap:4px">
+          <button class="edit-panel-widget-btn" id="edit-panel-widget-btn" title="Widget挿入">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M11.5 9.5v5M9 12h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </button>
+          <button class="edit-panel-close" id="edit-panel-close">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+        </div>
       </div>
       <!-- 編集モード切替 (2モード: 手動/AI) -->
       <div class="edit-mode-toggle">

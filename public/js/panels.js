@@ -295,14 +295,9 @@ async function openEditPanel(projectId, blockIndex, blockType) {
 
   body.innerHTML = "";
 
-  // テキスト/見出しのみデフォルトでAI編集タブ（画像/動画は手動モードも使える）
-  const aiDefaultTypes = ["text", "heading"];
-  const effectiveMode = aiDefaultTypes.includes(blockType) && currentMode === "manual"
-    ? "ai" : currentMode;
-
-  // モードボタンのアクティブ状態を更新
+  // モードボタンのアクティブ状態を更新（ユーザー選択をそのまま尊重）
   document.querySelectorAll(".mode-btn").forEach((b) => {
-    b.classList.toggle("active", b.dataset.mode === effectiveMode);
+    b.classList.toggle("active", b.dataset.mode === currentMode);
   });
 
   // widgetでも画像を含んでいれば画像ブロックとして扱う
@@ -310,21 +305,24 @@ async function openEditPanel(projectId, blockIndex, blockType) {
   const widgetHasImage = blockType === "widget" && (blockHtmlLower.includes("<img") || blockHtmlLower.includes("<picture"));
   const widgetHasVideo = blockType === "widget" && !widgetHasImage && blockHtmlLower.includes("<video");
 
-  if (effectiveMode === "ai") {
-    // ── AI編集モード ──
-    if (blockType === "text" || blockType === "heading") {
-      body.appendChild(buildAiTextPanel(projectId, blockIndex, block));
-    } else if (blockType === "image" || widgetHasImage) {
-      body.appendChild(buildImagePanel(projectId, blockIndex, block));
-    } else if (blockType === "video" || widgetHasVideo) {
-      body.appendChild(buildVideoPanel(projectId, blockIndex, block));
-    } else {
-      // その他のタイプはAIモードでもマニュアルパネルにフォール
-      body.appendChild(buildManualPanelContent(projectId, blockIndex, block, blockType));
-    }
+  if (currentMode === "ai") {
+    // ── AI利用カウント表示 ──
+    const usageBadgeContainer = document.createElement("div");
+    usageBadgeContainer.style.cssText = "display:flex;justify-content:flex-end;padding:4px 0 8px";
+    const usageBadge = document.createElement("span");
+    usageBadge.className = "ai-usage-badge";
+    usageBadge.textContent = "AI: ...";
+    usageBadgeContainer.appendChild(usageBadge);
+    body.appendChild(usageBadgeContainer);
+    window.API.getUsageStats().then(data => {
+      usageBadge.textContent = `AI: ${data.total || 0}回`;
+    }).catch(() => { usageBadge.textContent = "AI: -"; });
+
+    // ── AI編集モード: 全体編集 / 要素編集 の分岐 ──
+    body.appendChild(buildAiModeSwitcher(projectId, blockIndex, block, blockType, widgetHasImage, widgetHasVideo));
   } else {
-    // ── 手動編集モード（アニメーション + 3パネル統合） ──
-    body.appendChild(buildManualPanelContent(projectId, blockIndex, block, blockType));
+    // ── 手動編集モード（プレビュー→要素抽出→詳細編集→3パネル） ──
+    body.appendChild(buildBlockEditContent(projectId, blockIndex, block, blockType, widgetHasImage, widgetHasVideo));
   }
 
   panel.classList.add("open");
@@ -427,6 +425,158 @@ function buildManualPanelContent(projectId, blockIndex, block, blockType) {
   frag.appendChild(detailSec.wrapper);
 
   // ─── 折りたたみ3パネルビュー（CSS/テキスト/HTMLソース） ───
+  frag.appendChild(buildCollapsible3Pane(projectId, blockIndex, block));
+
+  return frag;
+}
+
+// AI編集モード: 全体編集 / 要素編集 の切替UI
+function buildAiModeSwitcher(projectId, blockIndex, block, blockType, widgetHasImage, widgetHasVideo) {
+  const frag = document.createDocumentFragment();
+  const blockHtml = block.html || "";
+
+  // ── サブモード切替ボタン ──
+  const switchBar = document.createElement("div");
+  switchBar.style.cssText = "display:flex;gap:6px;margin-bottom:14px";
+
+  const btnGlobal = document.createElement("button");
+  btnGlobal.className = "ai-sub-mode-btn active";
+  btnGlobal.dataset.submode = "global";
+  btnGlobal.textContent = "全体編集";
+
+  const btnElement = document.createElement("button");
+  btnElement.className = "ai-sub-mode-btn";
+  btnElement.dataset.submode = "element";
+  btnElement.textContent = "要素編集";
+
+  switchBar.appendChild(btnGlobal);
+  switchBar.appendChild(btnElement);
+  frag.appendChild(switchBar);
+
+  // ── コンテンツ領域 ──
+  const contentArea = document.createElement("div");
+  frag.appendChild(contentArea);
+
+  function renderSubMode(mode) {
+    contentArea.innerHTML = "";
+    switchBar.querySelectorAll(".ai-sub-mode-btn").forEach(b => {
+      b.classList.toggle("active", b.dataset.submode === mode);
+    });
+
+    if (mode === "global") {
+      // ── 全体編集 ──
+      if (blockType === "video" || widgetHasVideo) {
+        // 動画 → VEO3ウィザード
+        contentArea.appendChild(buildVideoWizard(projectId, blockIndex, block));
+      } else {
+        // 動画以外は全てウィザード統一
+        contentArea.appendChild(buildAiImageWizard(projectId, blockIndex, block));
+        // CTA リンクブロックにはURL編集も追加
+        if (blockType === "cta_link") {
+          contentArea.appendChild(buildCtaUrlEditor(projectId, blockIndex, block));
+        }
+      }
+    } else {
+      // ── 要素編集: 要素抽出 → 各要素AI編集 ──
+      const extractSec = document.createElement("div");
+      const elementsContainer = document.createElement("div");
+      extractSec.appendChild(elementsContainer);
+      contentArea.appendChild(extractSec);
+      buildExtractedElements(elementsContainer, projectId, blockIndex, block, blockType, blockHtml);
+    }
+  }
+
+  // 初期表示
+  renderSubMode("global");
+
+  // クリックイベント
+  [btnGlobal, btnElement].forEach(btn => {
+    btn.addEventListener("click", () => {
+      renderSubMode(btn.dataset.submode);
+    });
+  });
+
+  return frag;
+}
+
+// 手動編集モード: プレビュー→要素自動抽出→詳細編集→3パネル
+function buildBlockEditContent(projectId, blockIndex, block, blockType, widgetHasImage, widgetHasVideo) {
+  const frag = document.createDocumentFragment();
+  const blockHtml = block.html || "";
+
+  // ─── Step 1: ブロックプレビュー画像 ───
+  const previewSec = document.createElement("div");
+  previewSec.style.cssText = "padding:12px 14px;border-bottom:1px solid var(--border)";
+
+  const previewBox = document.createElement("div");
+  previewBox.style.cssText = "background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:300px;overflow-y:auto";
+  const previewContent = document.createElement("div");
+  previewContent.style.cssText = "padding:8px;font-size:12px;line-height:1.6";
+  const parsedDoc = new DOMParser().parseFromString(blockHtml, "text/html");
+  const imgEls = parsedDoc.querySelectorAll("img");
+  const videoEls = parsedDoc.querySelectorAll("video, source[type*=video]");
+  if (imgEls.length > 0) {
+    imgEls.forEach(img => {
+      const src = img.getAttribute("data-src") || img.getAttribute("src") || "";
+      if (src) {
+        const previewImg = document.createElement("img");
+        previewImg.src = src;
+        previewImg.style.cssText = "width:100%;height:auto;display:block;border-radius:4px;margin-bottom:4px";
+        previewImg.onerror = () => { previewImg.style.display = "none"; };
+        previewContent.appendChild(previewImg);
+      }
+    });
+  } else if (videoEls.length > 0) {
+    const videoIcon = document.createElement("div");
+    videoIcon.style.cssText = "text-align:center;padding:32px;color:var(--text-muted);font-size:14px";
+    videoIcon.innerHTML = "🎬 動画ブロック";
+    previewContent.appendChild(videoIcon);
+  } else {
+    previewContent.innerHTML = blockHtml;
+  }
+  previewBox.appendChild(previewContent);
+  previewSec.appendChild(previewBox);
+
+  const infoBadge = document.createElement("div");
+  infoBadge.style.cssText = "display:flex;gap:6px;margin-top:8px;flex-wrap:wrap";
+  const typeLabel = { text: "テキスト", heading: "見出し", image: "画像", video: "動画", cta_link: "CTAリンク", widget: "ウィジェット", spacer: "スペーサー" };
+  infoBadge.innerHTML = `<span style="font-size:10px;padding:2px 8px;background:rgba(236,72,153,0.1);color:#ec4899;border-radius:8px;font-weight:600">${typeLabel[blockType] || blockType}</span><span style="font-size:10px;padding:2px 8px;background:var(--bg-tertiary);color:var(--text-muted);border-radius:8px">Block #${blockIndex}</span>`;
+  previewSec.appendChild(infoBadge);
+  frag.appendChild(previewSec);
+
+  // ─── Step 2: 要素抽出（自動実行、ボタンなし） ───
+  const extractSec = document.createElement("div");
+  extractSec.style.cssText = "padding:12px 14px;border-bottom:1px solid var(--border)";
+  const elementsContainer = document.createElement("div");
+  extractSec.appendChild(elementsContainer);
+  frag.appendChild(extractSec);
+  // 自動で要素抽出を実行
+  buildExtractedElements(elementsContainer, projectId, blockIndex, block, blockType, blockHtml);
+
+  // ─── Step 3: ブロックタイプ別の詳細編集（折りたたみ） ───
+  const detailSec = createCollapsibleSection("✏️", "詳細編集", null, false);
+  const _bHtml = (block.html || "").toLowerCase();
+  const _wHasImg = blockType === "widget" && (_bHtml.includes("<img") || _bHtml.includes("<picture"));
+  const _wHasVid = blockType === "widget" && !_wHasImg && _bHtml.includes("<video");
+
+  if (blockType === "text" || blockType === "heading") {
+    detailSec.body.appendChild(buildTextPanel(projectId, blockIndex, block));
+  } else if (blockType === "image" || _wHasImg) {
+    detailSec.body.appendChild(buildImageQuickPanel(projectId, blockIndex, block));
+  } else if (blockType === "video" || _wHasVid) {
+    detailSec.body.appendChild(buildVideoQuickPanel(projectId, blockIndex, block));
+  } else if (blockType === "cta_link") {
+    detailSec.body.appendChild(buildCtaPanel(projectId, blockIndex, block));
+  } else if (blockType === "widget") {
+    detailSec.body.appendChild(buildWidgetPanel(projectId, blockIndex, block));
+  } else if (blockType === "spacer") {
+    detailSec.body.appendChild(buildSpacerPanel(block));
+  } else {
+    detailSec.body.innerHTML = `<p style="color:var(--text-muted)">タイプ: ${blockType}</p>`;
+  }
+  frag.appendChild(detailSec.wrapper);
+
+  // ─── Step 4: 折りたたみ3パネルビュー（CSS/テキスト/HTMLソース） ───
   frag.appendChild(buildCollapsible3Pane(projectId, blockIndex, block));
 
   return frag;
@@ -535,9 +685,12 @@ function renderElementsList(container, elements, projectId, blockIndex, blockHtm
     const ocrBody = document.createElement("div");
     ocrBody.style.cssText = "padding:8px 12px";
     textElements.forEach((el, i) => {
+      const rowWrapper = document.createElement("div");
+      rowWrapper.style.cssText = "border-bottom:1px solid var(--border)";
+      if (i === textElements.length - 1) rowWrapper.style.borderBottom = "none";
+
       const row = document.createElement("div");
-      row.style.cssText = "display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)";
-      if (i === textElements.length - 1) row.style.borderBottom = "none";
+      row.style.cssText = "display:flex;align-items:center;gap:6px;padding:4px 0";
       const textSpan = document.createElement("span");
       textSpan.style.cssText = "flex:1;font-size:12px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
       textSpan.textContent = `「${el.content}」`;
@@ -546,16 +699,54 @@ function renderElementsList(container, elements, projectId, blockIndex, blockHtm
       editBtn.textContent = "編集";
       editBtn.addEventListener("mouseenter", () => { editBtn.style.borderColor = "#3b82f6"; editBtn.style.color = "#3b82f6"; });
       editBtn.addEventListener("mouseleave", () => { editBtn.style.borderColor = ""; editBtn.style.color = ""; });
+
+      // Inline design panel container
+      const inlinePanel = document.createElement("div");
+      inlinePanel.className = "ocr-inline-design";
+      const inlinePanelInner = document.createElement("div");
+      inlinePanelInner.style.cssText = "padding:8px 0 4px";
+
+      let inlineBuilt = false;
       editBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        // Find the element card and open it
-        const elIdx = elements.indexOf(el);
-        const cards = container.querySelectorAll(".extract-element-card");
-        if (cards[elIdx]) cards[elIdx].querySelector("[data-card-header]")?.click();
+        // テキスト要素の編集クリックでレイヤー一覧を表示
+        if (layerWrapper.style.display === "none") {
+          layerWrapper.style.display = "";
+        }
+        const isExpanded = inlinePanel.classList.contains("expanded");
+        // Close all other inline panels in this section
+        ocrBody.querySelectorAll(".ocr-inline-design.expanded").forEach(p => {
+          if (p !== inlinePanel) p.classList.remove("expanded");
+        });
+        ocrBody.querySelectorAll("button[data-ocr-edit-active]").forEach(b => {
+          b.removeAttribute("data-ocr-edit-active");
+          b.textContent = "編集";
+          b.style.borderColor = ""; b.style.color = "";
+        });
+
+        if (!isExpanded) {
+          if (!inlineBuilt) {
+            inlineBuilt = true;
+            const elIdx = elements.indexOf(el);
+            buildElementDesignPanel(inlinePanelInner, el, elIdx, blockIndex, projectId);
+          }
+          inlinePanel.classList.add("expanded");
+          editBtn.setAttribute("data-ocr-edit-active", "true");
+          editBtn.textContent = "閉じる";
+          editBtn.style.borderColor = "#3b82f6"; editBtn.style.color = "#3b82f6";
+        } else {
+          inlinePanel.classList.remove("expanded");
+          editBtn.textContent = "編集";
+          editBtn.style.borderColor = ""; editBtn.style.color = "";
+        }
       });
+
       row.appendChild(textSpan);
       row.appendChild(editBtn);
-      ocrBody.appendChild(row);
+      inlinePanel.appendChild(inlinePanelInner);
+      rowWrapper.appendChild(row);
+      rowWrapper.appendChild(inlinePanel);
+      ocrBody.appendChild(rowWrapper);
     });
     // OCR status line
     const ocrStatus = document.createElement("div");
@@ -574,11 +765,14 @@ function renderElementsList(container, elements, projectId, blockIndex, blockHtm
     container.appendChild(ocrSec);
   }
 
-  // ─── All element cards (layer list) ───
+  // ─── All element cards (layer list) — テキスト要素「編集」クリックで初めて表示 ───
+  const layerWrapper = document.createElement("div");
+  layerWrapper.style.display = "none";
   const layerHeader = document.createElement("div");
   layerHeader.style.cssText = "font-size:11px;font-weight:600;color:var(--text-muted);margin:8px 0 6px;text-transform:uppercase;letter-spacing:0.3px";
   layerHeader.textContent = "レイヤー一覧";
-  container.appendChild(layerHeader);
+  layerWrapper.appendChild(layerHeader);
+  container.appendChild(layerWrapper);
 
   elements.forEach((el, elIdx) => {
     const card = document.createElement("div");
@@ -659,14 +853,14 @@ function renderElementsList(container, elements, projectId, blockIndex, blockHtm
       }
     });
 
-    container.appendChild(card);
+    layerWrapper.appendChild(card);
   });
 
   // Block-wide animation
   const blockAnimSec = createCollapsibleSection("🎭", "ブロック全体のアニメーション", null, false);
   const animResult = buildAnimationSection(blockIndex);
   blockAnimSec.body.appendChild(animResult.section);
-  container.appendChild(blockAnimSec.wrapper);
+  layerWrapper.appendChild(blockAnimSec.wrapper);
 }
 
 // 各要素のアニメーション設定UI
@@ -770,6 +964,7 @@ function buildElementDesignPanel(container, element, elIdx, blockIndex, projectI
     textInput.value = element.content;
     textInput.style.cssText = "width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);margin-bottom:10px;font-weight:500";
     textInput.addEventListener("input", () => {
+      const oldContent = element.content;
       element.content = textInput.value;
       // Update the card header name
       const card = container.closest(".extract-element-card");
@@ -781,6 +976,15 @@ function buildElementDesignPanel(container, element, elIdx, blockIndex, projectI
         }
       }
       sendElementUpdate();
+      // リアルタイムでブロックHTMLを更新して保存
+      if (projectId && oldContent) {
+        window.API.getBlock(projectId, blockIndex).then(block => {
+          if (block?.html && block.html.includes(oldContent)) {
+            const newHtml = block.html.replace(oldContent, textInput.value);
+            autoSave(projectId, blockIndex, () => ({ html: newHtml, text: textInput.value }));
+          }
+        }).catch(() => {});
+      }
     });
     container.appendChild(textInput);
   }
@@ -1374,10 +1578,179 @@ document.getElementById("edit-panel-close")?.addEventListener("click", () => {
   document.getElementById("edit-panel").classList.remove("open");
 });
 
+// ── Widget挿入ボタン（編集パネル右上） ──────────────────────
+let _widgetPanelActive = false;
+let _savedPanelContent = null;
+
+document.getElementById("edit-panel-widget-btn")?.addEventListener("click", () => {
+  const body = document.getElementById("edit-panel-body");
+  const widgetBtn = document.getElementById("edit-panel-widget-btn");
+  const modeToggle = document.querySelector(".edit-mode-toggle");
+
+  if (_widgetPanelActive) {
+    // ── 戻る: 元の編集パネルに復帰 ──
+    _widgetPanelActive = false;
+    widgetBtn.classList.remove("active");
+    if (modeToggle) modeToggle.style.display = "";
+    if (window._currentPanelData) {
+      const { projectId, blockIndex, blockType } = window._currentPanelData;
+      openEditPanel(projectId, blockIndex, blockType);
+    }
+    return;
+  }
+
+  // ── Widget入稿画面を表示 ──
+  _widgetPanelActive = true;
+  widgetBtn.classList.add("active");
+  if (modeToggle) modeToggle.style.display = "none";
+
+  body.innerHTML = "";
+
+  // 戻るボタン
+  const backBar = document.createElement("div");
+  backBar.style.cssText = "padding:8px 0 12px;border-bottom:1px solid var(--border);margin-bottom:12px";
+  const backBtn = document.createElement("button");
+  backBtn.style.cssText = "display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:6px;transition:all 0.15s";
+  backBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> 編集に戻る';
+  backBtn.addEventListener("mouseenter", () => { backBtn.style.color = "var(--text-primary)"; backBtn.style.background = "var(--bg-tertiary)"; });
+  backBtn.addEventListener("mouseleave", () => { backBtn.style.color = ""; backBtn.style.background = ""; });
+  backBtn.addEventListener("click", () => {
+    _widgetPanelActive = false;
+    widgetBtn.classList.remove("active");
+    if (modeToggle) modeToggle.style.display = "";
+    if (window._currentPanelData) {
+      const { projectId, blockIndex, blockType } = window._currentPanelData;
+      openEditPanel(projectId, blockIndex, blockType);
+    }
+  });
+  backBar.appendChild(backBtn);
+  body.appendChild(backBar);
+
+  // 挿入位置
+  const posSec = document.createElement("div");
+  posSec.style.cssText = "margin-bottom:14px";
+  const posLabel = document.createElement("label");
+  posLabel.className = "form-label";
+  posLabel.textContent = "挿入位置";
+  posLabel.style.cssText = "display:block;font-size:11px;margin-bottom:4px;color:var(--text-muted)";
+  const posSelect = document.createElement("select");
+  posSelect.className = "form-input";
+  posSelect.style.cssText = "width:100%;font-size:12px";
+  posSelect.innerHTML = '<option value="end">末尾に追加</option>';
+
+  const state = window._editorState || {};
+  const blocks = state.projectData?.blocks || window._currentPanelData?.blocks || [];
+  if (window._currentPanelData) {
+    // 現在のブロックの下をデフォルトに
+    const curIdx = window._currentPanelData.blockIndex;
+    posSelect.innerHTML = `<option value="${curIdx}">現在のブロック (${curIdx}) の下</option><option value="end">末尾に追加</option>`;
+  }
+  // APIから全ブロックリスト取得して追加
+  if (window._currentPanelData?.projectId) {
+    window.API.getProject(window._currentPanelData.projectId).then(proj => {
+      if (proj?.blocks) {
+        proj.blocks.forEach(b => {
+          const opt = document.createElement("option");
+          opt.value = b.index;
+          opt.textContent = `ブロック ${b.index} (${b.type}) の後`;
+          posSelect.appendChild(opt);
+        });
+      }
+    }).catch(() => {});
+  }
+  posSec.appendChild(posLabel);
+  posSec.appendChild(posSelect);
+  body.appendChild(posSec);
+
+  // Widgetテンプレート一覧
+  const listHeader = document.createElement("div");
+  listHeader.style.cssText = "font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:10px";
+  listHeader.textContent = "ウィジェットテンプレート";
+  body.appendChild(listHeader);
+
+  const templates = window.getAllWidgetTemplates ? window.getAllWidgetTemplates() : (window.WIDGET_TEMPLATES || []);
+  const listContainer = document.createElement("div");
+  listContainer.style.cssText = "display:flex;flex-direction:column;gap:8px";
+
+  templates.forEach(tmpl => {
+    const card = document.createElement("div");
+    card.style.cssText = "display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:all 0.15s";
+    card.addEventListener("mouseenter", () => { card.style.borderColor = "rgba(139,92,246,0.4)"; card.style.background = "rgba(139,92,246,0.04)"; });
+    card.addEventListener("mouseleave", () => { card.style.borderColor = ""; card.style.background = ""; });
+
+    const icon = document.createElement("span");
+    icon.style.cssText = "font-size:18px;flex-shrink:0;width:32px;text-align:center";
+    icon.textContent = tmpl.icon;
+
+    const info = document.createElement("div");
+    info.style.cssText = "flex:1;min-width:0";
+    info.innerHTML = `<div style="font-size:12px;font-weight:600;color:var(--text-primary)">${tmpl.name}</div><div style="font-size:10px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tmpl.description}</div>`;
+
+    const catBadge = document.createElement("span");
+    catBadge.style.cssText = "font-size:9px;padding:2px 6px;background:rgba(139,92,246,0.1);color:#8b5cf6;border-radius:6px;flex-shrink:0";
+    catBadge.textContent = tmpl.category;
+
+    const insertBtn = document.createElement("button");
+    insertBtn.style.cssText = "font-size:11px;padding:4px 10px;border:1px solid rgba(139,92,246,0.3);border-radius:6px;background:rgba(139,92,246,0.08);color:#8b5cf6;cursor:pointer;flex-shrink:0;transition:all 0.15s";
+    insertBtn.textContent = "挿入";
+    insertBtn.addEventListener("mouseenter", () => { insertBtn.style.background = "rgba(139,92,246,0.2)"; });
+    insertBtn.addEventListener("mouseleave", () => { insertBtn.style.background = "rgba(139,92,246,0.08)"; });
+    insertBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      insertBtn.disabled = true;
+      insertBtn.textContent = "...";
+      try {
+        const generated = tmpl.generate();
+        const posVal = posSelect.value;
+        let afterIndex = posVal === "end" ? null : parseInt(posVal, 10);
+        const pid = window._currentPanelData?.projectId;
+        if (!pid) throw new Error("プロジェクトIDが不明です");
+        const result = await window.API.insertBlock(pid, {
+          afterIndex,
+          html: generated.html,
+          type: generated.type,
+          widgetType: generated.widgetType,
+        });
+        if (result.ok) {
+          window.showToast?.(`${tmpl.name} を挿入しました`, "success");
+          window.loadEditor?.(result.insertedIndex);
+          window.pushHistory?.("insert_widget", `${tmpl.name} を挿入`);
+          // 戻る
+          _widgetPanelActive = false;
+          widgetBtn.classList.remove("active");
+          if (modeToggle) modeToggle.style.display = "";
+        }
+      } catch (err) {
+        window.showToast?.(`エラー: ${err.message}`, "error");
+      } finally {
+        insertBtn.disabled = false;
+        insertBtn.textContent = "挿入";
+      }
+    });
+
+    card.appendChild(icon);
+    card.appendChild(info);
+    card.appendChild(catBadge);
+    card.appendChild(insertBtn);
+    listContainer.appendChild(card);
+  });
+
+  body.appendChild(listContainer);
+});
+
 // ── AI テキスト編集パネル ──────────────────────────────────
 
 function buildAiTextPanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
+
+  // HTMLからテキストを抽出（block.textが空の場合のフォールバック）
+  let extractedText = block.text || "";
+  if (!extractedText && block.html) {
+    const tmpDoc = new DOMParser().parseFromString(block.html, "text/html");
+    // style/scriptタグを除去してテキスト取得
+    tmpDoc.querySelectorAll("style, script").forEach(el => el.remove());
+    extractedText = (tmpDoc.body.textContent || "").replace(/\s+/g, " ").trim();
+  }
 
   // AIプロバイダー選択
   const providerSection = createSection("AIプロバイダー");
@@ -1443,11 +1816,11 @@ function buildAiTextPanel(projectId, blockIndex, block) {
   designSection.appendChild(designHint);
   frag.appendChild(designSection);
 
-  // 現在のテキスト表示
+  // 現在のテキスト表示（HTMLから抽出）
   const currentSection = createSection("現在のテキスト");
   const currentText = document.createElement("div");
   currentText.className = "ai-result-preview";
-  currentText.textContent = block.text || "(テキストなし)";
+  currentText.textContent = extractedText || "(テキストなし)";
   currentSection.appendChild(currentText);
   frag.appendChild(currentSection);
 
@@ -1535,7 +1908,8 @@ function buildAiTextPanel(projectId, blockIndex, block) {
       const customPrompt = customArea.value.trim();
       const result = await window.API.aiRewrite(projectId, blockIndex, {
         instruction: customPrompt ? `${instruction}\n\n追加指示: ${customPrompt}` : instruction,
-        text: block.text,
+        text: extractedText,
+        html: block.html || "",
         designRequirements: window._designRequirements || "",
         provider: selectedProvider,
       });
@@ -1565,8 +1939,38 @@ function buildAiTextPanel(projectId, blockIndex, block) {
           try {
             // block.html内のテキストを書き換え
             let newHtml = block.html;
-            if (block.text && result.rewritten) {
-              newHtml = newHtml.replace(block.text, result.rewritten);
+            if (extractedText && result.rewritten) {
+              // まずblock.textで直接置換を試行
+              if (block.text && newHtml.includes(block.text)) {
+                newHtml = newHtml.replace(block.text, result.rewritten);
+              } else {
+                // HTMLからテキストノードを書き換え
+                const tmpDoc = new DOMParser().parseFromString(newHtml, "text/html");
+                tmpDoc.querySelectorAll("style, script").forEach(el => el.remove());
+                const textNodes = [];
+                const walker = document.createTreeWalker(tmpDoc.body, NodeFilter.SHOW_TEXT, null, false);
+                let node;
+                while ((node = walker.nextNode())) {
+                  if (node.textContent.trim()) textNodes.push(node);
+                }
+                // 全テキストを結合して書き換え結果で更新
+                if (textNodes.length === 1) {
+                  textNodes[0].textContent = result.rewritten;
+                } else if (textNodes.length > 1) {
+                  // 最初のテキストノードに全結果を入れ、残りを空にする
+                  textNodes[0].textContent = result.rewritten;
+                  for (let i = 1; i < textNodes.length; i++) {
+                    textNodes[i].textContent = "";
+                  }
+                }
+                // style/scriptを戻すため元HTMLからstyle部分を保持
+                const origDoc = new DOMParser().parseFromString(block.html, "text/html");
+                const styles = origDoc.querySelectorAll("style");
+                const scripts = origDoc.querySelectorAll("script");
+                styles.forEach(s => tmpDoc.body.prepend(s.cloneNode(true)));
+                scripts.forEach(s => tmpDoc.body.appendChild(s.cloneNode(true)));
+                newHtml = tmpDoc.body.innerHTML;
+              }
             }
             await window.API.updateBlock(projectId, blockIndex, {
               html: newHtml,
@@ -1684,7 +2088,13 @@ function buildTextPanel(projectId, blockIndex, block) {
   const styles = extractStyles(block.html || "");
   // 編集中のHTML状態を保持
   let currentHtml = block.html || "";
+  // block.textが空ならHTMLからテキスト抽出
   let currentText = block.text || "";
+  if (!currentText && block.html) {
+    const tmpDoc = new DOMParser().parseFromString(block.html, "text/html");
+    tmpDoc.querySelectorAll("style, script").forEach(el => el.remove());
+    currentText = (tmpDoc.body.textContent || "").replace(/\s+/g, " ").trim();
+  }
 
   // ビジュアルプレビュー
   const previewSection = createSection("プレビュー");
@@ -1865,12 +2275,44 @@ function buildTextPanel(projectId, blockIndex, block) {
   htmlContent.appendChild(codeArea);
   frag.appendChild(htmlContent);
 
+  // 初回テキスト（HTML抽出込み）をベースライン保持
+  const _baseText = currentText;
+
   // ── プレビュー再構築関数 ──
   function rebuildPreview() {
-    // テキスト更新
-    let html = block.html || "";
-    if (block.text && textarea.value !== block.text) {
-      html = html.replace(block.text, textarea.value);
+    // テキスト更新: HTMLのテキストノードを直接置換
+    let html = currentHtml;
+    const oldText = currentText;
+    const newText = textarea.value;
+    if (oldText && newText !== oldText) {
+      // まずシンプルな文字列置換を試行
+      if (html.includes(oldText)) {
+        html = html.replace(oldText, newText);
+      } else {
+        // テキストノードレベルで置換
+        const tmpDoc = new DOMParser().parseFromString(html, "text/html");
+        const walker = document.createTreeWalker(tmpDoc.body, NodeFilter.SHOW_TEXT, null, false);
+        let node;
+        const textNodes = [];
+        while ((node = walker.nextNode())) {
+          if (node.textContent.trim()) textNodes.push(node);
+        }
+        if (textNodes.length === 1) {
+          textNodes[0].textContent = newText;
+        } else if (textNodes.length > 0) {
+          // 全テキストノードの結合テキストを置換
+          const combined = textNodes.map(n => n.textContent.trim()).join(" ");
+          if (combined === oldText) {
+            textNodes[0].textContent = newText;
+            for (let i = 1; i < textNodes.length; i++) textNodes[i].textContent = "";
+          }
+        }
+        // style要素を保持
+        const origStyles = new DOMParser().parseFromString(block.html, "text/html").querySelectorAll("style");
+        tmpDoc.querySelectorAll("style").forEach(s => s.remove());
+        origStyles.forEach(s => tmpDoc.body.prepend(s.cloneNode(true)));
+        html = tmpDoc.body.innerHTML;
+      }
     }
     // スタイル適用
     const newStyles = {};
@@ -1919,7 +2361,883 @@ function buildTextPanel(projectId, blockIndex, block) {
   return frag;
 }
 
-// ── 画像パネル ─────────────────────────────────────────────
+// ── AI画像ウィザード ──────────────────────────────────────────
+
+function buildAiImageWizard(projectId, blockIndex, block) {
+  const container = document.createElement("div");
+  container.className = "ai-wizard-container";
+
+  const asset = block.assets?.[0];
+  const originalW = asset?.width || 580;
+  const originalH = asset?.height || 580;
+
+  // 状態オブジェクト
+  const state = {
+    currentStep: 0,
+    provider: null,
+    image1Url: null,
+    image2Url: null,
+    composedUrl: null,
+    layout: null,
+    bubbles: [],
+    referenceLocalPath: null,
+    prompt: "",
+  };
+
+  // ステップ定義
+  const STEPS = ["プロバイダー", "画像生成", "2枚目", "合成", "吹き出し", "配置"];
+  const stepBar = buildStepIndicator(STEPS.length, STEPS);
+  container.appendChild(stepBar.el);
+
+  const content = document.createElement("div");
+  content.className = "ai-wizard-content";
+  container.appendChild(content);
+
+  function goToStep(idx) {
+    state.currentStep = idx;
+    stepBar.setStep(idx);
+    renderWizardStep();
+  }
+
+  function renderWizardStep() {
+    content.innerHTML = "";
+    switch (state.currentStep) {
+      case 0: renderStep1Provider(); break;
+      case 1: renderStep2Generate(); break;
+      case 2: renderStep3Second(); break;
+      case 3: renderStep4Compose(); break;
+      case 4: renderStep5Bubbles(); break;
+      case 5: renderStep6Place(); break;
+    }
+  }
+
+  // ── Step 1: プロバイダー選択 ──
+  function renderStep1Provider() {
+    const step = document.createElement("div");
+    step.className = "ai-wizard-step";
+
+    const title = document.createElement("h3");
+    title.className = "ai-wizard-step-title";
+    title.textContent = "AIプロバイダーを選択";
+    step.appendChild(title);
+
+    const desc = document.createElement("p");
+    desc.className = "ai-wizard-step-desc";
+    desc.textContent = "画像生成に使用するAIプロバイダーを選んでください";
+    step.appendChild(desc);
+
+    const grid = document.createElement("div");
+    grid.className = "ai-wizard-provider-grid";
+
+    const providers = window._availableProviders || [];
+
+    // PixAI card
+    const pixaiCard = document.createElement("button");
+    pixaiCard.className = "ai-wizard-provider-card" + (providers.includes("pixai") ? "" : " disabled");
+    pixaiCard.innerHTML = `
+      <div class="provider-card-icon">&#x1F3A8;</div>
+      <div class="provider-card-name">PixAI</div>
+      <div class="provider-card-desc">アニメ・イラスト系に強い</div>
+    `;
+    if (providers.includes("pixai")) {
+      pixaiCard.addEventListener("click", () => { state.provider = "pixai"; goToStep(1); });
+    } else {
+      pixaiCard.addEventListener("click", () => window.showToast("PixAI APIキーを設定してください", "info"));
+    }
+    grid.appendChild(pixaiCard);
+
+    // Nano Banana Pro card
+    const nbCard = document.createElement("button");
+    nbCard.className = "ai-wizard-provider-card" + (providers.includes("nanobanana") ? "" : " disabled");
+    nbCard.innerHTML = `
+      <div class="provider-card-icon">&#x1F34C;</div>
+      <div class="provider-card-name">Nano Banana Pro</div>
+      <div class="provider-card-desc">写真・リアル系に強い</div>
+    `;
+    if (providers.includes("nanobanana")) {
+      nbCard.addEventListener("click", () => { state.provider = "nanobanana"; goToStep(1); });
+    } else {
+      nbCard.addEventListener("click", () => window.showToast("Nano Banana APIキーを設定してください", "info"));
+    }
+    grid.appendChild(nbCard);
+
+    step.appendChild(grid);
+    content.appendChild(step);
+  }
+
+  // ── Step 2: 画像生成 ──
+  function renderStep2Generate() {
+    const step = document.createElement("div");
+    step.className = "ai-wizard-step";
+
+    const title = document.createElement("h3");
+    title.className = "ai-wizard-step-title";
+    title.textContent = "画像を生成";
+    step.appendChild(title);
+
+    // 戻るボタン
+    const backBtn = document.createElement("button");
+    backBtn.className = "panel-btn";
+    backBtn.style.cssText = "margin-bottom:12px;font-size:12px";
+    backBtn.textContent = "← プロバイダー選択に戻る";
+    backBtn.addEventListener("click", () => goToStep(0));
+    step.appendChild(backBtn);
+
+    // タブ: A) ゼロから / B) 参考画像
+    const tabBar = document.createElement("div");
+    tabBar.style.cssText = "display:flex;gap:6px;margin-bottom:12px";
+    const tabA = document.createElement("button");
+    tabA.className = "panel-btn primary";
+    tabA.textContent = "プロンプトから生成";
+    const tabB = document.createElement("button");
+    tabB.className = "panel-btn";
+    tabB.textContent = "参考画像から生成";
+    tabBar.appendChild(tabA);
+    tabBar.appendChild(tabB);
+    step.appendChild(tabBar);
+
+    const tabContent = document.createElement("div");
+    step.appendChild(tabContent);
+
+    // 結果表示エリア
+    const resultArea = document.createElement("div");
+    resultArea.className = "ai-wizard-result-area";
+    resultArea.style.display = "none";
+    step.appendChild(resultArea);
+
+    function showTabA() {
+      tabA.className = "panel-btn primary";
+      tabB.className = "panel-btn";
+      tabContent.innerHTML = "";
+      renderPromptTab(tabContent, resultArea);
+    }
+    function showTabB() {
+      tabA.className = "panel-btn";
+      tabB.className = "panel-btn primary";
+      tabContent.innerHTML = "";
+      renderReferenceTab(tabContent, resultArea);
+    }
+    tabA.addEventListener("click", showTabA);
+    tabB.addEventListener("click", showTabB);
+    showTabA();
+
+    content.appendChild(step);
+  }
+
+  function renderPromptTab(container, resultArea) {
+    const promptArea = document.createElement("textarea");
+    promptArea.className = "panel-textarea";
+    promptArea.placeholder = "画像の説明を入力してください...（例：明るい雰囲気の美容製品、白背景）";
+    promptArea.rows = 4;
+    promptArea.value = state.prompt;
+    promptArea.addEventListener("input", () => { state.prompt = promptArea.value; });
+    container.appendChild(promptArea);
+
+    const genBtn = document.createElement("button");
+    genBtn.className = "oneclick-main-btn";
+    genBtn.style.marginTop = "10px";
+    genBtn.textContent = "画像を生成";
+    genBtn.addEventListener("click", async () => {
+      if (!promptArea.value.trim()) { window.showToast("プロンプトを入力してください", "warning"); return; }
+      genBtn.disabled = true;
+      genBtn.textContent = "生成中...";
+      try {
+        const res = await window.API.generateImage(projectId, blockIndex, {
+          prompt: promptArea.value.trim(),
+          provider: state.provider,
+        });
+        if (res.imageUrl) {
+          showGeneratedResult(resultArea, res.imageUrl);
+        }
+      } catch (err) {
+        window.showToast(`生成エラー: ${err.message}`, "error");
+      } finally {
+        genBtn.disabled = false;
+        genBtn.textContent = "画像を生成";
+      }
+    });
+    container.appendChild(genBtn);
+  }
+
+  function renderReferenceTab(container, resultArea) {
+    // ファイル選択
+    const uploadRow = document.createElement("div");
+    uploadRow.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:10px";
+    const fileBtn = document.createElement("button");
+    fileBtn.className = "panel-btn";
+    fileBtn.textContent = "参考画像を選択";
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/*";
+    fileInput.style.display = "none";
+    const statusText = document.createElement("span");
+    statusText.style.cssText = "font-size:12px;color:var(--text-muted)";
+    fileBtn.addEventListener("click", () => fileInput.click());
+    uploadRow.appendChild(fileBtn);
+    uploadRow.appendChild(fileInput);
+    uploadRow.appendChild(statusText);
+    container.appendChild(uploadRow);
+
+    // 自動プロンプト表示エリア
+    const promptLabel = document.createElement("div");
+    promptLabel.style.cssText = "font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;display:none";
+    promptLabel.textContent = "自動生成プロンプト（編集可能）";
+    container.appendChild(promptLabel);
+
+    const autoPromptArea = document.createElement("textarea");
+    autoPromptArea.className = "panel-textarea";
+    autoPromptArea.rows = 4;
+    autoPromptArea.style.display = "none";
+    container.appendChild(autoPromptArea);
+
+    const genRefBtn = document.createElement("button");
+    genRefBtn.className = "oneclick-main-btn";
+    genRefBtn.style.cssText = "margin-top:10px;display:none";
+    genRefBtn.textContent = "この内容で画像を生成";
+    container.appendChild(genRefBtn);
+
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      fileBtn.disabled = true;
+      fileBtn.textContent = "アップロード中...";
+      statusText.textContent = "";
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          // アップロード
+          const upRes = await window.API.uploadFree(projectId, { imageData: reader.result, fileName: file.name });
+          if (!upRes.ok) throw new Error("Upload failed");
+          state.referenceLocalPath = upRes.localPath;
+          statusText.textContent = `✓ ${file.name}`;
+
+          // 自動describe
+          statusText.textContent = `✓ ${file.name} — プロンプト生成中...`;
+          const descRes = await window.API.describeUploaded(projectId, {
+            localPath: upRes.localPath,
+            provider: state.provider,
+          });
+
+          autoPromptArea.value = descRes.description || "";
+          state.prompt = autoPromptArea.value;
+          promptLabel.style.display = "block";
+          autoPromptArea.style.display = "block";
+          genRefBtn.style.display = "block";
+          statusText.textContent = `✓ ${file.name}`;
+        } catch (err) {
+          window.showToast(`エラー: ${err.message}`, "error");
+          statusText.textContent = "エラー";
+        } finally {
+          fileBtn.disabled = false;
+          fileBtn.textContent = "参考画像を選択";
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    autoPromptArea.addEventListener("input", () => { state.prompt = autoPromptArea.value; });
+
+    genRefBtn.addEventListener("click", async () => {
+      genRefBtn.disabled = true;
+      genRefBtn.textContent = "生成中...";
+      try {
+        let res;
+        if (state.referenceLocalPath) {
+          res = await window.API.aiFromReference(projectId, {
+            localPath: state.referenceLocalPath,
+            provider: state.provider,
+            customPrompt: autoPromptArea.value,
+            width: originalW,
+            height: originalH,
+          });
+          if (res.ok && res.images?.[0]) {
+            showGeneratedResult(resultArea, res.images[0]);
+          }
+        } else {
+          res = await window.API.generateImage(projectId, blockIndex, {
+            prompt: autoPromptArea.value,
+            provider: state.provider,
+          });
+          if (res.imageUrl) {
+            showGeneratedResult(resultArea, res.imageUrl);
+          }
+        }
+      } catch (err) {
+        window.showToast(`生成エラー: ${err.message}`, "error");
+      } finally {
+        genRefBtn.disabled = false;
+        genRefBtn.textContent = "この内容で画像を生成";
+      }
+    });
+  }
+
+  function showGeneratedResult(area, imageUrl) {
+    area.style.display = "block";
+    area.innerHTML = "";
+
+    const preview = document.createElement("div");
+    preview.className = "ai-wizard-preview";
+    const img = document.createElement("img");
+    img.src = imageUrl;
+    img.alt = "生成画像";
+    preview.appendChild(img);
+    area.appendChild(preview);
+
+    const useBtn = document.createElement("button");
+    useBtn.className = "oneclick-main-btn";
+    useBtn.textContent = "この画像を使う →";
+    useBtn.addEventListener("click", () => {
+      state.image1Url = imageUrl;
+      goToStep(2);
+    });
+    area.appendChild(useBtn);
+  }
+
+  // ── Step 3: 2枚目生成（任意） ──
+  function renderStep3Second() {
+    const step = document.createElement("div");
+    step.className = "ai-wizard-step";
+
+    const title = document.createElement("h3");
+    title.className = "ai-wizard-step-title";
+    title.textContent = "2枚目の画像を生成しますか？";
+    step.appendChild(title);
+
+    // 1枚目プレビュー
+    if (state.image1Url) {
+      const preview = document.createElement("div");
+      preview.className = "ai-wizard-preview small";
+      const img = document.createElement("img");
+      img.src = state.image1Url;
+      img.alt = "1枚目";
+      preview.appendChild(img);
+      const label = document.createElement("div");
+      label.style.cssText = "text-align:center;font-size:12px;color:var(--text-muted);margin-top:4px";
+      label.textContent = "1枚目の画像";
+      preview.appendChild(label);
+      step.appendChild(preview);
+    }
+
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "display:flex;gap:10px;margin-top:14px";
+
+    const yesBtn = document.createElement("button");
+    yesBtn.className = "oneclick-main-btn";
+    yesBtn.style.flex = "1";
+    yesBtn.textContent = "はい、PixAIでもう1枚生成";
+    yesBtn.addEventListener("click", () => {
+      btnRow.style.display = "none";
+      renderSecondGenUI(step);
+    });
+    btnRow.appendChild(yesBtn);
+
+    const skipBtn = document.createElement("button");
+    skipBtn.className = "panel-btn";
+    skipBtn.style.cssText = "flex:1;padding:12px";
+    skipBtn.textContent = "スキップ → 吹き出しへ";
+    skipBtn.addEventListener("click", () => {
+      state.image2Url = null;
+      goToStep(4); // 合成スキップ → 吹き出しへ
+    });
+    btnRow.appendChild(skipBtn);
+
+    step.appendChild(btnRow);
+    content.appendChild(step);
+  }
+
+  function renderSecondGenUI(parentStep) {
+    const genSection = document.createElement("div");
+    genSection.style.cssText = "margin-top:12px";
+
+    const promptLabel = document.createElement("div");
+    promptLabel.style.cssText = "font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)";
+    promptLabel.textContent = "2枚目のプロンプト";
+    genSection.appendChild(promptLabel);
+
+    const promptArea = document.createElement("textarea");
+    promptArea.className = "panel-textarea";
+    promptArea.rows = 3;
+    promptArea.placeholder = "2枚目の画像の説明...";
+    genSection.appendChild(promptArea);
+
+    const genBtn = document.createElement("button");
+    genBtn.className = "oneclick-main-btn";
+    genBtn.style.marginTop = "8px";
+    genBtn.textContent = "2枚目を生成（PixAI）";
+
+    const resultArea = document.createElement("div");
+    resultArea.className = "ai-wizard-result-area";
+    resultArea.style.display = "none";
+
+    genBtn.addEventListener("click", async () => {
+      if (!promptArea.value.trim()) { window.showToast("プロンプトを入力してください", "warning"); return; }
+      genBtn.disabled = true;
+      genBtn.textContent = "生成中...";
+      try {
+        const res = await window.API.generateImage(projectId, blockIndex, {
+          prompt: promptArea.value.trim(),
+          provider: "pixai",
+        });
+        if (res.imageUrl) {
+          resultArea.style.display = "block";
+          resultArea.innerHTML = "";
+          const preview = document.createElement("div");
+          preview.className = "ai-wizard-preview";
+          const img = document.createElement("img");
+          img.src = res.imageUrl;
+          img.alt = "2枚目";
+          preview.appendChild(img);
+          resultArea.appendChild(preview);
+
+          const useBtn = document.createElement("button");
+          useBtn.className = "oneclick-main-btn";
+          useBtn.textContent = "この画像を使う → 合成へ";
+          useBtn.addEventListener("click", () => {
+            state.image2Url = res.imageUrl;
+            goToStep(3); // 合成レイアウト選択
+          });
+          resultArea.appendChild(useBtn);
+        }
+      } catch (err) {
+        window.showToast(`生成エラー: ${err.message}`, "error");
+      } finally {
+        genBtn.disabled = false;
+        genBtn.textContent = "2枚目を生成（PixAI）";
+      }
+    });
+
+    genSection.appendChild(genBtn);
+    genSection.appendChild(resultArea);
+    parentStep.appendChild(genSection);
+  }
+
+  // ── Step 4: 合成レイアウト選択 ──
+  function renderStep4Compose() {
+    // 画像が1枚のみなら吹き出しステップへスキップ
+    if (!state.image2Url) {
+      goToStep(4);
+      return;
+    }
+
+    const step = document.createElement("div");
+    step.className = "ai-wizard-step";
+
+    const title = document.createElement("h3");
+    title.className = "ai-wizard-step-title";
+    title.textContent = "レイアウトを選択";
+    step.appendChild(title);
+
+    // 2枚のプレビュー
+    const previewRow = document.createElement("div");
+    previewRow.style.cssText = "display:flex;gap:8px;margin-bottom:12px";
+    [state.image1Url, state.image2Url].forEach((url, i) => {
+      const box = document.createElement("div");
+      box.className = "ai-wizard-preview small";
+      box.style.flex = "1";
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = `画像${i + 1}`;
+      box.appendChild(img);
+      previewRow.appendChild(box);
+    });
+    step.appendChild(previewRow);
+
+    // レイアウト選択（2コマ系を優先）
+    const twoCell = COMIC_LAYOUTS.filter(l => l.cells === 2);
+    const layoutGrid = document.createElement("div");
+    layoutGrid.className = "ai-wizard-layout-grid";
+
+    twoCell.forEach(layout => {
+      const card = document.createElement("button");
+      card.className = "ai-wizard-layout-card" + (state.layout === layout.id ? " selected" : "");
+      card.textContent = layout.name;
+      card.addEventListener("click", () => {
+        state.layout = layout.id;
+        layoutGrid.querySelectorAll(".ai-wizard-layout-card").forEach(c => c.classList.remove("selected"));
+        card.classList.add("selected");
+      });
+      layoutGrid.appendChild(card);
+    });
+    step.appendChild(layoutGrid);
+
+    // 合成ボタン
+    const composeBtn = document.createElement("button");
+    composeBtn.className = "oneclick-main-btn";
+    composeBtn.style.marginTop = "12px";
+    composeBtn.textContent = "合成する";
+
+    const composeResult = document.createElement("div");
+    composeResult.className = "ai-wizard-result-area";
+    composeResult.style.display = "none";
+
+    composeBtn.addEventListener("click", async () => {
+      if (!state.layout) { window.showToast("レイアウトを選択してください", "warning"); return; }
+      composeBtn.disabled = true;
+      composeBtn.textContent = "合成中...";
+      try {
+        const res = await window.API.composeImages(projectId, {
+          image1Path: state.image1Url,
+          image2Path: state.image2Url,
+          layout: state.layout,
+          width: originalW,
+          height: originalH,
+        });
+        if (res.ok && res.imageUrl) {
+          state.composedUrl = res.imageUrl;
+          composeResult.style.display = "block";
+          composeResult.innerHTML = "";
+          const preview = document.createElement("div");
+          preview.className = "ai-wizard-preview";
+          const img = document.createElement("img");
+          img.src = res.imageUrl;
+          img.alt = "合成結果";
+          preview.appendChild(img);
+          composeResult.appendChild(preview);
+
+          // iframe にプレビュー
+          const previewFrame = document.querySelector("#preview-frame");
+          if (previewFrame?.contentWindow) {
+            previewFrame.contentWindow.postMessage({
+              type: "comicOverlay", blockIndex, imageUrl: res.imageUrl,
+            }, "*");
+          }
+
+          const nextBtn = document.createElement("button");
+          nextBtn.className = "oneclick-main-btn";
+          nextBtn.textContent = "吹き出しを追加 →";
+          nextBtn.addEventListener("click", () => goToStep(4));
+          composeResult.appendChild(nextBtn);
+        }
+      } catch (err) {
+        window.showToast(`合成エラー: ${err.message}`, "error");
+      } finally {
+        composeBtn.disabled = false;
+        composeBtn.textContent = "合成する";
+      }
+    });
+
+    step.appendChild(composeBtn);
+    step.appendChild(composeResult);
+    content.appendChild(step);
+  }
+
+  // ── Step 5: 吹き出し＆テキスト ──
+  function renderStep5Bubbles() {
+    const step = document.createElement("div");
+    step.className = "ai-wizard-step";
+
+    const title = document.createElement("h3");
+    title.className = "ai-wizard-step-title";
+    title.textContent = "吹き出しを追加";
+    step.appendChild(title);
+
+    const desc = document.createElement("p");
+    desc.className = "ai-wizard-step-desc";
+    desc.textContent = "吹き出しの種類を選んで追加してください。テキストも入力できます。";
+    step.appendChild(desc);
+
+    // 吹き出しタイプ選択
+    const typeGrid = document.createElement("div");
+    typeGrid.className = "ai-wizard-bubble-grid";
+
+    BUBBLE_TYPES.filter(b => b.id !== "none").forEach(btype => {
+      const card = document.createElement("button");
+      card.className = "ai-wizard-bubble-card";
+
+      // プレビューアイコン
+      const preview = document.createElement("div");
+      preview.className = "bubble-type-preview";
+      preview.style.cssText = `
+        width:40px;height:30px;border-radius:${btype.borderRadius || "8px"};
+        background:${btype.bg || "#fff"};
+        border:${btype.border || "2px solid #000"};
+        ${btype.color ? "color:" + btype.color + ";" : ""}
+      `;
+      card.appendChild(preview);
+
+      const label = document.createElement("span");
+      label.textContent = btype.name;
+      card.appendChild(label);
+
+      card.addEventListener("click", () => {
+        const newBubble = {
+          id: `bubble_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          type: btype.id,
+          x: 10 + state.bubbles.length * 5,
+          y: 10 + state.bubbles.length * 5,
+          width: 140,
+          height: 60,
+          text: "",
+        };
+        state.bubbles.push(newBubble);
+        renderBubbleList();
+      });
+      typeGrid.appendChild(card);
+    });
+    step.appendChild(typeGrid);
+
+    // 追加済み吹き出しリスト
+    const bubbleListContainer = document.createElement("div");
+    bubbleListContainer.className = "ai-wizard-bubble-list";
+    step.appendChild(bubbleListContainer);
+
+    function renderBubbleList() {
+      bubbleListContainer.innerHTML = "";
+      if (state.bubbles.length === 0) {
+        const empty = document.createElement("div");
+        empty.style.cssText = "color:var(--text-muted);font-size:12px;padding:8px 0";
+        empty.textContent = "まだ吹き出しがありません。上から追加してください。";
+        bubbleListContainer.appendChild(empty);
+        return;
+      }
+
+      state.bubbles.forEach((bubble, i) => {
+        const row = document.createElement("div");
+        row.className = "ai-wizard-bubble-item";
+
+        const btype = BUBBLE_TYPES.find(b => b.id === bubble.type) || {};
+        const label = document.createElement("span");
+        label.className = "bubble-item-label";
+        label.textContent = `${i + 1}. ${btype.name || bubble.type}`;
+        row.appendChild(label);
+
+        const textInput = document.createElement("input");
+        textInput.type = "text";
+        textInput.className = "bubble-item-text";
+        textInput.placeholder = "テキストを入力...";
+        textInput.value = bubble.text;
+        textInput.addEventListener("input", () => { bubble.text = textInput.value; });
+        row.appendChild(textInput);
+
+        const delBtn = document.createElement("button");
+        delBtn.className = "panel-btn";
+        delBtn.style.cssText = "padding:4px 8px;font-size:11px;color:var(--danger)";
+        delBtn.textContent = "×";
+        delBtn.addEventListener("click", () => {
+          state.bubbles.splice(i, 1);
+          renderBubbleList();
+        });
+        row.appendChild(delBtn);
+
+        bubbleListContainer.appendChild(row);
+      });
+    }
+
+    renderBubbleList();
+
+    // 次へボタン
+    const nextBtn = document.createElement("button");
+    nextBtn.className = "oneclick-main-btn";
+    nextBtn.style.marginTop = "14px";
+    nextBtn.textContent = state.bubbles.length > 0 ? "配置画面へ →" : "吹き出しなしで完了 →";
+    nextBtn.addEventListener("click", () => {
+      if (state.bubbles.length > 0) {
+        goToStep(5);
+      } else {
+        // 吹き出しなし — 直接完了
+        applyFinal();
+      }
+    });
+    step.appendChild(nextBtn);
+
+    // スキップ（画像だけ適用）
+    const skipBtn = document.createElement("button");
+    skipBtn.className = "panel-btn";
+    skipBtn.style.cssText = "margin-top:8px;width:100%;text-align:center";
+    skipBtn.textContent = "吹き出しなしで画像のみ適用";
+    skipBtn.addEventListener("click", () => applyFinal());
+    step.appendChild(skipBtn);
+
+    content.appendChild(step);
+  }
+
+  // ── Step 6: 配置（ドラッグ＆ドロップ） ──
+  function renderStep6Place() {
+    const step = document.createElement("div");
+    step.className = "ai-wizard-step";
+
+    const title = document.createElement("h3");
+    title.className = "ai-wizard-step-title";
+    title.textContent = "吹き出しを配置";
+    step.appendChild(title);
+
+    const desc = document.createElement("p");
+    desc.className = "ai-wizard-step-desc";
+    desc.textContent = "吹き出しをドラッグして配置してください。角をドラッグでリサイズ。";
+    step.appendChild(desc);
+
+    // Canvas
+    const canvas = document.createElement("div");
+    canvas.className = "bubble-canvas";
+
+    const bgImg = document.createElement("img");
+    bgImg.src = state.composedUrl || state.image1Url;
+    bgImg.alt = "背景画像";
+    bgImg.draggable = false;
+    canvas.appendChild(bgImg);
+
+    // 吹き出し要素を配置
+    state.bubbles.forEach((bubble, i) => {
+      const el = createBubbleElement(bubble, canvas);
+      canvas.appendChild(el);
+    });
+
+    step.appendChild(canvas);
+
+    // 完了ボタン
+    const applyBtn = document.createElement("button");
+    applyBtn.className = "oneclick-main-btn";
+    applyBtn.style.marginTop = "12px";
+    applyBtn.textContent = "完了・適用";
+    applyBtn.addEventListener("click", () => applyFinal());
+    step.appendChild(applyBtn);
+
+    content.appendChild(step);
+
+    // iframe リアルタイムプレビュー
+    sendBubblePreview();
+  }
+
+  function createBubbleElement(bubble, canvas) {
+    const el = document.createElement("div");
+    el.className = "bubble-draggable";
+    el.dataset.bubbleId = bubble.id;
+
+    const btype = BUBBLE_TYPES.find(b => b.id === bubble.type) || {};
+
+    el.style.cssText = `
+      left:${bubble.x}px;top:${bubble.y}px;
+      width:${bubble.width}px;height:${bubble.height}px;
+      border-radius:${btype.borderRadius || "8px"};
+      background:${btype.bg || "#fff"};
+      border:${btype.border || "2px solid #000"};
+      ${btype.color ? "color:" + btype.color + ";" : "color:#000;"}
+      display:flex;align-items:center;justify-content:center;
+      text-align:center;font-size:13px;font-weight:bold;
+      padding:4px;box-sizing:border-box;word-break:break-all;
+      line-height:1.3;
+    `;
+    el.textContent = bubble.text || "";
+
+    // ドラッグ処理
+    let isDragging = false, startX, startY, origX, origY;
+
+    el.addEventListener("mousedown", (e) => {
+      if (e.target.classList.contains("bubble-resize-handle")) return;
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      origX = bubble.x;
+      origY = bubble.y;
+      e.preventDefault();
+    });
+
+    document.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      bubble.x = Math.max(0, origX + dx);
+      bubble.y = Math.max(0, origY + dy);
+      el.style.left = bubble.x + "px";
+      el.style.top = bubble.y + "px";
+      sendBubblePreview();
+    });
+
+    document.addEventListener("mouseup", () => { isDragging = false; });
+
+    // リサイズハンドル
+    const handle = document.createElement("div");
+    handle.className = "bubble-resize-handle";
+    el.appendChild(handle);
+
+    let isResizing = false, rStartX, rStartY, rOrigW, rOrigH;
+    handle.addEventListener("mousedown", (e) => {
+      isResizing = true;
+      rStartX = e.clientX;
+      rStartY = e.clientY;
+      rOrigW = bubble.width;
+      rOrigH = bubble.height;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    document.addEventListener("mousemove", (e) => {
+      if (!isResizing) return;
+      bubble.width = Math.max(60, rOrigW + (e.clientX - rStartX));
+      bubble.height = Math.max(30, rOrigH + (e.clientY - rStartY));
+      el.style.width = bubble.width + "px";
+      el.style.height = bubble.height + "px";
+      sendBubblePreview();
+    });
+
+    document.addEventListener("mouseup", () => { isResizing = false; });
+
+    return el;
+  }
+
+  function sendBubblePreview() {
+    const previewFrame = document.querySelector("#preview-frame");
+    if (previewFrame?.contentWindow) {
+      previewFrame.contentWindow.postMessage({
+        type: "bubbleOverlay",
+        blockIndex,
+        bubbles: state.bubbles,
+        imageUrl: state.composedUrl || state.image1Url,
+      }, "*");
+    }
+  }
+
+  // ── 最終適用 ──
+  async function applyFinal() {
+    const imageUrl = state.composedUrl || state.image1Url;
+    if (!imageUrl) { window.showToast("画像がありません", "warning"); return; }
+
+    try {
+      // 画像をブロックに適用
+      await window.API.applyImage(projectId, blockIndex, { imageUrl });
+
+      // 吹き出しがある場合、オーバーレイHTMLを生成してブロックHTMLに追加
+      if (state.bubbles.length > 0) {
+        const overlayHtml = buildBubbleOverlayHtml(state.bubbles, imageUrl);
+        const currentBlock = await window.API.getBlock(projectId, blockIndex);
+        if (currentBlock) {
+          await window.API.updateBlock(projectId, blockIndex, {
+            html: overlayHtml,
+          });
+        }
+      }
+
+      window.showToast("画像ウィザードを適用しました", "success");
+      window.loadPreview(true);
+      if (window.pushHistory) window.pushHistory();
+    } catch (err) {
+      window.showToast(`適用エラー: ${err.message}`, "error");
+    }
+  }
+
+  function buildBubbleOverlayHtml(bubbles, imageUrl) {
+    const bubbleEls = bubbles.map(b => {
+      const btype = BUBBLE_TYPES.find(bt => bt.id === b.type) || {};
+      return `<div style="position:absolute;left:${b.x}px;top:${b.y}px;width:${b.width}px;height:${b.height}px;border-radius:${btype.borderRadius || "8px"};background:${btype.bg || "#fff"};border:${btype.border || "2px solid #000"};${btype.color ? "color:" + btype.color + ";" : "color:#000;"}display:flex;align-items:center;justify-content:center;text-align:center;font-size:13px;font-weight:bold;padding:4px;box-sizing:border-box;word-break:break-all;line-height:1.3;">${escapeHtml(b.text)}</div>`;
+    }).join("\n");
+
+    return `<div style="position:relative;display:inline-block;width:100%;">
+  <img src="${imageUrl}" style="width:100%;display:block;" alt="" />
+  ${bubbleEls}
+</div>`;
+  }
+
+  function escapeHtml(str) {
+    return (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  // 初期表示
+  goToStep(0);
+  return container;
+}
+
+// ── 画像パネル（既存） ────────────────────────────────────────
 
 function buildImagePanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
@@ -3178,7 +4496,59 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
   return frag;
 }
 
-// ── CTAパネル ──────────────────────────────────────────────
+// ── CTA URL編集（AI編集モード用、ウィザードの下に追加表示） ──
+
+function buildCtaUrlEditor(projectId, blockIndex, block) {
+  const section = document.createElement("div");
+  section.className = "ai-wizard-step";
+  section.style.cssText = "border-top:2px solid var(--border);margin-top:16px;padding-top:16px";
+
+  const title = document.createElement("h3");
+  title.className = "ai-wizard-step-title";
+  title.textContent = "CTA リンクURL";
+  section.appendChild(title);
+
+  const linkBox = document.createElement("div");
+  linkBox.className = "link-insert-box";
+  linkBox.style.cssText = "display:flex;align-items:center;gap:8px;padding:10px;background:var(--bg-tertiary);border-radius:8px;border:1px solid var(--border)";
+
+  const linkIcon = document.createElement("div");
+  linkIcon.innerHTML = '<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M8.5 11.5a4 4 0 005.66 0l2.82-2.83a4 4 0 00-5.66-5.65l-1.41 1.41" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M11.5 8.5a4 4 0 00-5.66 0L3.02 11.33a4 4 0 005.66 5.65l1.41-1.41" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+  linkIcon.style.cssText = "flex-shrink:0;color:var(--text-muted)";
+
+  const urlInput = document.createElement("input");
+  urlInput.type = "url";
+  urlInput.className = "bubble-item-text";
+  urlInput.style.cssText = "flex:1;padding:8px 10px;font-size:13px";
+  urlInput.value = block.href || "";
+  urlInput.placeholder = "https://example.com/your-link";
+
+  linkBox.appendChild(linkIcon);
+  linkBox.appendChild(urlInput);
+  section.appendChild(linkBox);
+
+  if (block.href) {
+    const current = document.createElement("div");
+    current.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:6px;word-break:break-all";
+    current.textContent = `現在: ${block.href}`;
+    section.appendChild(current);
+  }
+
+  // リアルタイム保存
+  urlInput.addEventListener("input", () => {
+    const newUrl = urlInput.value.trim();
+    // HTMLのhrefも差し替え
+    let html = block.html || "";
+    if (block.href && newUrl) {
+      html = html.split(block.href).join(newUrl);
+    }
+    autoSave(projectId, blockIndex, () => ({ html, href: newUrl }));
+  });
+
+  return section;
+}
+
+// ── CTAパネル（手動編集用、既存） ───────────────────────────────
 
 function buildCtaPanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
@@ -3278,15 +4648,287 @@ function buildCtaPanel(projectId, blockIndex, block) {
     }));
   });
 
-  frag.appendChild(buildSaveRow(projectId, blockIndex, () => ({
-    html: codeArea.value,
-    href: urlInput.value.trim(),
-  })));
+  // HTMLソース変更時もリアルタイム保存
+  codeArea.addEventListener("input", () => {
+    autoSave(projectId, blockIndex, () => ({
+      html: codeArea.value,
+      href: urlInput.value.trim(),
+    }));
+  });
+
+  // ボタンテキスト変更時もリアルタイム保存（textareaがある場合）
+  const textAreas = frag.querySelectorAll(".panel-textarea");
+  textAreas.forEach(ta => {
+    if (ta !== urlInput) {
+      ta.addEventListener("input", () => {
+        autoSave(projectId, blockIndex, () => ({
+          html: codeArea.value,
+          href: urlInput.value.trim(),
+        }));
+      });
+    }
+  });
 
   return frag;
 }
 
-// ── 動画パネル ─────────────────────────────────────────────
+// ── VEO3 動画ウィザード ────────────────────────────────────────
+
+function buildVideoWizard(projectId, blockIndex, block) {
+  const container = document.createElement("div");
+  container.className = "ai-wizard-container";
+
+  // ── 現在の動画プレビュー ──
+  if (block.videoSrc) {
+    const previewSec = createSection("現在の動画");
+    const video = document.createElement("video");
+    video.src = block.videoSrc;
+    video.controls = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.style.cssText = "width:100%;border-radius:8px";
+    previewSec.appendChild(video);
+    container.appendChild(previewSec);
+  }
+
+  // ── アップロード → 自動プロンプト生成 ──
+  const uploadSec = createSection("動画アップロード（参考用）");
+  const uploadRow = document.createElement("div");
+  uploadRow.style.cssText = "display:flex;gap:8px;align-items:center";
+  const uploadBtn = document.createElement("button");
+  uploadBtn.className = "panel-btn";
+  uploadBtn.textContent = "動画ファイルを選択";
+  const uploadInput = document.createElement("input");
+  uploadInput.type = "file";
+  uploadInput.accept = "video/*";
+  uploadInput.style.display = "none";
+  const uploadStatus = document.createElement("span");
+  uploadStatus.style.cssText = "font-size:12px;color:var(--text-muted)";
+  uploadBtn.addEventListener("click", () => uploadInput.click());
+  uploadRow.appendChild(uploadBtn);
+  uploadRow.appendChild(uploadInput);
+  uploadRow.appendChild(uploadStatus);
+  uploadSec.appendChild(uploadRow);
+  container.appendChild(uploadSec);
+
+  let uploadedLocalPath = null;
+
+  // プロンプト編集エリア
+  const promptSec = createSection("プロンプト（説明）");
+  const promptArea = document.createElement("textarea");
+  promptArea.className = "panel-textarea";
+  promptArea.rows = 4;
+  promptArea.placeholder = "動画の内容を説明してください...（例: 美容液を手に取る女性、明るい照明）";
+  promptSec.appendChild(promptArea);
+  container.appendChild(promptSec);
+
+  // アップロード時の自動プロンプト生成
+  uploadInput.addEventListener("change", async () => {
+    const file = uploadInput.files?.[0];
+    if (!file) return;
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = "アップロード中...";
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const upRes = await window.API.uploadVideo(projectId, blockIndex, {
+          videoData: reader.result,
+          fileName: file.name,
+        });
+        if (upRes.ok) {
+          uploadedLocalPath = upRes.localPath;
+          uploadStatus.textContent = `✓ ${file.name}`;
+
+          // 自動プロンプト生成
+          uploadStatus.textContent = `✓ ${file.name} — プロンプト生成中...`;
+          const descRes = await window.API.describeVideo(projectId, blockIndex, {
+            localPath: upRes.localPath,
+          });
+          if (descRes.description) {
+            promptArea.value = descRes.description;
+          }
+          uploadStatus.textContent = `✓ ${file.name}`;
+
+          // 手動モードとしてもアップロード動画を即時適用
+          applyVideoToBlock(upRes.videoUrl);
+        }
+      } catch (err) {
+        window.showToast(`アップロードエラー: ${err.message}`, "error");
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = "動画ファイルを選択";
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // ── 変化度 ──
+  const varSec = createSection("変化度");
+  const varRow = document.createElement("div");
+  varRow.style.cssText = "display:flex;gap:6px";
+  let selectedVariation = "normal";
+  const variations = [
+    { value: "slight", label: "少し変える" },
+    { value: "normal", label: "普通" },
+    { value: "big", label: "大幅に変える" },
+  ];
+  variations.forEach(v => {
+    const btn = document.createElement("button");
+    btn.className = v.value === "normal" ? "panel-btn primary" : "panel-btn";
+    btn.textContent = v.label;
+    btn.addEventListener("click", () => {
+      selectedVariation = v.value;
+      varRow.querySelectorAll(".panel-btn").forEach(b => b.className = "panel-btn");
+      btn.className = "panel-btn primary";
+    });
+    varRow.appendChild(btn);
+  });
+  varSec.appendChild(varRow);
+  container.appendChild(varSec);
+
+  // ── 出力形式 ──
+  const formatSec = createSection("出力形式");
+  const formatRow = document.createElement("div");
+  formatRow.style.cssText = "display:flex;gap:6px";
+  let selectedFormat = "mp4";
+  [
+    { value: "mp4", label: "動画 (MP4)" },
+    { value: "gif", label: "GIF" },
+  ].forEach(f => {
+    const btn = document.createElement("button");
+    btn.className = f.value === "mp4" ? "panel-btn primary" : "panel-btn";
+    btn.textContent = f.label;
+    btn.addEventListener("click", () => {
+      selectedFormat = f.value;
+      formatRow.querySelectorAll(".panel-btn").forEach(b => b.className = "panel-btn");
+      btn.className = "panel-btn primary";
+    });
+    formatRow.appendChild(btn);
+  });
+  formatSec.appendChild(formatRow);
+  container.appendChild(formatSec);
+
+  // ── 画質 ──
+  const qualitySec = createSection("画質");
+  const qualityRow = document.createElement("div");
+  qualityRow.style.cssText = "display:flex;gap:6px";
+  let selectedQuality = "720p";
+  [
+    { value: "480p", label: "標準 (480p)" },
+    { value: "720p", label: "高画質 (720p)" },
+  ].forEach(q => {
+    const btn = document.createElement("button");
+    btn.className = q.value === "720p" ? "panel-btn primary" : "panel-btn";
+    btn.textContent = q.label;
+    btn.addEventListener("click", () => {
+      selectedQuality = q.value;
+      qualityRow.querySelectorAll(".panel-btn").forEach(b => b.className = "panel-btn");
+      btn.className = "panel-btn primary";
+    });
+    qualityRow.appendChild(btn);
+  });
+  qualitySec.appendChild(qualityRow);
+  container.appendChild(qualitySec);
+
+  // ── VEO3で作成ボタン ──
+  const genBtn = document.createElement("button");
+  genBtn.className = "oneclick-main-btn veo3-gen-btn";
+  genBtn.innerHTML = '<span class="veo3-icon">&#x1F3AC;</span> VEO3で作成';
+  genBtn.style.marginTop = "12px";
+
+  const resultArea = document.createElement("div");
+  resultArea.className = "ai-wizard-result-area";
+  resultArea.style.display = "none";
+
+  genBtn.addEventListener("click", async () => {
+    const prompt = promptArea.value.trim();
+    if (!prompt) { window.showToast("プロンプトを入力してください", "warning"); return; }
+
+    // 変化度をプロンプトに反映
+    let finalPrompt = prompt;
+    if (selectedVariation === "slight") {
+      finalPrompt = `この動画をほぼ同じ内容で微細に変更してください: ${prompt}`;
+    } else if (selectedVariation === "big") {
+      finalPrompt = `この動画のコンセプトを参考にしつつ、大幅にリメイクした新しい動画を生成: ${prompt}`;
+    }
+
+    genBtn.disabled = true;
+    genBtn.innerHTML = '<span class="spinner"></span> VEO3で生成中...（最大3分）';
+
+    try {
+      const res = await window.API.generateVideo(projectId, blockIndex, {
+        prompt: finalPrompt,
+        resolution: selectedQuality,
+        format: selectedFormat,
+      });
+
+      if (res.ok && res.videoUrl) {
+        resultArea.style.display = "block";
+        resultArea.innerHTML = "";
+
+        const preview = document.createElement("div");
+        preview.className = "ai-wizard-preview";
+        const vid = document.createElement("video");
+        vid.src = res.videoUrl;
+        vid.controls = true;
+        vid.muted = true;
+        vid.playsInline = true;
+        vid.autoplay = true;
+        vid.style.cssText = "width:100%;border-radius:8px";
+        preview.appendChild(vid);
+        resultArea.appendChild(preview);
+
+        const applyBtn = document.createElement("button");
+        applyBtn.className = "oneclick-main-btn";
+        applyBtn.textContent = "この動画を適用";
+        applyBtn.addEventListener("click", () => applyVideoToBlock(res.videoUrl));
+        resultArea.appendChild(applyBtn);
+      }
+    } catch (err) {
+      window.showToast(`VEO3生成エラー: ${err.message}`, "error");
+    } finally {
+      genBtn.disabled = false;
+      genBtn.innerHTML = '<span class="veo3-icon">&#x1F3AC;</span> VEO3で作成';
+    }
+  });
+
+  container.appendChild(genBtn);
+  container.appendChild(resultArea);
+
+  // ── 動画を適用する関数 ──
+  async function applyVideoToBlock(videoUrl) {
+    try {
+      // ブロックHTMLの動画ソースを差し替え
+      let html = block.html || "";
+      const oldSrcs = [];
+      if (block.videoSrc) oldSrcs.push(block.videoSrc);
+      if (block.assets) {
+        block.assets.filter(a => a.type === "video").forEach(a => {
+          if (a.src) oldSrcs.push(a.src);
+        });
+      }
+      // data-src, src 属性も含めて差し替え
+      for (const old of oldSrcs) {
+        if (old) html = html.split(old).join(videoUrl);
+      }
+      // もし置換できなければ、source要素のdata-srcを差し替え
+      if (!oldSrcs.length || html === block.html) {
+        html = html.replace(/(data-src|src)="[^"]*\.(mp4|webm|gif)[^"]*"/g, `$1="${videoUrl}"`);
+      }
+
+      await window.API.updateBlock(projectId, blockIndex, { html });
+      window.loadPreview(true);
+      window.pushHistory?.("video_apply", `ブロック ${blockIndex} 動画適用`);
+      window.showToast("動画を適用しました", "success");
+    } catch (err) {
+      window.showToast(`適用エラー: ${err.message}`, "error");
+    }
+  }
+
+  return container;
+}
+
+// ── 動画パネル（既存） ──────────────────────────────────────────
 
 function buildVideoPanel(projectId, blockIndex, block) {
   const frag = document.createDocumentFragment();
@@ -4004,180 +5646,6 @@ function build3PanePanel(projectId, blockIndex, block) {
     uploadSection.appendChild(uploadZone);
     uploadSection.appendChild(uploadPreview);
     frag.appendChild(uploadSection);
-
-    // AI画像生成（簡易版）
-    const aiImgSection = createSection("AI画像生成");
-    const aiGenModeRow = document.createElement("div");
-    aiGenModeRow.style.cssText = "display:flex;gap:6px;margin-bottom:8px";
-    let ai3PaneMode = "similar";
-    ["similar", "tonmana", "new"].forEach(mode => {
-      const labels = { similar: "類似生成", tonmana: "トンマナ変更", new: "新規生成" };
-      const btn = document.createElement("button");
-      btn.className = mode === "similar" ? "panel-btn primary" : "panel-btn";
-      btn.textContent = labels[mode];
-      btn.style.cssText = "font-size:11px;padding:5px 10px";
-      btn.addEventListener("click", () => {
-        ai3PaneMode = mode;
-        aiGenModeRow.querySelectorAll(".panel-btn").forEach(b => b.className = "panel-btn");
-        btn.className = "panel-btn primary";
-      });
-      aiGenModeRow.appendChild(btn);
-    });
-    aiImgSection.appendChild(aiGenModeRow);
-
-    // スタイル選択
-    const aiStyleRow = document.createElement("div");
-    aiStyleRow.style.cssText = "display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap";
-    let ai3PaneStyle = "photo";
-    ["photo", "manga", "illustration", "flat"].forEach(s => {
-      const labels = { photo: "写真風", manga: "漫画風", illustration: "イラスト", flat: "フラット" };
-      const btn = document.createElement("button");
-      btn.className = s === "photo" ? "oneclick-radio active" : "oneclick-radio";
-      btn.textContent = labels[s];
-      btn.style.cssText = "font-size:11px;padding:4px 8px;cursor:pointer";
-      btn.addEventListener("click", () => {
-        ai3PaneStyle = s;
-        aiStyleRow.querySelectorAll(".oneclick-radio").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-      });
-      aiStyleRow.appendChild(btn);
-    });
-    aiImgSection.appendChild(aiStyleRow);
-
-    // プロンプト入力
-    const aiPromptInput = document.createElement("textarea");
-    aiPromptInput.className = "panel-textarea";
-    aiPromptInput.placeholder = "追加指示（任意）...";
-    aiPromptInput.rows = 2;
-    aiPromptInput.style.cssText = "min-height:auto;margin-bottom:8px";
-    aiImgSection.appendChild(aiPromptInput);
-
-    // 参考画像アップロード
-    const refSection = document.createElement("div");
-    refSection.style.cssText = "margin-bottom:8px";
-    const refLabel = document.createElement("div");
-    refLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:4px";
-    refLabel.textContent = "参考画像（ローカルからアップロード・任意）";
-    refSection.appendChild(refLabel);
-    const refRow = document.createElement("div");
-    refRow.style.cssText = "display:flex;gap:8px;align-items:center";
-    const refUploadBtn = document.createElement("button");
-    refUploadBtn.className = "panel-btn";
-    refUploadBtn.style.cssText = "font-size:11px;padding:5px 10px";
-    refUploadBtn.textContent = "📁 参考画像を選択";
-    const refInput = document.createElement("input");
-    refInput.type = "file";
-    refInput.accept = "image/*";
-    refInput.style.display = "none";
-    const refInfo = document.createElement("span");
-    refInfo.style.cssText = "font-size:11px;color:var(--text-muted)";
-    let refLocalPath = null;
-    refUploadBtn.addEventListener("click", () => refInput.click());
-    refInput.addEventListener("change", async () => {
-      const file = refInput.files?.[0];
-      if (!file) return;
-      refUploadBtn.disabled = true;
-      refUploadBtn.textContent = "アップロード中...";
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const result = await window.API.uploadFree(projectId, { imageData: reader.result, fileName: file.name });
-          if (result.ok) {
-            refLocalPath = result.localPath;
-            refInfo.textContent = `✓ ${file.name}`;
-            window.showToast("参考画像をアップロードしました", "success");
-          }
-        } catch (err) {
-          window.showToast(`アップロードエラー: ${err.message}`, "error");
-        } finally {
-          refUploadBtn.disabled = false;
-          refUploadBtn.textContent = "📁 参考画像を選択";
-        }
-      };
-      reader.readAsDataURL(file);
-    });
-    refRow.appendChild(refUploadBtn);
-    refRow.appendChild(refInput);
-    refRow.appendChild(refInfo);
-    refSection.appendChild(refRow);
-    aiImgSection.appendChild(refSection);
-
-    // 生成ボタン
-    const aiGenBtn = document.createElement("button");
-    aiGenBtn.className = "oneclick-main-btn";
-    aiGenBtn.style.cssText = "font-size:13px;padding:10px";
-    aiGenBtn.textContent = "AIで画像生成";
-    const aiResultGrid = document.createElement("div");
-    aiResultGrid.className = "oneclick-result-grid";
-
-    aiGenBtn.addEventListener("click", async () => {
-      aiGenBtn.disabled = true;
-      aiGenBtn.innerHTML = '<span class="spinner"></span> 生成中...（約30秒）';
-      aiResultGrid.innerHTML = "";
-      try {
-        let result;
-        const prov3 = window._selectedProvider || "pixai";
-        if (refLocalPath) {
-          result = await window.API.aiFromReference(projectId, {
-            localPath: refLocalPath,
-            style: ai3PaneStyle,
-            genMode: ai3PaneMode,
-            customPrompt: aiPromptInput.value.trim(),
-            designRequirements: window._designRequirements || "",
-            provider: prov3,
-          });
-        } else {
-          result = await window.API.oneClickImage(projectId, blockIndex, {
-            nuance: "same",
-            style: ai3PaneStyle,
-            designRequirements: window._designRequirements || "",
-            customPrompt: aiPromptInput.value.trim(),
-            genMode: ai3PaneMode,
-            provider: prov3,
-          });
-        }
-        if (result.ok && result.images) {
-          window.showToast(`${result.images.length}パターン生成しました`, "success");
-          result.images.forEach((imgUrl, i) => {
-            const card = document.createElement("div");
-            card.className = "oneclick-variant-card";
-            const varImg = document.createElement("img");
-            varImg.src = imgUrl;
-            varImg.alt = `パターン ${i + 1}`;
-            card.appendChild(varImg);
-            const applyBtn = document.createElement("button");
-            applyBtn.className = "oneclick-apply-btn";
-            applyBtn.textContent = "これを使う";
-            applyBtn.addEventListener("click", async () => {
-              applyBtn.disabled = true;
-              applyBtn.innerHTML = '<span class="spinner"></span>';
-              try {
-                await window.API.applyImage(projectId, blockIndex, { imageUrl: imgUrl });
-                window.showToast("画像を適用しました", "success");
-                window.loadPreview(true);
-                window.pushHistory?.("image_apply", `ブロック ${blockIndex} AI画像適用`);
-              } catch (err) {
-                window.showToast(`エラー: ${err.message}`, "error");
-              } finally {
-                applyBtn.disabled = false;
-                applyBtn.textContent = "これを使う";
-              }
-            });
-            card.appendChild(applyBtn);
-            aiResultGrid.appendChild(card);
-          });
-        }
-      } catch (err) {
-        window.showToast(`エラー: ${err.message}`, "error");
-      } finally {
-        aiGenBtn.disabled = false;
-        aiGenBtn.textContent = "AIで画像生成";
-      }
-    });
-
-    aiImgSection.appendChild(aiGenBtn);
-    aiImgSection.appendChild(aiResultGrid);
-    frag.appendChild(aiImgSection);
   }
 
   // ── テキスト内容パネル ──
