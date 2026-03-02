@@ -8,6 +8,10 @@ import { Router } from "express";
 import { templateManager } from "./template-manager.js";
 import { validateTemplate } from "./validators.js";
 import { adSubmitter } from "./index.js";
+import AutoOperator from "./auto-operator.js";
+
+// 自動運用エンジン（シングルトン）
+const autoOperator = new AutoOperator(adSubmitter.clients);
 
 export function createAdRoutes(getProject) {
   const router = Router();
@@ -71,7 +75,7 @@ export function createAdRoutes(getProject) {
   router.post("/api/ad-platforms/:platform/credentials", async (req, res) => {
     try {
       const { platform } = req.params;
-      if (!["google", "meta", "tiktok"].includes(platform)) {
+      if (!["google", "meta", "tiktok", "line"].includes(platform)) {
         return res.status(400).json({ error: "不明なプラットフォームです" });
       }
       await adSubmitter.saveCredentials(platform, req.body);
@@ -184,6 +188,73 @@ export function createAdRoutes(getProject) {
       const submission = await adSubmitter.getSubmission(req.params.id, req.params.sid);
       if (!submission) return res.status(404).json({ error: "入稿記録が見つかりません" });
       res.json(submission);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════
+  // 自動運用エンジン API
+  // ═══════════════════════════════════════════════
+
+  router.get("/api/auto-operator/config", async (req, res) => {
+    try {
+      const config = await autoOperator.loadConfig();
+      res.json(config);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.put("/api/auto-operator/config", async (req, res) => {
+    try {
+      const config = await autoOperator.saveConfig(req.body);
+      res.json({ ok: true, config });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post("/api/auto-operator/start", async (req, res) => {
+    try {
+      const result = await autoOperator.start();
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post("/api/auto-operator/stop", (req, res) => {
+    try {
+      const result = autoOperator.stop();
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get("/api/auto-operator/status", (req, res) => {
+    try {
+      res.json(autoOperator.getStatus());
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post("/api/auto-operator/execute-now", async (req, res) => {
+    try {
+      const decisions = await autoOperator.executeNow();
+      res.json({ ok: true, decisions });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get("/api/auto-operator/logs", async (req, res) => {
+    try {
+      const date = req.query.date || new Date().toISOString().slice(0, 10);
+      const logs = await autoOperator.getLogs(date);
+      res.json({ logs });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

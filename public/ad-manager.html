@@ -45,6 +45,11 @@
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><path d="M8 5v3l2 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
         ステータス
       </button>
+      <div class="ad-nav-separator"></div>
+      <button class="ad-nav-btn" data-ad-tab="auto">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.3"/></svg>
+        自動運用
+      </button>
     </div>
     <div class="ad-main">
 
@@ -250,6 +255,107 @@
         <div class="ad-content-body">
           <div id="ad-submissions-list"></div>
           <div id="ad-submission-detail" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- Tab5: 自動運用 -->
+      <div class="ad-tab-content" data-tab-content="auto">
+        <div class="ad-content-header">
+          <div>
+            <h4>AI自動運用エンジン</h4>
+            <p>アドアフィ特化ロジックで予算増減・損切り・ON/OFFを自動実行します。</p>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn-secondary" id="btn-auto-execute" onclick="AdManager.autoExecuteNow()">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M4 3l7 4-7 4V3z" fill="currentColor"/></svg>
+              今すぐ実行
+            </button>
+            <button class="btn-primary" id="btn-auto-toggle" onclick="AdManager.toggleAutoOperator()">
+              開始
+            </button>
+          </div>
+        </div>
+        <div class="ad-content-body">
+
+          <!-- 運用パラメータ設定 -->
+          <div class="op-config-card">
+            <div class="op-config-title">運用パラメータ</div>
+            <div class="op-config-grid">
+              <div class="op-param">
+                <label>本日の上限予算</label>
+                <div class="op-input-row">
+                  <span class="op-prefix">&yen;</span>
+                  <input type="number" id="op-daily-budget" class="form-input" value="100000" min="1000" step="1000">
+                </div>
+                <span class="op-hint">全媒体合計の絶対上限（1円も超えない）</span>
+              </div>
+              <div class="op-param">
+                <label>目標CPA</label>
+                <div class="op-input-row">
+                  <span class="op-prefix">&yen;</span>
+                  <input type="number" id="op-target-cpa" class="form-input" value="5000" min="100" step="100">
+                </div>
+                <span class="op-hint">この単価以下で獲得を目指す</span>
+              </div>
+              <div class="op-param">
+                <label>撤退CPA（限界）</label>
+                <div class="op-input-row">
+                  <span class="op-prefix">&yen;</span>
+                  <input type="number" id="op-max-cpa" class="form-input" value="10000" min="100" step="100">
+                </div>
+                <span class="op-hint">これを超えたら無条件で停止</span>
+              </div>
+              <div class="op-param">
+                <label>目標ROAS</label>
+                <div class="op-input-row">
+                  <input type="number" id="op-target-roas" class="form-input" value="200" min="50" step="10">
+                  <span class="op-suffix">%</span>
+                </div>
+                <span class="op-hint">LINE広告の足切りライン</span>
+              </div>
+            </div>
+            <div class="op-config-actions">
+              <button class="btn-primary" id="btn-save-op-config" onclick="AdManager.saveAutoConfig()">設定を保存</button>
+            </div>
+          </div>
+
+          <!-- 媒体別ON/OFF -->
+          <div class="op-config-card">
+            <div class="op-config-title">対象媒体</div>
+            <div class="ad-checkbox-group">
+              <label class="ad-check-label"><input type="checkbox" id="op-platform-tiktok" checked><span class="ad-check-icon" style="--check-color:#010101">T</span> TikTok / Pangle</label>
+              <label class="ad-check-label"><input type="checkbox" id="op-platform-meta" checked><span class="ad-check-icon" style="--check-color:#1877f2">M</span> Meta</label>
+              <label class="ad-check-label"><input type="checkbox" id="op-platform-google" checked><span class="ad-check-icon" style="--check-color:#4285f4">G</span> Google</label>
+              <label class="ad-check-label"><input type="checkbox" id="op-platform-line" checked><span class="ad-check-icon" style="--check-color:#06c755">L</span> LINE</label>
+            </div>
+            <div class="ad-form-group" style="margin-top:14px">
+              <label>実行間隔（分）</label>
+              <input type="number" id="op-interval" class="form-input" value="15" min="5" max="60" step="5" style="max-width:120px">
+            </div>
+          </div>
+
+          <!-- ステータス表示 -->
+          <div class="op-status-card" id="op-status-card">
+            <div class="op-status-header">
+              <div class="op-status-indicator" id="op-status-indicator">
+                <span class="op-status-dot stopped"></span>
+                <span id="op-status-text">停止中</span>
+              </div>
+              <span id="op-last-run" class="op-meta"></span>
+            </div>
+          </div>
+
+          <!-- 判定ログ -->
+          <div class="op-config-card">
+            <div class="op-config-title">
+              判定ログ
+              <button class="btn-sm" onclick="AdManager.loadAutoLogs()" style="margin-left:auto">更新</button>
+            </div>
+            <div id="op-log-list" class="op-log-list">
+              <div class="ad-empty"><p>ログはまだありません</p></div>
+            </div>
+          </div>
+
         </div>
       </div>
 

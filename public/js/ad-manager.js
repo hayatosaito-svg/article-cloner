@@ -71,6 +71,7 @@ const AdManager = {
     if (tabName === "templates") this.loadTemplates();
     if (tabName === "submit") this.loadSubmitTab();
     if (tabName === "status") this.loadSubmissions();
+    if (tabName === "auto") this.loadAutoTab();
   },
 
   bindEvents() {
@@ -631,6 +632,139 @@ const AdManager = {
     } catch (err) { this.toast(err.message, "error"); }
   },
 
+  // ═══════════════════════════════════════════════════
+  // Tab5: 自動運用エンジン
+  // ═══════════════════════════════════════════════════
+  autoConfig: null,
+
+  async loadAutoTab() {
+    try {
+      const config = await API.getAutoOperatorConfig();
+      this.autoConfig = config;
+      setVal("op-daily-budget", config.dailyBudgetLimit || 100000);
+      setVal("op-target-cpa", config.targetCPA || 5000);
+      setVal("op-max-cpa", config.maxCPA || 10000);
+      setVal("op-target-roas", config.targetROAS || 200);
+      setVal("op-interval", config.intervalMinutes || 15);
+      setChecked("op-platform-tiktok", config.platforms?.tiktok?.enabled !== false);
+      setChecked("op-platform-meta", config.platforms?.meta?.enabled !== false);
+      setChecked("op-platform-google", config.platforms?.google?.enabled !== false);
+      setChecked("op-platform-line", config.platforms?.line?.enabled !== false);
+    } catch {}
+
+    this.refreshAutoStatus();
+    this.loadAutoLogs();
+  },
+
+  async saveAutoConfig() {
+    const config = {
+      dailyBudgetLimit: int(getVal("op-daily-budget"), 100000),
+      targetCPA: int(getVal("op-target-cpa"), 5000),
+      maxCPA: int(getVal("op-max-cpa"), 10000),
+      targetROAS: int(getVal("op-target-roas"), 200),
+      intervalMinutes: int(getVal("op-interval"), 15),
+      platforms: {
+        tiktok: { enabled: getChecked("op-platform-tiktok"), initialBudget: int(getVal("op-target-cpa"), 5000) * 2 },
+        meta: { enabled: getChecked("op-platform-meta"), initialBudget: int(getVal("op-target-cpa"), 5000) * 2 },
+        google: { enabled: getChecked("op-platform-google"), initialBudget: int(getVal("op-target-cpa"), 5000) * 2 },
+        line: { enabled: getChecked("op-platform-line"), initialBudget: int(getVal("op-target-cpa"), 5000) * 2 },
+      },
+    };
+    try {
+      await API.saveAutoOperatorConfig(config);
+      this.toast("運用パラメータを保存しました", "success");
+    } catch (err) {
+      this.toast(err.message, "error");
+    }
+  },
+
+  async toggleAutoOperator() {
+    const btn = $("btn-auto-toggle");
+    try {
+      const status = await API.getAutoOperatorStatus();
+      if (status.running) {
+        await API.stopAutoOperator();
+        this.toast("自動運用を停止しました", "info");
+      } else {
+        // 最新の設定を保存してから開始
+        await this.saveAutoConfig();
+        await API.startAutoOperator();
+        this.toast("自動運用を開始しました", "success");
+      }
+      this.refreshAutoStatus();
+    } catch (err) {
+      this.toast(err.message, "error");
+    }
+  },
+
+  async autoExecuteNow() {
+    const btn = $("btn-auto-execute");
+    if (btn) { btn.disabled = true; btn.textContent = "実行中..."; }
+    try {
+      await this.saveAutoConfig();
+      const result = await API.autoExecuteNow();
+      this.toast(`判定完了: ${result.decisions?.length || 0}件のアクション`, "success");
+      this.loadAutoLogs();
+      this.refreshAutoStatus();
+    } catch (err) {
+      this.toast(err.message, "error");
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M4 3l7 4-7 4V3z" fill="currentColor"/></svg> 今すぐ実行'; }
+    }
+  },
+
+  async refreshAutoStatus() {
+    try {
+      const status = await API.getAutoOperatorStatus();
+      const dot = document.querySelector("#op-status-indicator .op-status-dot");
+      const text = $("op-status-text");
+      const lastRun = $("op-last-run");
+      const btn = $("btn-auto-toggle");
+
+      if (status.running) {
+        if (dot) { dot.className = "op-status-dot running"; }
+        if (text) text.textContent = "稼働中";
+        if (btn) { btn.textContent = "停止"; btn.className = "btn-secondary"; btn.style.background = "rgba(239,68,68,0.08)"; btn.style.color = "var(--red)"; btn.style.borderColor = "rgba(239,68,68,0.3)"; }
+      } else {
+        if (dot) { dot.className = "op-status-dot stopped"; }
+        if (text) text.textContent = "停止中";
+        if (btn) { btn.textContent = "開始"; btn.className = "btn-primary"; btn.style = ""; }
+      }
+      if (lastRun && status.lastRun) {
+        lastRun.textContent = `最終実行: ${new Date(status.lastRun).toLocaleString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+      }
+    } catch {}
+  },
+
+  async loadAutoLogs() {
+    const container = $("op-log-list");
+    if (!container) return;
+    try {
+      const { logs } = await API.getAutoOperatorLogs();
+      if (!logs || !logs.length) {
+        container.innerHTML = '<div class="ad-empty"><p>ログはまだありません</p></div>';
+        return;
+      }
+      const platformColors = { tiktok: "#010101", meta: "#1877f2", google: "#4285f4", line: "#06c755", system: "#8b5cf6" };
+      const platformLetters = { tiktok: "T", meta: "M", google: "G", line: "L", system: "S" };
+
+      container.innerHTML = logs.slice(-100).reverse().map((log) => {
+        const t = new Date(log.timestamp);
+        const time = t.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+        const color = platformColors[log.platform] || "#888";
+        const letter = platformLetters[log.platform] || "?";
+        const action = log.data?.action || "system";
+        return `<div class="op-log-entry">
+          <span class="op-log-time">${time}</span>
+          <span class="op-log-platform" style="background:${color}">${letter}</span>
+          <span class="op-log-message"><span class="op-log-action ${action}">${action}</span>${esc(log.message)}</span>
+        </div>`;
+      }).join("");
+    } catch (err) {
+      container.innerHTML = `<div class="ad-error">${esc(err.message)}</div>`;
+    }
+  },
+
   // ── ユーティリティ ─────────────────────────────
   toast(message, type = "info") {
     if (typeof window.showToast === "function") {
@@ -764,6 +898,14 @@ const API = window.API || (() => {
     },
     getAdSubmissions: (projectId) => fetchJson(`/api/projects/${projectId}/ad-submissions`),
     getAdSubmission: (projectId, sid) => fetchJson(`/api/projects/${projectId}/ad-submissions/${sid}`),
+    // 自動運用
+    getAutoOperatorConfig: () => fetchJson("/api/auto-operator/config"),
+    saveAutoOperatorConfig: (data) => fetchJson("/api/auto-operator/config", { method: "PUT", body: JSON.stringify(data) }),
+    startAutoOperator: () => fetchJson("/api/auto-operator/start", { method: "POST" }),
+    stopAutoOperator: () => fetchJson("/api/auto-operator/stop", { method: "POST" }),
+    getAutoOperatorStatus: () => fetchJson("/api/auto-operator/status"),
+    autoExecuteNow: () => fetchJson("/api/auto-operator/execute-now", { method: "POST" }),
+    getAutoOperatorLogs: (date) => fetchJson(`/api/auto-operator/logs${date ? "?date=" + date : ""}`),
   };
 })();
 

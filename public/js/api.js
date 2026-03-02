@@ -91,6 +91,21 @@ export const API = {
     });
   },
 
+  async describeUploaded(projectId, data) {
+    return fetchJson(`/api/projects/${projectId}/describe-uploaded`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      timeout: 60000,
+    });
+  },
+
+  async composeImages(projectId, data) {
+    return fetchJson(`/api/projects/${projectId}/compose-images`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
   async insertBlock(projectId, data) {
     return fetchJson(`/api/projects/${projectId}/blocks/insert`, {
       method: "POST",
@@ -233,6 +248,10 @@ export const API = {
     return fetchJson(`/api/projects/${projectId}/images`);
   },
 
+  async getUsageStats() {
+    return fetchJson("/api/usage-stats");
+  },
+
   // ── 広告テンプレートCRUD ──────────────────────────
   async getAdTemplates() {
     return fetchJson("/api/ad-templates");
@@ -335,6 +354,38 @@ export const API = {
 
   async getAdSubmission(projectId, submissionId) {
     return fetchJson(`/api/projects/${projectId}/ad-submissions/${submissionId}`);
+  },
+
+  // ── 自動運用エンジン ───────────────────────────
+  async getAutoOperatorConfig() {
+    return fetchJson("/api/auto-operator/config");
+  },
+
+  async saveAutoOperatorConfig(data) {
+    return fetchJson("/api/auto-operator/config", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async startAutoOperator() {
+    return fetchJson("/api/auto-operator/start", { method: "POST" });
+  },
+
+  async stopAutoOperator() {
+    return fetchJson("/api/auto-operator/stop", { method: "POST" });
+  },
+
+  async getAutoOperatorStatus() {
+    return fetchJson("/api/auto-operator/status");
+  },
+
+  async autoExecuteNow() {
+    return fetchJson("/api/auto-operator/execute-now", { method: "POST" });
+  },
+
+  async getAutoOperatorLogs(date) {
+    return fetchJson(`/api/auto-operator/logs${date ? "?date=" + date : ""}`);
   },
 
   connectSSE(projectId, handlers) {
