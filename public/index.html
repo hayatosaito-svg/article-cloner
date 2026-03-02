@@ -59,22 +59,17 @@
       </div>
     </div>
 
-    <!-- OpenAI APIキー設定カード -->
-    <div class="api-key-card" id="openai-key-card">
+    <!-- PixAI APIキー状態カード -->
+    <div class="api-key-card" id="pixai-key-card">
       <div class="api-key-header">
-        <div class="api-key-status" id="openai-key-status">
+        <div class="api-key-status" id="pixai-key-status">
           <span class="status-dot"></span>
           <span class="api-key-status-text">確認中...</span>
         </div>
-        <span class="api-key-label">OpenAI API</span>
+        <span class="api-key-label">PixAI API</span>
       </div>
-      <div class="api-key-body" id="openai-key-body">
-        <p class="api-key-desc">DALL-E 3画像生成・GPT-4oテキスト書き換え。<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" class="api-key-link">OpenAI Platform</a> で取得できます。</p>
-        <div class="api-key-input-row">
-          <input type="password" id="openai-key-input" class="api-key-input" placeholder="sk-... をペースト..." autocomplete="off" spellcheck="false">
-          <button id="btn-save-openai-key" class="btn-save-key">保存</button>
-        </div>
-        <div class="api-key-hint" id="openai-key-hint"></div>
+      <div class="api-key-body" id="pixai-key-body" style="display:none">
+        <p class="api-key-desc">AI画像生成エンジン。<a href="https://platform.pixai.art/" target="_blank" rel="noopener" class="api-key-link">PixAI Platform</a></p>
       </div>
     </div>
 

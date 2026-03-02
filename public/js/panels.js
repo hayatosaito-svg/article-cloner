@@ -628,35 +628,45 @@ function buildAiTextPanel(projectId, blockIndex, block) {
   const providerRow = document.createElement("div");
   providerRow.style.cssText = "display:flex;gap:6px";
   const providers = window._availableProviders || [];
+  const providerBtns = {};
+
+  // PixAI
+  const providerPixAI = document.createElement("button");
+  providerPixAI.className = "panel-btn";
+  providerPixAI.textContent = "PixAI";
+  providerPixAI.dataset.provider = "pixai";
+  if (!providers.includes("pixai")) { providerPixAI.style.opacity = "0.5"; providerPixAI.title = "PixAI APIキー未設定"; }
+  providerBtns.pixai = providerPixAI;
+
+  // Gemini
   const providerGemini = document.createElement("button");
-  providerGemini.className = providers.includes("gemini") ? "panel-btn primary" : "panel-btn";
+  providerGemini.className = "panel-btn";
   providerGemini.textContent = "Gemini";
   providerGemini.dataset.provider = "gemini";
   if (!providers.includes("gemini")) { providerGemini.style.opacity = "0.5"; providerGemini.title = "Gemini APIキー未設定"; }
-  const providerOpenAI = document.createElement("button");
-  providerOpenAI.className = "panel-btn";
-  providerOpenAI.textContent = "OpenAI";
-  providerOpenAI.dataset.provider = "openai";
-  if (!providers.includes("openai")) { providerOpenAI.style.opacity = "0.5"; providerOpenAI.title = "OpenAI APIキー未設定"; }
-  let selectedProvider = window._selectedProvider || (providers.includes("gemini") ? "gemini" : providers.includes("openai") ? "openai" : "gemini");
-  if (selectedProvider === "openai") { providerOpenAI.className = "panel-btn primary"; providerGemini.className = "panel-btn"; }
+  providerBtns.gemini = providerGemini;
+
+  // デフォルトプロバイダー: PixAI優先
+  let selectedProvider = window._selectedProvider || (providers.includes("pixai") ? "pixai" : providers.includes("gemini") ? "gemini" : "gemini");
   window._selectedProvider = selectedProvider;
+
+  function updateProviderBtns() {
+    Object.values(providerBtns).forEach(b => b.className = "panel-btn");
+    if (providerBtns[selectedProvider]) providerBtns[selectedProvider].className = "panel-btn primary";
+  }
+  updateProviderBtns();
+
+  providerPixAI.addEventListener("click", () => {
+    if (!providers.includes("pixai")) { window.showToast("PixAI APIキーを設定してください", "info"); return; }
+    selectedProvider = "pixai"; window._selectedProvider = "pixai"; updateProviderBtns();
+  });
   providerGemini.addEventListener("click", () => {
     if (!providers.includes("gemini")) { window.showToast("Gemini APIキーを設定してください", "info"); return; }
-    selectedProvider = "gemini";
-    window._selectedProvider = "gemini";
-    providerGemini.className = "panel-btn primary";
-    providerOpenAI.className = "panel-btn";
+    selectedProvider = "gemini"; window._selectedProvider = "gemini"; updateProviderBtns();
   });
-  providerOpenAI.addEventListener("click", () => {
-    if (!providers.includes("openai")) { window.showToast("OpenAI APIキーを設定してください", "info"); return; }
-    selectedProvider = "openai";
-    window._selectedProvider = "openai";
-    providerOpenAI.className = "panel-btn primary";
-    providerGemini.className = "panel-btn";
-  });
+
+  providerRow.appendChild(providerPixAI);
   providerRow.appendChild(providerGemini);
-  providerRow.appendChild(providerOpenAI);
   providerSection.appendChild(providerRow);
   frag.appendChild(providerSection);
 
