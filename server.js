@@ -18,6 +18,7 @@ import {
   PROJECT_ROOT, SCRAPED_DIR, ANALYSIS_DIR, IMAGES_DIR, FINAL_DIR,
   initOutputDirs, urlToSlug, saveJson, loadJson, formatBytes,
 } from "./src/utils.js";
+import { createAdRoutes } from "./src/ad-submitter/ad-routes.js";
 
 // API key is set via .env or UI (no hardcoded default)
 
@@ -583,6 +584,20 @@ ${headTagsBlock}
   .hoverLift{transition:all 0.3s ease}.hoverLift:hover{transform:translateY(-4px);box-shadow:0 6px 20px rgba(0,0,0,0.15)}
   .hoverGray{filter:grayscale(100%);transition:filter 0.3s ease}.hoverGray:hover{filter:grayscale(0%)}
 
+  /* ── Comic Preview Styles ── */
+  .comic-container { position:relative; width:100%; }
+  .comic-base-img { width:100%; display:block; }
+  .comic-grid { position:absolute; top:0; left:0; right:0; bottom:0; display:grid; gap:3px; }
+  .comic-cell { border:2px solid #000; position:relative; overflow:hidden; }
+  .comic-bubble { position:absolute; padding:8px 12px; max-width:70%; bottom:10%; left:50%; transform:translateX(-50%); text-align:center; z-index:2; }
+  .bubble-round { background:#fff; border:2px solid #000; border-radius:50%; }
+  .bubble-rect { background:#fff; border:2px solid #000; border-radius:12px; }
+  .bubble-spike { background:#fff; border:2px solid #000; clip-path:polygon(0% 20%,8% 0%,16% 18%,30% 4%,40% 16%,50% 0%,60% 16%,70% 4%,84% 18%,92% 0%,100% 20%,100% 80%,92% 100%,84% 82%,70% 96%,60% 84%,50% 100%,40% 84%,30% 96%,16% 82%,8% 100%,0% 80%); padding:16px; }
+  .bubble-cloud { background:#fff; border:2px solid #000; border-radius:50% 50% 50% 50% / 60% 60% 40% 40%; }
+  .bubble-shout { background:#ff0; border:2px solid #000; clip-path:polygon(0% 20%,15% 0%,25% 25%,50% 0%,75% 25%,85% 0%,100% 20%,100% 80%,85% 100%,75% 75%,50% 100%,25% 75%,15% 100%,0% 80%); padding:16px; }
+  .bubble-think { background:#fff; border:2px dashed #666; border-radius:50%; }
+  .bubble-narration { background:rgba(0,0,0,0.7); color:#fff; border:none; border-radius:4px; }
+
   .block-overlay {
     position: absolute;
     inset: 0;
@@ -793,6 +808,118 @@ ${html}
         content.className = content.className.replace(/\\bhover\\w+\\b/g, '').trim();
       }
     }
+
+    // ── Comic Editor: Grid Overlay ──
+    if (e.data.type === 'comicOverlay') {
+      var wrapper = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
+      if (!wrapper) return;
+      var content = wrapper.children[0];
+      if (!content) content = wrapper;
+      // 既存のオーバーレイを削除
+      var existing = content.querySelector('.comic-grid-preview');
+      if (existing) existing.remove();
+      if (!e.data.layout) return;
+
+      var grid = document.createElement('div');
+      grid.className = 'comic-grid-preview';
+      grid.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;display:grid;gap:3px;pointer-events:none;z-index:10;';
+      grid.style.gridTemplate = e.data.layout.grid || '1fr / 1fr';
+      if (e.data.layout.areas) grid.style.gridTemplateAreas = e.data.layout.areas;
+
+      var areaLetters = 'abcdefghij';
+      for (var ci = 0; ci < e.data.layout.cells; ci++) {
+        var cell = document.createElement('div');
+        cell.className = 'comic-preview-cell';
+        cell.dataset.cellIndex = ci;
+        cell.style.cssText = 'border:2px solid rgba(236,72,153,0.8);background:rgba(236,72,153,0.05);border-radius:2px;display:flex;align-items:center;justify-content:center;color:#ec4899;font-weight:bold;font-size:24px;position:relative;';
+        if (e.data.layout.areas) cell.style.gridArea = areaLetters[ci];
+        cell.textContent = (ci + 1);
+        grid.appendChild(cell);
+      }
+      content.style.position = 'relative';
+      content.appendChild(grid);
+      wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // ── Comic Editor: Bubble Preview ──
+    if (e.data.type === 'comicBubble') {
+      var wrapper = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
+      if (!wrapper) return;
+      var grid = wrapper.querySelector('.comic-grid-preview');
+      if (!grid) return;
+      var cell = grid.querySelector('[data-cell-index="' + e.data.cellIndex + '"]');
+      if (!cell) return;
+      // 既存の吹き出しを削除
+      var oldBubble = cell.querySelector('.comic-preview-bubble');
+      if (oldBubble) oldBubble.remove();
+      if (e.data.bubbleType === 'none') return;
+
+      var bubble = document.createElement('div');
+      bubble.className = 'comic-preview-bubble';
+      var styles = 'position:absolute;bottom:8px;left:50%;transform:translateX(-50%);padding:6px 10px;max-width:70%;font-size:11px;text-align:center;pointer-events:none;z-index:2;';
+      var bt = e.data.bubbleType;
+      if (bt === 'round') styles += 'background:#fff;border:2px solid #000;border-radius:50%;';
+      else if (bt === 'rect') styles += 'background:#fff;border:2px solid #000;border-radius:12px;';
+      else if (bt === 'spike') styles += 'background:#fff;border:2px solid #000;clip-path:polygon(0% 20%,8% 0%,16% 18%,30% 4%,40% 16%,50% 0%,60% 16%,70% 4%,84% 18%,92% 0%,100% 20%,100% 80%,92% 100%,84% 82%,70% 96%,60% 84%,50% 100%,40% 84%,30% 96%,16% 82%,8% 100%,0% 80%);padding:12px;';
+      else if (bt === 'cloud') styles += 'background:#fff;border:2px solid #000;border-radius:50% 50% 50% 50% / 60% 60% 40% 40%;';
+      else if (bt === 'shout') styles += 'background:#ff0;border:2px solid #000;clip-path:polygon(0% 20%,15% 0%,25% 25%,50% 0%,75% 25%,85% 0%,100% 20%,100% 80%,85% 100%,75% 75%,50% 100%,25% 75%,15% 100%,0% 80%);padding:12px;';
+      else if (bt === 'think') styles += 'background:#fff;border:2px dashed #666;border-radius:50%;';
+      else if (bt === 'narration') styles += 'background:rgba(0,0,0,0.7);color:#fff;border:none;border-radius:4px;';
+      bubble.style.cssText = styles;
+      bubble.textContent = bt;
+      cell.appendChild(bubble);
+    }
+
+    // ── Comic Editor: Text Preview ──
+    if (e.data.type === 'comicText') {
+      var wrapper = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
+      if (!wrapper) return;
+      var grid = wrapper.querySelector('.comic-grid-preview');
+      if (!grid) return;
+      var cell = grid.querySelector('[data-cell-index="' + e.data.cellIndex + '"]');
+      if (!cell) return;
+      var bubble = cell.querySelector('.comic-preview-bubble');
+      if (!bubble) {
+        bubble = document.createElement('div');
+        bubble.className = 'comic-preview-bubble';
+        var bt = e.data.bubbleType || 'rect';
+        var styles = 'position:absolute;bottom:8px;left:50%;transform:translateX(-50%);padding:6px 10px;max-width:70%;text-align:center;pointer-events:none;z-index:2;';
+        if (bt === 'round') styles += 'background:#fff;border:2px solid #000;border-radius:50%;';
+        else if (bt === 'rect') styles += 'background:#fff;border:2px solid #000;border-radius:12px;';
+        else if (bt === 'narration') styles += 'background:rgba(0,0,0,0.7);color:#fff;border:none;border-radius:4px;';
+        else styles += 'background:#fff;border:2px solid #000;border-radius:12px;';
+        bubble.style.cssText = styles;
+        cell.appendChild(bubble);
+      }
+      bubble.textContent = e.data.text || '';
+      bubble.style.fontSize = (e.data.fontSize || 16) + 'px';
+      if (e.data.bold) bubble.style.fontWeight = 'bold';
+      else bubble.style.fontWeight = '';
+    }
+
+    // ── Comic Editor: Animation Preview ──
+    if (e.data.type === 'comicAnimation') {
+      var wrapper = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
+      if (!wrapper) return;
+      var grid = wrapper.querySelector('.comic-grid-preview');
+      if (!grid) return;
+      var targetParts = (e.data.target || '').split('-');
+      var targetType = targetParts[0];
+      var targetIdx = parseInt(targetParts[1]) || 0;
+      var targetEl = null;
+      if (targetType === 'cell') {
+        targetEl = grid.querySelector('[data-cell-index="' + targetIdx + '"]');
+      } else if (targetType === 'bubble') {
+        var bCell = grid.querySelector('[data-cell-index="' + targetIdx + '"]');
+        if (bCell) targetEl = bCell.querySelector('.comic-preview-bubble');
+      }
+      if (!targetEl) return;
+      targetEl.style.animation = '';
+      void targetEl.offsetWidth;
+      if (e.data.anim) {
+        targetEl.style.animation = e.data.anim + ' ' + (e.data.speed || '0.6s') + ' ease forwards';
+      }
+    }
   });
 
   // Resolve lazyload
@@ -829,8 +956,20 @@ ${html}
     + '<div class="tb-sep"></div>'
     + '<button data-cmd="justifyLeft" title="\u5DE6\u63C3\u3048">\u2261</button>'
     + '<button data-cmd="justifyCenter" title="\u4E2D\u592E">\u2550</button>'
-    + '<button data-cmd="justifyRight" title="\u53F3\u63C3\u3048">\u2261</button>';
+    + '<button data-cmd="justifyRight" title="\u53F3\u63C3\u3048">\u2261</button>'
+    + '<div class="tb-sep"></div>'
+    + '<button data-action="insertImage" title="\u753B\u50CF\u633F\u5165">\uD83D\uDDBC</button>';
   document.body.appendChild(toolbar);
+
+  // Image insert button
+  var imgBtn = toolbar.querySelector('[data-action="insertImage"]');
+  if (imgBtn) {
+    imgBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      var blockIdx = editingWrapper ? parseInt(editingWrapper.dataset.blockIndex) : -1;
+      window.parent.postMessage({ type: 'openImagePicker', blockIndex: blockIdx }, '*');
+    });
+  }
 
   // Toolbar commands
   toolbar.addEventListener('mousedown', function(e) { e.preventDefault(); });
@@ -885,28 +1024,39 @@ ${html}
     toolbar.classList.add('visible');
   });
 
-  // Double-click to enter edit mode
-  document.addEventListener('dblclick', function(e) {
+  // Single-click to enter edit mode (text/heading blocks)
+  // Click on text/heading block = select + immediately enter edit mode
+  document.addEventListener('click', function(e) {
     var wrapper = e.target.closest('.block-wrapper');
     if (!wrapper) return;
+    // If already in editing mode on this wrapper, don't re-enter
+    if (editingWrapper === wrapper) return;
     var blockIdx = parseInt(wrapper.dataset.blockIndex);
     var blockType = types[blockIdx];
     // Only allow text/heading editing
     if (blockType !== 'text' && blockType !== 'heading') return;
 
-    // Exit previous editing
+    // Exit previous editing if different wrapper
     if (editingWrapper && editingWrapper !== wrapper) exitEditMode(true);
 
-    e.preventDefault();
-    e.stopPropagation();
+    // Enter edit mode immediately on single click (no need to wait for active state)
+    // Short delay to let blockClick handler fire first for selection
+    setTimeout(function() {
+      if (editingWrapper === wrapper) return; // already entered
+      editingWrapper = wrapper;
+      editingContent = wrapper.children[0]; // The actual content element
+      originalHtml = editingContent.innerHTML;
 
-    editingWrapper = wrapper;
-    editingContent = wrapper.children[0]; // The actual content element
-    originalHtml = editingContent.innerHTML;
+      wrapper.classList.add('editing');
+      editingContent.contentEditable = 'true';
+      editingContent.focus();
 
-    wrapper.classList.add('editing');
-    editingContent.contentEditable = 'true';
-    editingContent.focus();
+      // Show toolbar immediately above the block
+      var rect = wrapper.getBoundingClientRect();
+      toolbar.style.left = Math.max(4, rect.left + rect.width / 2 - 160) + 'px';
+      toolbar.style.top = Math.max(4, rect.top - 44) + 'px';
+      toolbar.classList.add('visible');
+    }, 50);
   });
 
   function exitEditMode(save) {
@@ -1010,6 +1160,80 @@ ${html}
       exitEditMode(false);
     }
   });
+
+  // ── Element Overlay (AI Vision) ──
+  window.addEventListener('message', function(e) {
+    if (!e.data || !e.data.type) return;
+
+    if (e.data.type === 'elementOverlay') {
+      // Remove existing overlays
+      document.querySelectorAll('.ai-element-overlay').forEach(function(o) { o.remove(); });
+      var wrapper = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
+      if (!wrapper) return;
+      var content = wrapper.children[0] || wrapper;
+      var rect = content.getBoundingClientRect();
+
+      // Show all elements as semi-transparent overlays, highlight selected
+      var elements = e.data.elements || [];
+      if (e.data.elementIndex < 0) return;
+
+      elements.forEach(function(el, idx) {
+        var bb = el.boundingBox;
+        if (!bb) return;
+        var div = document.createElement('div');
+        div.className = 'ai-element-overlay';
+        div.style.cssText = 'position:absolute;pointer-events:none;z-index:2000;transition:all 0.2s;';
+        div.style.left = (bb.x) + '%';
+        div.style.top = (bb.y) + '%';
+        div.style.width = (bb.width) + '%';
+        div.style.height = (bb.height) + '%';
+        if (idx === e.data.elementIndex) {
+          div.style.border = '2px solid #ec4899';
+          div.style.background = 'rgba(236,72,153,0.15)';
+          div.style.borderRadius = '3px';
+        } else {
+          div.style.border = '1px dashed rgba(236,72,153,0.3)';
+          div.style.background = 'rgba(236,72,153,0.03)';
+        }
+        content.style.position = 'relative';
+        content.appendChild(div);
+      });
+      wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    if (e.data.type === 'elementUpdate') {
+      // Update overlay position/style for a specific element
+      document.querySelectorAll('.ai-element-overlay').forEach(function(o) { o.remove(); });
+      var wrapper = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
+      if (!wrapper) return;
+      var content = wrapper.children[0] || wrapper;
+      var bb = e.data.boundingBox;
+      if (!bb) return;
+
+      var div = document.createElement('div');
+      div.className = 'ai-element-overlay';
+      div.style.cssText = 'position:absolute;pointer-events:none;z-index:2000;';
+      div.style.left = bb.x + '%';
+      div.style.top = bb.y + '%';
+      div.style.width = bb.width + '%';
+      div.style.height = bb.height + '%';
+      div.style.border = '2px solid #ec4899';
+      div.style.background = 'rgba(236,72,153,0.1)';
+      div.style.borderRadius = '3px';
+      if (!e.data.visible) div.style.display = 'none';
+      div.style.zIndex = 2000 + (e.data.zIndex || 0);
+      content.style.position = 'relative';
+      content.appendChild(div);
+
+      // Show text content preview if text type
+      if (e.data.style) {
+        var fontSizes = { small: '10px', medium: '14px', large: '20px', xlarge: '28px' };
+        div.style.fontSize = fontSizes[e.data.style.fontSize] || '14px';
+        if (e.data.style.color) div.style.color = e.data.style.color;
+        if (e.data.style.backgroundColor) div.style.background = e.data.style.backgroundColor + '33';
+      }
+    }
+  });
 })();
 </script>
 ${bodyEndBlock}
@@ -1060,7 +1284,7 @@ app.post("/api/projects/:id/describe-image/:idx", async (req, res) => {
       .join(" ")
       .slice(0, 200);
 
-    const provider = req.body?.provider || "gemini";
+    const provider = req.body?.provider || "nanobanana";
     const description = await describeImage(assetEntry.localPath, context, provider);
     res.json({ description });
   } catch (err) {
@@ -1090,7 +1314,7 @@ app.post("/api/projects/:id/generate-image/:idx", async (req, res) => {
       `block_${idx}_${Date.now()}.jpg`
     );
 
-    await generateImage(finalPrompt, { width, height, outputPath, provider: provider || "gemini" });
+    await generateImage(finalPrompt, { width, height, outputPath, provider: provider || "nanobanana" });
 
     const generatedUrl = `/api/projects/${project.id}/generated-images/${path.basename(outputPath)}`;
     res.json({ ok: true, imageUrl: generatedUrl });
@@ -1429,7 +1653,7 @@ app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
   const block = project.blocks[idx];
   if (!block) return res.status(404).json({ error: "Block not found" });
 
-  const { instruction, text, designRequirements, provider = "gemini" } = req.body;
+  const { instruction, text, designRequirements, provider = "nanobanana" } = req.body;
   if (!instruction) return res.status(400).json({ error: "instruction is required" });
 
   const sourceText = text || block.text || "";
@@ -1443,7 +1667,7 @@ app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
   }
 });
 
-// POST /api/projects/:id/ocr - OCR text extraction from block images
+// POST /api/projects/:id/ocr - OCR text extraction using extract-elements API
 app.post("/api/projects/:id/ocr", async (req, res) => {
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
@@ -1452,7 +1676,48 @@ app.post("/api/projects/:id/ocr", async (req, res) => {
   const block = project.blocks[idx];
   if (!block) return res.status(404).json({ error: "Block not found" });
 
-  // Collect image sources from block HTML
+  try {
+    // Check if extract-elements has been called already (cached)
+    let elements = project._extractedElements?.[idx];
+
+    if (!elements) {
+      // Call extract-elements internally
+      const internalUrl = `http://localhost:${PORT}/api/projects/${req.params.id}/extract-elements/${idx}`;
+      const extractResp = await fetch(internalUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (extractResp.ok) {
+        const extractData = await extractResp.json();
+        elements = extractData.elements || [];
+      } else {
+        elements = [];
+      }
+    }
+
+    // Filter text-type elements
+    const texts = elements
+      .filter(el => el.type === "text")
+      .map(el => el.content)
+      .filter(t => t && t.trim());
+
+    res.json({ texts, count: texts.length });
+  } catch (err) {
+    console.error(`[ocr] Error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/projects/:id/extract-elements/:idx - AI Vision element extraction
+app.post("/api/projects/:id/extract-elements/:idx", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const idx = parseInt(req.params.idx, 10);
+  const block = project.blocks[idx];
+  if (!block) return res.status(404).json({ error: "Block not found" });
+
+  // Collect image sources from block HTML (reuse OCR pattern)
   const cheerio = await import("cheerio");
   const $ = cheerio.load(block.html || "");
   const imgSrcs = [];
@@ -1466,71 +1731,347 @@ app.post("/api/projects/:id/ocr", async (req, res) => {
   });
 
   if (imgSrcs.length === 0) {
-    return res.json({ texts: [] });
+    return res.json({ elements: [] });
   }
 
-  // Use Gemini to OCR the first few images
-  const texts = [];
-  const maxImages = Math.min(imgSrcs.length, 3);
+  // Get the first image and convert to base64
+  let imgSrc = imgSrcs[0];
+  let base64, mimeType;
+  try {
+    if (imgSrc.startsWith("/projects/") || imgSrc.startsWith("projects/")) {
+      const localPath = path.join(PROJECT_ROOT, "data", imgSrc.replace(/^\//, ""));
+      if (!existsSync(localPath)) return res.json({ elements: [] });
+      const buf = await readFile(localPath);
+      base64 = buf.toString("base64");
+      mimeType = imgSrc.endsWith(".webp") ? "image/webp" : imgSrc.endsWith(".png") ? "image/png" : "image/jpeg";
+    } else if (imgSrc.startsWith("http")) {
+      const imgResp = await fetch(imgSrc);
+      if (!imgResp.ok) return res.json({ elements: [] });
+      const buf = Buffer.from(await imgResp.arrayBuffer());
+      base64 = buf.toString("base64");
+      mimeType = imgResp.headers.get("content-type") || "image/jpeg";
+    } else {
+      return res.json({ elements: [] });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: `画像取得エラー: ${err.message}` });
+  }
 
-  for (let i = 0; i < maxImages; i++) {
-    let imgSrc = imgSrcs[i];
-    try {
-      let base64, mimeType;
+  // Try Anthropic Claude Vision first, then Gemini fallback
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  let geminiKey;
+  for (let k = 1; k <= 3; k++) {
+    const kk = process.env[`GEMINI_API_KEY_${k}`];
+    if (kk) { geminiKey = kk; break; }
+  }
+  if (!geminiKey) geminiKey = process.env.GEMINI_API_KEY;
 
-      // Check if it's a local asset
-      if (imgSrc.startsWith("/projects/") || imgSrc.startsWith("projects/")) {
-        const localPath = path.join(PROJECT_ROOT, "data", imgSrc.replace(/^\//, ""));
-        if (!existsSync(localPath)) continue;
-        const buf = await readFile(localPath);
-        base64 = buf.toString("base64");
-        mimeType = imgSrc.endsWith(".webp") ? "image/webp" : imgSrc.endsWith(".png") ? "image/png" : "image/jpeg";
-      } else if (imgSrc.startsWith("http")) {
-        // Remote image
-        const imgResp = await fetch(imgSrc);
-        if (!imgResp.ok) continue;
-        const buf = Buffer.from(await imgResp.arrayBuffer());
-        base64 = buf.toString("base64");
-        mimeType = imgResp.headers.get("content-type") || "image/jpeg";
-      } else {
-        continue;
+  const visionPrompt = `この広告画像を分析し、含まれるすべての視覚要素を抽出してください。
+
+各要素について以下の情報をJSON配列で返してください：
+- type: "text" | "decoration" | "badge" | "photo" | "background" | "button" | "icon" | "logo" | "separator"
+- content: 要素の内容（テキストの場合はテキスト内容、画像の場合は説明）
+- boundingBox: { x: 数値(%), y: 数値(%), width: 数値(%), height: 数値(%) } - 画像内での位置（パーセント）
+- style: { fontSize: "small"|"medium"|"large"|"xlarge", fontWeight: "normal"|"bold", color: "#hexcolor", backgroundColor: "#hexcolor" または null }
+- zIndex: レイヤー順序（0が最背面、大きいほど前面）
+
+重要：
+- JSON配列のみを返し、他のテキストは含めないでください
+- boundingBoxの値は画像全体に対するパーセンテージで指定
+- テキスト要素は文字内容を正確に読み取ってください
+- 背景、装飾、バッジ、ボタン、アイコンなども含めてください`;
+
+  try {
+    let elements = [];
+
+    if (anthropicKey) {
+      // Use Anthropic Claude Vision
+      const anthropicResp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4096,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } },
+              { type: "text", text: visionPrompt },
+            ],
+          }],
+        }),
+      });
+
+      if (!anthropicResp.ok) {
+        const errText = await anthropicResp.text();
+        console.warn(`[extract-elements] Anthropic API error: ${anthropicResp.status} ${errText}`);
+        throw new Error("Anthropic API failed");
       }
 
-      // Get a Gemini key
-      let apiKey;
-      for (let k = 1; k <= 3; k++) {
-        const kk = process.env[`GEMINI_API_KEY_${k}`];
-        if (kk) { apiKey = kk; break; }
-      }
-      if (!apiKey) apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) return res.status(400).json({ error: "Gemini APIキーが未設定です" });
-
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-      const geminiResp = await fetch(url, {
+      const anthropicData = await anthropicResp.json();
+      const responseText = anthropicData.content?.[0]?.text || "";
+      elements = parseElementsJson(responseText);
+    } else if (geminiKey) {
+      // Fallback to Gemini
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`;
+      const geminiResp = await fetch(geminiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{
             parts: [
-              { text: "この画像内に含まれるテキスト（文字）をすべて抽出してください。テキストが見つからない場合は空を返してください。抽出したテキストのみを返し、説明は不要です。改行で区切ってください。" },
+              { text: visionPrompt },
               { inline_data: { mime_type: mimeType, data: base64 } },
             ],
           }],
         }),
       });
 
-      if (!geminiResp.ok) continue;
-      const data = await geminiResp.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      if (text.trim()) {
-        text.trim().split("\n").filter(l => l.trim()).forEach(l => texts.push(l.trim()));
+      if (!geminiResp.ok) throw new Error("Gemini API failed");
+      const geminiData = await geminiResp.json();
+      const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      elements = parseElementsJson(responseText);
+    } else {
+      return res.status(400).json({ error: "ANTHROPIC_API_KEY または GEMINI_API_KEY を .env に設定してください" });
+    }
+
+    // Cache in project
+    if (!project._extractedElements) project._extractedElements = {};
+    project._extractedElements[idx] = elements;
+
+    res.json({ elements, count: elements.length });
+  } catch (err) {
+    console.error(`[extract-elements] Error: ${err.message}`);
+    res.status(500).json({ error: `要素抽出エラー: ${err.message}` });
+  }
+});
+
+// Helper: parse JSON array from AI response text
+function parseElementsJson(text) {
+  // Try to extract JSON array from response
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) return [];
+  try {
+    const arr = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(arr)) return [];
+    // Normalize elements
+    return arr.map((el, i) => ({
+      type: el.type || "text",
+      content: el.content || "",
+      boundingBox: {
+        x: el.boundingBox?.x ?? 0,
+        y: el.boundingBox?.y ?? 0,
+        width: el.boundingBox?.width ?? 100,
+        height: el.boundingBox?.height ?? 10,
+      },
+      style: {
+        fontSize: el.style?.fontSize || "medium",
+        fontWeight: el.style?.fontWeight || "normal",
+        color: el.style?.color || "#000000",
+        backgroundColor: el.style?.backgroundColor || null,
+      },
+      zIndex: el.zIndex ?? i,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// GET /api/projects/:id/images - List all project images
+app.get("/api/projects/:id/images", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const images = [];
+  // From assets
+  if (project.assets) {
+    project.assets.forEach((a) => {
+      if (a.type === "image" || a.src?.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
+        images.push({ src: a.src || a.webpSrc, type: "asset", width: a.width, height: a.height });
+      }
+    });
+  }
+  // From blocks
+  if (project.blocks) {
+    project.blocks.forEach((b, i) => {
+      if (b.assets) {
+        b.assets.forEach(a => {
+          if (a.type === "image" || a.src?.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
+            images.push({ src: a.src || a.webpSrc, type: "block", blockIndex: i, width: a.width, height: a.height });
+          }
+        });
+      }
+    });
+  }
+  res.json({ images });
+});
+
+// POST /api/search-images - Image search proxy
+app.post("/api/search-images", async (req, res) => {
+  const { query, source = "google" } = req.body;
+  if (!query) return res.status(400).json({ error: "query is required" });
+
+  const results = [];
+  const providers = [];
+
+  // Google Custom Search
+  const googleKey = process.env.GOOGLE_API_KEY;
+  const googleCx = process.env.GOOGLE_CX;
+  if (source === "google" && googleKey && googleCx) {
+    providers.push("google");
+    try {
+      const url = `https://www.googleapis.com/customsearch/v1?key=${googleKey}&cx=${googleCx}&searchType=image&q=${encodeURIComponent(query)}&num=9`;
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const data = await resp.json();
+        (data.items || []).forEach(item => {
+          results.push({
+            src: item.link,
+            thumbnail: item.image?.thumbnailLink || item.link,
+            title: item.title,
+            width: item.image?.width,
+            height: item.image?.height,
+            source: "google",
+          });
+        });
       }
     } catch (err) {
-      console.warn(`[ocr] Error processing image ${i}: ${err.message}`);
+      console.warn(`[search-images] Google error: ${err.message}`);
     }
   }
 
-  res.json({ texts });
+  // Unsplash
+  const unsplashKey = process.env.UNSPLASH_ACCESS_KEY;
+  if (source === "unsplash" && unsplashKey) {
+    providers.push("unsplash");
+    try {
+      const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=9&client_id=${unsplashKey}`;
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const data = await resp.json();
+        (data.results || []).forEach(photo => {
+          results.push({
+            src: photo.urls?.regular || photo.urls?.full,
+            thumbnail: photo.urls?.thumb || photo.urls?.small,
+            title: photo.description || photo.alt_description || "",
+            width: photo.width,
+            height: photo.height,
+            source: "unsplash",
+            credit: photo.user?.name,
+          });
+        });
+      }
+    } catch (err) {
+      console.warn(`[search-images] Unsplash error: ${err.message}`);
+    }
+  }
+
+  if (!googleKey && !googleCx && !unsplashKey) {
+    return res.json({ error: "APIキーを設定してください（GOOGLE_API_KEY + GOOGLE_CX または UNSPLASH_ACCESS_KEY）", providers: [], results: [] });
+  }
+
+  if (providers.length === 0) {
+    return res.json({ error: `${source} のAPIキーが未設定です`, providers: [], results: [] });
+  }
+
+  res.json({ results, providers });
+});
+
+// POST /api/projects/:id/auto-keywords/:idx - AI generates search keywords from image
+app.post("/api/projects/:id/auto-keywords/:idx", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  const idx = parseInt(req.params.idx, 10);
+  const block = project.blocks[idx];
+  if (!block) return res.status(404).json({ error: "Block not found" });
+
+  // Find first image in block
+  const cheerio = await import("cheerio");
+  const $ = cheerio.load(block.html || "");
+  const imgSrc = $("img").first().attr("data-src") || $("img").first().attr("src") || $("source[data-srcset]").first().attr("data-srcset") || "";
+  if (!imgSrc) return res.json({ keywords: "", redKeywords: [] });
+
+  let base64, mimeType;
+  try {
+    if (imgSrc.startsWith("/projects/") || imgSrc.startsWith("projects/")) {
+      const localPath = path.join(PROJECT_ROOT, "data", imgSrc.replace(/^\//, ""));
+      if (!existsSync(localPath)) return res.json({ keywords: "", redKeywords: [] });
+      const buf = await readFile(localPath);
+      base64 = buf.toString("base64");
+      mimeType = imgSrc.endsWith(".webp") ? "image/webp" : imgSrc.endsWith(".png") ? "image/png" : "image/jpeg";
+    } else if (imgSrc.startsWith("http")) {
+      const imgResp = await fetch(imgSrc);
+      if (!imgResp.ok) return res.json({ keywords: "", redKeywords: [] });
+      const buf = Buffer.from(await imgResp.arrayBuffer());
+      base64 = buf.toString("base64");
+      mimeType = imgResp.headers.get("content-type") || "image/jpeg";
+    } else {
+      return res.json({ keywords: "", redKeywords: [] });
+    }
+  } catch { return res.json({ keywords: "", redKeywords: [] }); }
+
+  // Use Anthropic or Gemini to generate keywords
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  let geminiKey;
+  for (let k = 1; k <= 3; k++) { const kk = process.env[`GEMINI_API_KEY_${k}`]; if (kk) { geminiKey = kk; break; } }
+  if (!geminiKey) geminiKey = process.env.GEMINI_API_KEY;
+
+  const prompt = `この広告画像の類似画像を検索するための検索キーワードを生成してください。
+
+以下の2つを返してください：
+1. 日本語の検索キーワード（半角スペース区切り、3〜5語）
+2. 中国語（簡体字）のREDで検索するためのキーワード（3パターン、1行に1パターン）
+
+以下のJSON形式で返してください：
+{"keywords": "日本語キーワード", "redKeywords": ["中国語1", "中国語2", "中国語3"]}
+
+JSONのみを返してください。`;
+
+  try {
+    let resultText = "";
+    if (anthropicKey) {
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514", max_tokens: 500,
+          messages: [{ role: "user", content: [
+            { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } },
+            { type: "text", text: prompt }
+          ] }],
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        resultText = data.content?.[0]?.text || "";
+      }
+    } else if (geminiKey) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`;
+      const resp = await fetch(url, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mimeType, data: base64 } }] }] }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      }
+    }
+
+    const jsonMatch = resultText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      res.json({ keywords: parsed.keywords || "", redKeywords: parsed.redKeywords || [] });
+    } else {
+      res.json({ keywords: resultText.trim().split("\n")[0] || "", redKeywords: [] });
+    }
+  } catch (err) {
+    console.warn(`[auto-keywords] Error: ${err.message}`);
+    res.json({ keywords: "", redKeywords: [] });
+  }
 });
 
 // Health check
@@ -1879,6 +2420,14 @@ app.delete("/api/widget-templates/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── 広告入稿ルート ────────────────────────────────
+app.use(createAdRoutes((id) => projects.get(id)));
+
+// 広告マネージャー スタンドアロンページ
+app.get("/ad-manager", (req, res) => {
+  res.sendFile(path.join(PROJECT_ROOT, "public", "ad-manager.html"));
+});
+
 // SPA fallback
 app.get("*", (req, res) => {
   res.sendFile(path.join(PROJECT_ROOT, "public", "index.html"));
@@ -1886,5 +2435,7 @@ app.get("*", (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`\n  Article Cloner UI`);
-  console.log(`  http://localhost:${PORT}\n`);
+  console.log(`  http://localhost:${PORT}`);
+  console.log(`  広告入稿マネージャー`);
+  console.log(`  http://localhost:${PORT}/ad-manager\n`);
 });

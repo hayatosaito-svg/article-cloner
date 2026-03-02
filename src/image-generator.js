@@ -30,7 +30,7 @@ class KeyRotator {
     this.keys = [];
     for (let i = 1; i <= 3; i++) {
       const key = process.env[`GEMINI_API_KEY_${i}`];
-      if (key && !this.disabledKeys.has(key)) this.keys.push(key);
+      if (key && key.length >= 10 && !this.disabledKeys.has(key)) this.keys.push(key);
     }
     if (this.keys.length === 0 && process.env.GEMINI_API_KEY) {
       const k = process.env.GEMINI_API_KEY;
@@ -97,16 +97,59 @@ function pixaiAvailable() {
 export function getAvailableProviders() {
   const providers = [];
   if (pixaiAvailable()) providers.push("pixai");
-  if (keyRotator.available) providers.push("gemini");
+  if (keyRotator.available) providers.push("nanobanana");
   if (openaiAvailable()) providers.push("openai");
   return providers;
 }
 
 // ── describeImage ──
 
-export async function describeImage(imagePath, context = "", provider = "gemini") {
+export async function describeImage(imagePath, context = "", provider = "nanobanana") {
   if (provider === "openai") return describeImageOpenAI(imagePath, context);
+  // PixAI/nanobanana has no vision API, use Anthropic if available, then Gemini
+  if (provider === "pixai" || provider === "anthropic" || provider === "nanobanana") {
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    if (anthropicKey) return describeImageAnthropic(imagePath, context, anthropicKey);
+    // fallback to Gemini if no Anthropic key
+  }
   return describeImageGemini(imagePath, context);
+}
+
+async function describeImageAnthropic(imagePath, context = "", apiKey) {
+  const imageData = await readFile(imagePath);
+  const base64 = imageData.toString("base64");
+  const mimeType = getMimeType(imagePath);
+  // Anthropic only supports jpeg, png, gif, webp
+  const supportedType = ["image/jpeg","image/png","image/gif","image/webp"].includes(mimeType) ? mimeType : "image/jpeg";
+
+  const prompt = context
+    ? `この画像を詳しく説明してください。この画像は以下のテキストの近くに配置されています: "${context}". 画像の内容、構図、色使い、雰囲気を具体的に説明してください。日本語で200文字以内で。`
+    : `この画像を詳しく説明してください。内容、構図、色使い、雰囲気を具体的に説明してください。日本語で200文字以内で。`;
+
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 300,
+        messages: [{ role: "user", content: [
+          { type: "image", source: { type: "base64", media_type: supportedType, data: base64 } },
+          { type: "text", text: prompt },
+        ] }],
+      }),
+    });
+    if (!resp.ok) throw new Error(`Anthropic API error: ${resp.status}`);
+    const data = await resp.json();
+    return data.content?.[0]?.text || "画像";
+  } catch (err) {
+    console.warn(`[image-gen] describeImageAnthropic failed: ${err.message}`);
+    return "商品関連画像";
+  }
 }
 
 async function describeImageGemini(imagePath, context = "") {
@@ -186,9 +229,10 @@ export function buildImagePrompt(description, context, options = {}) {
 // ── generateImage ──
 
 export async function generateImage(prompt, options = {}) {
-  const provider = options.provider || (pixaiAvailable() ? "pixai" : "gemini");
+  const provider = options.provider || (pixaiAvailable() ? "pixai" : "nanobanana");
   if (provider === "pixai") return generateImagePixAI(prompt, options);
   if (provider === "openai") return generateImageOpenAI(prompt, options);
+  // nanobanana uses Gemini engine
   return generateImageGemini(prompt, options);
 }
 
@@ -402,11 +446,6 @@ async function generateImagePixAI(prompt, options = {}) {
     throw new Error("PixAI task timed out after 120s");
   } catch (err) {
     console.error(`[image-gen] PixAI generation failed: ${err.message}`);
-    // フォールバック: Gemini
-    if (keyRotator.available) {
-      console.log("[image-gen] Falling back to Gemini...");
-      return generateImageGemini(prompt, options);
-    }
     throw err;
   }
 }
@@ -496,14 +535,18 @@ export async function generateVideo(prompt, options = {}) {
 // ── generateImageFromReference ──
 
 export async function generateImageFromReference(imagePath, options = {}) {
-  const provider = options.provider || (pixaiAvailable() ? "pixai" : "gemini");
-  if (provider === "pixai") return generateImagePixAI(await describeImage(imagePath), options);
+  const provider = options.provider || (pixaiAvailable() ? "pixai" : "nanobanana");
+  if (provider === "pixai") {
+    // PixAI: 画像説明を取得してプロンプトベースで生成
+    let description = "商品関連画像";
+    try { description = await describeImage(imagePath); } catch {}
+    return generateImagePixAI(description, options);
+  }
   if (provider === "openai") return generateImageFromReferenceOpenAI(imagePath, options);
   return generateImageFromReferenceGemini(imagePath, options);
 }
 
 async function generateImageFromReferenceGemini(imagePath, options = {}) {
-  const key = keyRotator.getKey();
   const outputPath = options.outputPath || `generated_${Date.now()}.jpg`;
   const width = options.width || 580;
   const height = options.height || 580;
@@ -517,45 +560,56 @@ async function generateImageFromReferenceGemini(imagePath, options = {}) {
 
   const prompt = buildReferencePrompt(nuance, style, options, designRequirements);
 
-  // Try multiple models for reference-based generation
-  for (const model of [GEMINI_IMAGE_GEN_MODEL, "gemini-2.5-flash-preview-image", "gemini-2.0-flash-exp"]) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  // Try multiple keys × multiple models for reference-based generation
+  const triedKeys = new Set();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let key;
+    try { key = keyRotator.getKey(); } catch { break; }
+    if (triedKeys.has(key)) break;
+    triedKeys.add(key);
 
-    try {
-      const resp = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [
-            { text: prompt },
-            { inline_data: { mime_type: mimeType, data: base64 } },
-          ] }],
-          generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-        }),
-      });
+    for (const model of [GEMINI_IMAGE_GEN_MODEL, "gemini-2.5-flash-preview-image", "gemini-2.0-flash-exp"]) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
-      if (!resp.ok) {
-        console.warn(`[image-gen] ${model} reference failed: ${resp.status}`);
-        continue;
-      }
+      try {
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mimeType, data: base64 } },
+            ] }],
+            generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+          }),
+        });
 
-      const data = await resp.json();
-      const parts = data.candidates?.[0]?.content?.parts || [];
-      for (const part of parts) {
-        if (part.inline_data?.mime_type?.startsWith("image/")) {
-          const buffer = Buffer.from(part.inline_data.data, "base64");
-          const resized = await sharp(buffer).resize(width, height, { fit: "cover" }).jpeg({ quality: 85 }).toBuffer();
-          await writeFile(outputPath, resized);
-          console.log(`[image-gen] Reference-based (${model}): ${outputPath} (${width}x${height}, ${nuance}/${style})`);
-          return outputPath;
+        if (!resp.ok) {
+          console.warn(`[image-gen] ${model} reference failed (key ${attempt + 1}): ${resp.status}`);
+          if (resp.status === 403 || resp.status === 401) {
+            keyRotator.reportError(key);
+            break; // この鍵で別モデル試しても無駄、次の鍵へ
+          }
+          continue;
         }
+
+        const data = await resp.json();
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        for (const part of parts) {
+          if (part.inline_data?.mime_type?.startsWith("image/")) {
+            const buffer = Buffer.from(part.inline_data.data, "base64");
+            const resized = await sharp(buffer).resize(width, height, { fit: "cover" }).jpeg({ quality: 85 }).toBuffer();
+            await writeFile(outputPath, resized);
+            console.log(`[image-gen] Reference-based (${model}): ${outputPath} (${width}x${height}, ${nuance}/${style})`);
+            return outputPath;
+          }
+        }
+      } catch (err) {
+        console.warn(`[image-gen] ${model} reference error: ${err.message}`);
       }
-    } catch (err) {
-      console.warn(`[image-gen] ${model} reference error: ${err.message}`);
     }
   }
 
-  keyRotator.reportError(key);
   throw new Error("Gemini reference-based image generation failed with all models");
 }
 
@@ -629,8 +683,9 @@ async function generateImageFromReferenceOpenAI(imagePath, options = {}) {
 
 // ── AI Text Rewrite ──
 
-export async function aiRewriteText(sourceText, instruction, designRequirements = "", provider = "gemini") {
+export async function aiRewriteText(sourceText, instruction, designRequirements = "", provider = "nanobanana") {
   if (provider === "openai") return aiRewriteTextOpenAI(sourceText, instruction, designRequirements);
+  // nanobanana uses Gemini engine
   return aiRewriteTextGemini(sourceText, instruction, designRequirements);
 }
 
@@ -699,7 +754,7 @@ export async function generateBatch(imageList, options = {}) {
         width: item.width,
         height: item.height,
         outputPath: item.outputPath,
-        provider: item.provider || options.provider || "gemini",
+        provider: item.provider || options.provider || "nanobanana",
       });
       results.push({ ...item, success: true, generatedPath: outputPath });
       console.log(`[image-gen] ${i + 1}/${imageList.length} done`);

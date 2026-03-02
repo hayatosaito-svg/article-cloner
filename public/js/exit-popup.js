@@ -96,8 +96,21 @@ body { font-family: -apple-system, "Hiragino Sans", sans-serif; }
   cursor: pointer;
 }
 @keyframes epAnim {
+  ${animation === "bounceIn" ? `
+  0% { opacity: 0; transform: scale(0.3); }
+  50% { opacity: 1; transform: scale(1.08); }
+  70% { transform: scale(0.95); }
+  100% { transform: scale(1); }
+  ` : animation === "flipIn" ? `
+  from { opacity: 0; transform: perspective(800px) rotateX(-80deg); }
+  to { opacity: 1; transform: perspective(800px) rotateX(0); }
+  ` : animation === "doorOpen" ? `
+  from { opacity: 0; transform: perspective(800px) rotateY(-90deg); transform-origin: left; }
+  to { opacity: 1; transform: perspective(800px) rotateY(0); }
+  ` : `
   from { opacity: 0; transform: ${animation === "scaleIn" ? "scale(0.8)" : animation === "slideUp" ? "translateY(60px)" : "translateY(20px)"}; }
   to { opacity: 1; transform: ${animation === "scaleIn" ? "scale(1)" : "translateY(0)"}; }
+  `}
 }
 ${config.customCss || ""}
 </style></head>
@@ -200,9 +213,21 @@ function buildExitPopupForm(config) {
         <span class="ep-form-label" style="padding-top:8px">本文</span>
         <textarea class="ep-form-textarea" id="ep-body">${escHtml(c.body || "")}</textarea>
       </div>
-      <div class="ep-form-row">
-        <span class="ep-form-label">画像URL</span>
-        <input type="text" class="ep-form-input" id="ep-image-url" value="${escHtml(c.imageUrl || "")}" placeholder="https://...">
+      <div class="ep-form-row" style="flex-direction:column;align-items:stretch;gap:6px">
+        <span class="ep-form-label">📷 ポップアップ画像</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="text" class="ep-form-input" id="ep-image-url" value="${escHtml(c.imageUrl || "")}" placeholder="画像URLを入力...">
+          <button class="ep-upload-btn" id="ep-image-upload" style="padding:6px 12px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:var(--bg-tertiary);color:var(--text-secondary);cursor:pointer;white-space:nowrap">アップロード</button>
+        </div>
+        <div id="ep-image-preview" style="display:${c.imageUrl ? 'block' : 'none'};border-radius:8px;overflow:hidden;border:1px solid var(--border);position:relative;max-height:150px">
+          <img id="ep-image-preview-img" src="${escHtml(c.imageUrl || "")}" style="width:100%;display:block;object-fit:cover;max-height:150px" alt="">
+          <button id="ep-image-remove" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(0,0,0,0.5);color:#fff;cursor:pointer;font-size:12px">✕</button>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:2px">
+          <button class="ep-placement-btn ${(c.imagePlacement || 'top') === 'top' ? 'active' : ''}" data-placement="top" style="flex:1;padding:4px;font-size:10px;border:1px solid var(--border);border-radius:4px;background:${(c.imagePlacement || 'top') === 'top' ? 'rgba(236,72,153,0.1)' : 'none'};color:${(c.imagePlacement || 'top') === 'top' ? '#ec4899' : 'var(--text-muted)'};cursor:pointer">上部</button>
+          <button class="ep-placement-btn ${c.imagePlacement === 'center' ? 'active' : ''}" data-placement="center" style="flex:1;padding:4px;font-size:10px;border:1px solid var(--border);border-radius:4px;background:${c.imagePlacement === 'center' ? 'rgba(236,72,153,0.1)' : 'none'};color:${c.imagePlacement === 'center' ? '#ec4899' : 'var(--text-muted)'};cursor:pointer">中央</button>
+          <button class="ep-placement-btn ${c.imagePlacement === 'background' ? 'active' : ''}" data-placement="background" style="flex:1;padding:4px;font-size:10px;border:1px solid var(--border);border-radius:4px;background:${c.imagePlacement === 'background' ? 'rgba(236,72,153,0.1)' : 'none'};color:${c.imagePlacement === 'background' ? '#ec4899' : 'var(--text-muted)'};cursor:pointer">背景全面</button>
+        </div>
       </div>
       <div class="ep-form-row">
         <span class="ep-form-label">CTAテキスト</span>
@@ -235,12 +260,18 @@ function buildExitPopupForm(config) {
         <input type="number" class="ep-form-input" id="ep-border-radius" value="${s.borderRadius || "12"}" min="0" max="50" style="width:80px">
       </div>
       <div class="ep-form-row">
-        <span class="ep-form-label">アニメーション</span>
+        <span class="ep-form-label">✨ アニメーション</span>
         <select class="ep-form-select" id="ep-animation">
           <option value="fadeIn" ${s.animation === "fadeIn" ? "selected" : ""}>フェードイン</option>
           <option value="slideUp" ${s.animation === "slideUp" ? "selected" : ""}>スライドアップ</option>
           <option value="scaleIn" ${s.animation === "scaleIn" ? "selected" : ""}>スケールイン</option>
+          <option value="bounceIn" ${s.animation === "bounceIn" ? "selected" : ""}>バウンス</option>
+          <option value="flipIn" ${s.animation === "flipIn" ? "selected" : ""}>フリップ</option>
+          <option value="doorOpen" ${s.animation === "doorOpen" ? "selected" : ""}>ドア開き</option>
         </select>
+      </div>
+      <div class="ep-form-row">
+        <button id="ep-replay-animation" style="width:100%;padding:8px;border:2px solid #ec4899;border-radius:8px;background:none;color:#ec4899;font-weight:700;font-size:12px;cursor:pointer">▶ アニメーション再生</button>
       </div>
     </div>
 
@@ -290,6 +321,81 @@ function buildExitPopupForm(config) {
   liveInputs.forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener("input", schedulePreview);
+  });
+
+  // Image upload handler
+  const epImgUploadBtn = document.getElementById("ep-image-upload");
+  if (epImgUploadBtn) {
+    epImgUploadBtn.addEventListener("click", () => {
+      const inp = document.createElement("input");
+      inp.type = "file"; inp.accept = "image/*";
+      inp.addEventListener("change", async () => {
+        if (!inp.files?.[0]) return;
+        const file = inp.files[0];
+        const reader = new FileReader();
+        reader.onload = async () => {
+          epImgUploadBtn.textContent = "処理中...";
+          try {
+            const projectId = window.state?.projectId;
+            if (projectId) {
+              const result = await window.API.uploadFree(projectId, { imageData: reader.result, fileName: file.name });
+              if (result.ok && result.imageUrl) {
+                const urlInput = document.getElementById("ep-image-url");
+                if (urlInput) urlInput.value = result.imageUrl;
+                const preview = document.getElementById("ep-image-preview");
+                const previewImg = document.getElementById("ep-image-preview-img");
+                if (preview) preview.style.display = "block";
+                if (previewImg) previewImg.src = result.imageUrl;
+                schedulePreview();
+              }
+            }
+          } catch (err) { window.showToast?.(`アップロードエラー: ${err.message}`, "error"); }
+          finally { epImgUploadBtn.textContent = "アップロード"; }
+        };
+        reader.readAsDataURL(file);
+      });
+      inp.click();
+    });
+  }
+
+  // Image preview and remove
+  document.getElementById("ep-image-remove")?.addEventListener("click", () => {
+    const urlInput = document.getElementById("ep-image-url");
+    if (urlInput) urlInput.value = "";
+    const preview = document.getElementById("ep-image-preview");
+    if (preview) preview.style.display = "none";
+    schedulePreview();
+  });
+
+  // Image URL change → update preview image
+  document.getElementById("ep-image-url")?.addEventListener("input", (e) => {
+    const url = e.target.value;
+    const preview = document.getElementById("ep-image-preview");
+    const previewImg = document.getElementById("ep-image-preview-img");
+    if (url) {
+      if (preview) preview.style.display = "block";
+      if (previewImg) previewImg.src = url;
+    } else {
+      if (preview) preview.style.display = "none";
+    }
+  });
+
+  // Placement buttons
+  document.querySelectorAll(".ep-placement-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".ep-placement-btn").forEach(b => {
+        b.style.background = "none"; b.style.color = "var(--text-muted)";
+      });
+      btn.style.background = "rgba(236,72,153,0.1)"; btn.style.color = "#ec4899";
+      if (!currentExitConfig.content) currentExitConfig.content = {};
+      currentExitConfig.content.imagePlacement = btn.dataset.placement;
+      schedulePreview();
+    });
+  });
+
+  // Animation replay
+  document.getElementById("ep-replay-animation")?.addEventListener("click", () => {
+    renderExitPreview();
   });
 
   // Color picker sync

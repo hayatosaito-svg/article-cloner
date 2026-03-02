@@ -208,6 +208,135 @@ export const API = {
     return `/api/projects/${projectId}/preview`;
   },
 
+  async extractElements(projectId, idx) {
+    return fetchJson(`/api/projects/${projectId}/extract-elements/${idx}`, {
+      method: "POST",
+      timeout: 60000,
+    });
+  },
+
+  async searchImages(query, source) {
+    return fetchJson("/api/search-images", {
+      method: "POST",
+      body: JSON.stringify({ query, source }),
+    });
+  },
+
+  async autoKeywords(projectId, idx) {
+    return fetchJson(`/api/projects/${projectId}/auto-keywords/${idx}`, {
+      method: "POST",
+      timeout: 30000,
+    });
+  },
+
+  async getProjectImages(projectId) {
+    return fetchJson(`/api/projects/${projectId}/images`);
+  },
+
+  // ── 広告テンプレートCRUD ──────────────────────────
+  async getAdTemplates() {
+    return fetchJson("/api/ad-templates");
+  },
+
+  async createAdTemplate(data) {
+    return fetchJson("/api/ad-templates", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateAdTemplate(id, data) {
+    return fetchJson(`/api/ad-templates/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteAdTemplate(id) {
+    return fetchJson(`/api/ad-templates/${id}`, {
+      method: "DELETE",
+    });
+  },
+
+  async validateAdTemplate(id) {
+    return fetchJson(`/api/ad-templates/${id}/validate`);
+  },
+
+  // ── 広告プラットフォーム認証 ──────────────────────
+  async saveAdCredentials(platform, data) {
+    return fetchJson(`/api/ad-platforms/${platform}/credentials`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getAdPlatformStatus() {
+    return fetchJson("/api/ad-platforms/status");
+  },
+
+  // ── 広告入稿 ────────────────────────────────
+  async extractCreatives(projectId) {
+    return fetchJson(`/api/projects/${projectId}/extract-creatives`, {
+      method: "POST",
+    });
+  },
+
+  async adSubmitPreview(projectId, data) {
+    return fetchJson(`/api/projects/${projectId}/ad-submit/preview`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  connectAdSubmitSSE(projectId, data, handlers) {
+    // SSE via POST (using EventSource polyfill pattern with fetch)
+    const controller = new AbortController();
+    fetch(`/api/projects/${projectId}/ad-submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+      signal: controller.signal,
+    }).then(async (resp) => {
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const eventData = JSON.parse(line.slice(6));
+              if (eventData.type === "done") {
+                handlers.onComplete?.(eventData.submission);
+              } else if (eventData.type === "error") {
+                handlers.onError?.(eventData);
+              } else {
+                handlers.onProgress?.(eventData);
+              }
+            } catch {}
+          }
+        }
+      }
+      handlers.onClose?.();
+    }).catch((err) => {
+      if (err.name !== "AbortError") handlers.onError?.({ message: err.message });
+    });
+    return { abort: () => controller.abort() };
+  },
+
+  async getAdSubmissions(projectId) {
+    return fetchJson(`/api/projects/${projectId}/ad-submissions`);
+  },
+
+  async getAdSubmission(projectId, submissionId) {
+    return fetchJson(`/api/projects/${projectId}/ad-submissions/${submissionId}`);
+  },
+
   connectSSE(projectId, handlers) {
     const es = new EventSource(`/api/projects/${projectId}/sse`);
 

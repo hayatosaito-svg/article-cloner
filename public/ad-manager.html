@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>広告入稿マネージャー</title>
+<link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/ad-manager.css">
+</head>
+<body class="ad-standalone">
+
+<div class="ad-page">
+  <!-- ヘッダー -->
+  <header class="ad-page-header">
+    <div class="ad-page-logo">
+      <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
+        <rect width="40" height="40" rx="10" fill="url(#g1)"/>
+        <path d="M12 14h16v2H12zm0 5h12v2H12zm0 5h14v2H12z" fill="#fff" opacity="0.9"/>
+        <defs><linearGradient id="g1" x1="0" y1="0" x2="40" y2="40"><stop stop-color="#ec4899"/><stop offset="1" stop-color="#f472b6"/></linearGradient></defs>
+      </svg>
+      <h1>広告入稿マネージャー</h1>
+    </div>
+    <a href="/" class="ad-page-back">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Article Cloner に戻る
+    </a>
+  </header>
+
+  <!-- サイドナビ + コンテンツ -->
+  <div class="ad-layout">
+    <div class="ad-nav">
+      <button class="ad-nav-btn active" data-ad-tab="platforms">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4z" stroke="currentColor" stroke-width="1.3"/><path d="M6 6h4M6 9h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        プラットフォーム
+      </button>
+      <button class="ad-nav-btn" data-ad-tab="templates">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 2h10v12H3z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M6 5h4M6 8h4M6 11h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        テンプレート
+      </button>
+      <button class="ad-nav-btn" data-ad-tab="submit">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l4 4 6-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        入稿実行
+      </button>
+      <button class="ad-nav-btn" data-ad-tab="status">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><path d="M8 5v3l2 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        ステータス
+      </button>
+    </div>
+    <div class="ad-main">
+
+      <!-- Tab1: プラットフォーム設定 -->
+      <div class="ad-tab-content active" data-tab-content="platforms">
+        <div class="ad-content-header">
+          <div>
+            <h4>広告プラットフォーム接続</h4>
+            <p>各媒体のAPI認証情報を設定します。情報は .env に安全に保存されます。</p>
+          </div>
+        </div>
+        <div class="ad-content-body">
+          <div id="ad-platform-cards"></div>
+        </div>
+      </div>
+
+      <!-- Tab2: テンプレート管理 -->
+      <div class="ad-tab-content" data-tab-content="templates">
+        <div class="ad-content-header">
+          <div>
+            <h4>キャンペーンテンプレート</h4>
+            <p>予算・ターゲティング・クリエイティブの設定をテンプレートとして保存できます。</p>
+          </div>
+          <button class="btn-primary" id="btn-new-ad-template">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            新規作成
+          </button>
+        </div>
+        <div class="ad-content-body">
+          <div id="ad-template-list-wrapper">
+            <div id="ad-template-list"></div>
+          </div>
+
+          <!-- テンプレート編集フォーム -->
+          <div id="ad-template-form" style="display:none">
+            <div class="ad-form-section">
+              <div class="ad-form-section-title">基本情報</div>
+              <div class="ad-form-group">
+                <label>テンプレート名 <span class="required">*</span></label>
+                <input type="text" id="ad-tpl-name" class="form-input" placeholder="例: 標準リード獲得キャンペーン">
+              </div>
+              <div class="ad-form-group">
+                <label>対象媒体</label>
+                <div class="ad-checkbox-group">
+                  <label class="ad-check-label"><input type="checkbox" id="ad-tpl-platform-google" checked><span class="ad-check-icon" style="--check-color:#4285f4">G</span> Google Ads</label>
+                  <label class="ad-check-label"><input type="checkbox" id="ad-tpl-platform-meta" checked><span class="ad-check-icon" style="--check-color:#1877f2">M</span> Meta</label>
+                  <label class="ad-check-label"><input type="checkbox" id="ad-tpl-platform-tiktok" checked><span class="ad-check-icon" style="--check-color:#010101">T</span> TikTok</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="ad-form-section">
+              <div class="ad-form-section-title">予算設定</div>
+              <div class="ad-form-group">
+                <label>予算タイプ</label>
+                <select id="ad-tpl-budget-type" class="form-input">
+                  <option value="daily">日予算</option>
+                  <option value="lifetime">通算予算</option>
+                </select>
+              </div>
+              <div class="ad-form-row">
+                <div class="ad-form-group"><label>Google (円)</label><input type="number" id="ad-tpl-budget-google" class="form-input" value="3000" min="100"></div>
+                <div class="ad-form-group"><label>Meta (円)</label><input type="number" id="ad-tpl-budget-meta" class="form-input" value="3000" min="100"></div>
+                <div class="ad-form-group"><label>TikTok (円)</label><input type="number" id="ad-tpl-budget-tiktok" class="form-input" value="3000" min="2000"></div>
+              </div>
+            </div>
+
+            <div class="ad-form-section">
+              <div class="ad-form-section-title">ターゲティング</div>
+              <div class="ad-form-row">
+                <div class="ad-form-group"><label>最小年齢</label><input type="number" id="ad-tpl-age-min" class="form-input" value="25" min="13" max="65"></div>
+                <div class="ad-form-group"><label>最大年齢</label><input type="number" id="ad-tpl-age-max" class="form-input" value="54" min="13" max="65"></div>
+                <div class="ad-form-group"><label>性別</label>
+                  <select id="ad-tpl-gender" class="form-input"><option value="ALL">全て</option><option value="MALE">男性</option><option value="FEMALE">女性</option></select>
+                </div>
+              </div>
+              <div class="ad-form-row ad-form-row-2">
+                <div class="ad-form-group"><label>Google キャンペーンタイプ</label>
+                  <select id="ad-tpl-google-campaign-type" class="form-input"><option value="SEARCH">検索</option><option value="DISPLAY">ディスプレイ</option><option value="PERFORMANCE_MAX">P-MAX</option></select>
+                </div>
+                <div class="ad-form-group"><label>Google キーワード（カンマ区切り）</label>
+                  <input type="text" id="ad-tpl-google-keywords" class="form-input" placeholder="例: ダイエット, サプリ, 痩せる">
+                </div>
+              </div>
+              <div class="ad-form-row ad-form-row-2">
+                <div class="ad-form-group"><label>Meta 目的</label>
+                  <select id="ad-tpl-meta-objective" class="form-input"><option value="OUTCOME_TRAFFIC">トラフィック</option><option value="OUTCOME_LEADS">リード獲得</option><option value="OUTCOME_SALES">売上</option><option value="OUTCOME_AWARENESS">認知度</option><option value="OUTCOME_ENGAGEMENT">エンゲージメント</option></select>
+                </div>
+                <div class="ad-form-group"><label>TikTok 目的</label>
+                  <select id="ad-tpl-tiktok-objective" class="form-input"><option value="TRAFFIC">トラフィック</option><option value="CONVERSIONS">コンバージョン</option><option value="APP_INSTALL">アプリインストール</option><option value="REACH">リーチ</option><option value="VIDEO_VIEWS">動画再生</option></select>
+                </div>
+              </div>
+            </div>
+
+            <div class="ad-form-section">
+              <div class="ad-form-section-title">スケジュール</div>
+              <div class="ad-form-row ad-form-row-2">
+                <div class="ad-form-group"><label>開始日</label><input type="date" id="ad-tpl-start-date" class="form-input"></div>
+                <div class="ad-form-group"><label>終了日</label><input type="date" id="ad-tpl-end-date" class="form-input"></div>
+              </div>
+            </div>
+
+            <div class="ad-form-section">
+              <div class="ad-form-section-title">クリエイティブ</div>
+              <div class="ad-form-group"><label>見出し取得方法</label>
+                <select id="ad-tpl-headline-source" class="form-input"><option value="auto">自動（ブロックから抽出）</option><option value="manual">手動入力</option></select>
+              </div>
+              <div class="ad-form-row">
+                <div class="ad-form-group"><label>Google 表示パス1</label><input type="text" id="ad-tpl-google-path1" class="form-input" maxlength="15" placeholder="例: サプリ"></div>
+                <div class="ad-form-group"><label>Google 表示パス2</label><input type="text" id="ad-tpl-google-path2" class="form-input" maxlength="15" placeholder="例: 公式"></div>
+                <div class="ad-form-group"></div>
+              </div>
+              <div class="ad-form-row ad-form-row-2">
+                <div class="ad-form-group"><label>Meta CTA</label>
+                  <select id="ad-tpl-meta-cta" class="form-input"><option value="LEARN_MORE">詳しくはこちら</option><option value="SHOP_NOW">今すぐ購入</option><option value="SIGN_UP">登録する</option><option value="SUBSCRIBE">定期購入</option><option value="DOWNLOAD">ダウンロード</option><option value="GET_OFFER">クーポン取得</option><option value="CONTACT_US">お問い合わせ</option></select>
+                </div>
+                <div class="ad-form-group"><label>TikTok CTA</label>
+                  <select id="ad-tpl-tiktok-cta" class="form-input"><option value="LEARN_MORE">詳しくはこちら</option><option value="SHOP_NOW">今すぐ購入</option><option value="SIGN_UP">登録する</option><option value="SUBSCRIBE">定期購入</option><option value="DOWNLOAD">ダウンロード</option><option value="CONTACT_US">お問い合わせ</option><option value="APPLY_NOW">今すぐ申し込む</option></select>
+                </div>
+              </div>
+            </div>
+
+            <div class="ad-form-section">
+              <div class="ad-form-section-title">命名規則</div>
+              <div class="ad-form-group"><label>キャンペーン名パターン</label>
+                <input type="text" id="ad-tpl-campaign-pattern" class="form-input" value="{product}_{platform}_{date}">
+                <span class="ad-form-hint">使える変数: <code>{product}</code> <code>{platform}</code> <code>{date}</code> <code>{targeting}</code></span>
+              </div>
+              <div class="ad-form-group"><label>広告グループ名パターン</label>
+                <input type="text" id="ad-tpl-adgroup-pattern" class="form-input" value="{product}_{targeting}_{date}">
+              </div>
+              <div class="ad-form-group"><label>商品名</label>
+                <input type="text" id="ad-tpl-product-name" class="form-input" placeholder="例: 商品A">
+              </div>
+            </div>
+
+            <div class="ad-form-actions">
+              <button class="btn-secondary" id="btn-cancel-ad-template">キャンセル</button>
+              <button class="btn-primary" id="btn-save-ad-template">保存</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab3: 入稿実行 -->
+      <div class="ad-tab-content" data-tab-content="submit">
+        <div class="ad-content-header">
+          <div>
+            <h4>広告入稿</h4>
+            <p>テンプレートを選択し、LP URLを指定して3媒体に一括入稿します。</p>
+          </div>
+        </div>
+        <div class="ad-content-body">
+          <div class="ad-submit-form">
+            <div class="ad-form-group">
+              <label>プロジェクト選択 <span class="required">*</span></label>
+              <select id="ad-submit-project" class="form-input"><option value="">プロジェクトを選択...</option></select>
+            </div>
+            <div class="ad-form-group">
+              <label>テンプレート選択 <span class="required">*</span></label>
+              <select id="ad-submit-template" class="form-input"><option value="">テンプレートを選択...</option></select>
+            </div>
+            <div class="ad-form-group">
+              <label>入稿先媒体</label>
+              <div class="ad-checkbox-group">
+                <label class="ad-check-label"><input type="checkbox" id="ad-submit-google" checked><span class="ad-check-icon" style="--check-color:#4285f4">G</span> Google Ads</label>
+                <label class="ad-check-label"><input type="checkbox" id="ad-submit-meta" checked><span class="ad-check-icon" style="--check-color:#1877f2">M</span> Meta</label>
+                <label class="ad-check-label"><input type="checkbox" id="ad-submit-tiktok" checked><span class="ad-check-icon" style="--check-color:#010101">T</span> TikTok</label>
+              </div>
+            </div>
+            <div class="ad-form-group">
+              <label>LP URL</label>
+              <input type="url" id="ad-submit-lp-url" class="form-input" placeholder="https://example.com/lp">
+            </div>
+            <div class="ad-form-actions" style="border-top:none;margin-top:8px;padding-top:0">
+              <button class="btn-secondary" id="btn-ad-preview">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7s2.5-5 6-5 6 5 6 5-2.5 5-6 5-6-5-6-5z" stroke="currentColor" stroke-width="1.2"/><circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.2"/></svg>
+                プレビュー
+              </button>
+              <button class="btn-primary" id="btn-ad-submit">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7l3.5 3.5L12 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                入稿開始
+              </button>
+            </div>
+          </div>
+          <div id="ad-submit-preview" class="ad-preview-area"></div>
+          <div id="ad-submit-progress" class="ad-progress-area" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- Tab4: ステータス -->
+      <div class="ad-tab-content" data-tab-content="status">
+        <div class="ad-content-header">
+          <div>
+            <h4>入稿ステータス</h4>
+            <p>入稿履歴と各媒体の審査状況を確認できます。</p>
+          </div>
+          <button class="btn-secondary" onclick="AdManager.loadSubmissions()">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7a6 6 0 0111-3M13 7a6 6 0 01-11 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            更新
+          </button>
+        </div>
+        <div class="ad-content-body">
+          <div id="ad-submissions-list"></div>
+          <div id="ad-submission-detail" style="display:none"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+
+<script src="/js/ad-manager.js"></script>
+</body>
+</html>

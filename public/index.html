@@ -40,19 +40,19 @@
       <div class="feature-chip"><span class="feature-dot" style="background:#db2777"></span>AI画像生成</div>
       <div class="feature-chip"><span class="feature-dot" style="background:#10B981"></span>SB互換出力</div>
     </div>
-    <!-- Gemini APIキー設定カード -->
+    <!-- Nano Banana Pro APIキー設定カード -->
     <div class="api-key-card" id="api-key-card">
       <div class="api-key-header">
         <div class="api-key-status" id="api-key-status">
           <span class="status-dot"></span>
           <span class="api-key-status-text">確認中...</span>
         </div>
-        <span class="api-key-label">Gemini API</span>
+        <span class="api-key-label">Nano Banana Pro API</span>
       </div>
       <div class="api-key-body" id="api-key-body">
         <p class="api-key-desc">AI画像生成・テキスト書き換えに必要です。<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="api-key-link">Google AI Studio</a> で無料で取得できます。</p>
         <div class="api-key-input-row">
-          <input type="password" id="api-key-input" class="api-key-input" placeholder="Gemini APIキーをペースト..." autocomplete="off" spellcheck="false">
+          <input type="password" id="api-key-input" class="api-key-input" placeholder="Nano Banana Pro APIキーをペースト..." autocomplete="off" spellcheck="false">
           <button id="btn-save-key" class="btn-save-key">保存</button>
         </div>
         <div class="api-key-hint" id="api-key-hint"></div>
@@ -77,6 +77,7 @@
     <div id="saved-project-list" class="saved-project-list" style="display:none"></div>
 
     <div class="landing-footer">
+      <a href="/ad-manager" class="footer-link" style="font-size:12px;color:var(--text-muted);text-decoration:none;margin-right:12px;transition:color 0.2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">広告入稿マネージャー</a>
       <span class="footer-version">v1.2.0</span>
     </div>
   </div>
@@ -94,8 +95,8 @@
     </div>
     <div class="modal-body">
       <div class="setup-section">
-        <h4>1. Gemini APIキーの設定</h4>
-        <p>AI画像生成・テキスト書き換え機能に必要です。</p>
+        <h4>1. Nano Banana Pro APIキーの設定</h4>
+        <p>AI画像生成・テキスト書き換え機能に必要です（Gemini 3 Pro Image使用）。</p>
         <div class="setup-code">
           <code># .env ファイルを編集<br>
 GEMINI_API_KEY_1=your_key_here<br><br>
@@ -227,6 +228,10 @@ GEMINI_API_KEY_1=your_key_here<br><br>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="12" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 12h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         <span>412px</span>
       </button>
+      <button class="toolbar-btn" id="btn-ad-manager" title="広告入稿" onclick="AdManager.open()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3h12v2H2zM3 7h10v6H3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6 10h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>広告入稿</span>
+      </button>
       <button class="toolbar-btn btn-accent" id="btn-build" title="SB互換HTMLを生成">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8l3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>ビルド</span>
@@ -292,28 +297,31 @@ GEMINI_API_KEY_1=your_key_here<br><br>
   <!-- 右サイドバー（常時表示アイコン列） -->
   <div id="editor-sidebar" class="editor-sidebar">
     <button class="sidebar-icon" id="sb-deploy" title="公開">
-      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 1v6m0 0l2.5-2.5M8 7L5.5 4.5M2 10v3h12v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 1l2 3H9v4H7V4H6l2-3z" fill="currentColor" opacity="0.2"/><path d="M8 1l2 3H9v4H7V4H6l2-3z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M3 10v3a1 1 0 001 1h8a1 1 0 001-1v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <button class="sidebar-icon" id="sb-history" title="変更履歴">
-      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 4v4l3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/></svg>
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 4v4l2.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 3v3h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <button class="sidebar-icon" id="sb-fav-widgets" title="お気に入りWidget">
-      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M6.5 1.5h-4a1 1 0 00-1 1v4l6 6.5 5.5-5.5-6.5-6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="5" cy="5" r="1" fill="currentColor"/><path d="M9 1.5l5.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     </button>
+    <div class="sidebar-separator"></div>
     <button class="sidebar-icon" id="sb-link-manage" title="リンク管理">
-      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5l3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M9 7l1.5-1.5a2.12 2.12 0 00-3-3L6 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 9l-1.5 1.5a2.12 2.12 0 003 3L10 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <button class="sidebar-icon" id="sb-tag-settings" title="タグ設定">
-      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3 3h10v2H3zM5 7h6v2H5zM4 11h8v2H4z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M1 8l7-6.5 7 1v4L8.5 14 1 8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="11.5" cy="5" r="1.2" fill="currentColor"/></svg>
     </button>
+    <div class="sidebar-separator"></div>
     <button class="sidebar-icon" id="sb-undo" title="元に戻す">
       <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3 8h8a3 3 0 010 6H9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 5L3 8l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <button class="sidebar-icon" id="sb-redo" title="やり直し">
       <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M13 8H5a3 3 0 000 6h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 5l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
+    <div class="sidebar-separator"></div>
     <button class="sidebar-icon" id="sb-exit-popup" title="離脱ポップアップ">
-      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3 3h10v10H3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6 8h4M8 6v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5 3v-1.5M11 3v-1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M6 7h4M6 9.5h2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
     </button>
     <button class="sidebar-icon" id="sb-settings" title="設定">
       <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -638,20 +646,25 @@ GEMINI_API_KEY_1=your_key_here<br><br>
       <span class="edit-panel-type">履歴</span>
       <span>変更履歴</span>
     </div>
-    <button class="edit-panel-close" id="history-sidebar-close">
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-    </button>
+    <div style="display:flex;align-items:center;gap:6px">
+      <button class="history-clear-btn" id="history-clear-all" title="全てクリア">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5M4 4l.8 9a1 1 0 001 .9h4.4a1 1 0 001-.9L12 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="edit-panel-close" id="history-sidebar-close">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
   </div>
   <div class="history-sidebar-controls">
-    <select id="history-filter" class="form-input" style="font-size:12px;padding:4px 8px">
-      <option value="all">全て</option>
-      <option value="edit_block">テキスト編集</option>
-      <option value="image">画像変更</option>
-      <option value="insert">挿入</option>
-      <option value="text_modify">テキスト差替</option>
-      <option value="save_point">セーブポイント</option>
-      <option value="tag_change">タグ設定</option>
-    </select>
+    <div class="history-filter-chips" id="history-filter-chips">
+      <button class="history-chip active" data-filter="all">全て</button>
+      <button class="history-chip" data-filter="edit_block">編集</button>
+      <button class="history-chip" data-filter="image">画像</button>
+      <button class="history-chip" data-filter="insert">挿入</button>
+      <button class="history-chip" data-filter="text_modify">差替</button>
+      <button class="history-chip" data-filter="save_point">セーブ</button>
+      <button class="history-chip" data-filter="tag_change">タグ</button>
+    </div>
   </div>
   <div class="history-sidebar-body">
     <div id="history-list" class="history-list"></div>
@@ -852,6 +865,244 @@ GEMINI_API_KEY_1=your_key_here<br><br>
   </div>
 </div>
 
+<!-- 広告入稿モーダル -->
+<div id="modal-ad-manager" class="modal fullscreen-modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content modal-fullscreen">
+    <div class="modal-header">
+      <h3>広告入稿マネージャー</h3>
+      <button class="modal-close" data-close-modal="modal-ad-manager">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <!-- サイドナビ + コンテンツ（tag-settingsパターン） -->
+    <div class="ad-layout">
+      <div class="ad-nav">
+        <button class="ad-nav-btn active" data-ad-tab="platforms">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4z" stroke="currentColor" stroke-width="1.3"/><path d="M6 6h4M6 9h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          プラットフォーム
+        </button>
+        <button class="ad-nav-btn" data-ad-tab="templates">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 2h10v12H3z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M6 5h4M6 8h4M6 11h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          テンプレート
+        </button>
+        <button class="ad-nav-btn" data-ad-tab="submit">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l4 4 6-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          入稿実行
+        </button>
+        <button class="ad-nav-btn" data-ad-tab="status">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><path d="M8 5v3l2 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          ステータス
+        </button>
+      </div>
+      <div class="ad-main">
+
+        <!-- Tab1: プラットフォーム設定 -->
+        <div class="ad-tab-content active" data-tab-content="platforms">
+          <div class="ad-content-header">
+            <div>
+              <h4>広告プラットフォーム接続</h4>
+              <p>各媒体のAPI認証情報を設定します。情報は .env に安全に保存されます。</p>
+            </div>
+          </div>
+          <div class="ad-content-body">
+            <div id="ad-platform-cards"></div>
+          </div>
+        </div>
+
+        <!-- Tab2: テンプレート管理 -->
+        <div class="ad-tab-content" data-tab-content="templates">
+          <div class="ad-content-header">
+            <div>
+              <h4>キャンペーンテンプレート</h4>
+              <p>予算・ターゲティング・クリエイティブの設定をテンプレートとして保存できます。</p>
+            </div>
+            <button class="btn-primary" id="btn-new-ad-template">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              新規作成
+            </button>
+          </div>
+          <div class="ad-content-body">
+            <div id="ad-template-list-wrapper">
+              <div id="ad-template-list"></div>
+            </div>
+
+            <!-- テンプレート編集フォーム -->
+            <div id="ad-template-form" style="display:none">
+              <div class="ad-form-section">
+                <div class="ad-form-section-title">基本情報</div>
+                <div class="ad-form-group">
+                  <label>テンプレート名 <span class="required">*</span></label>
+                  <input type="text" id="ad-tpl-name" class="form-input" placeholder="例: 標準リード獲得キャンペーン">
+                </div>
+                <div class="ad-form-group">
+                  <label>対象媒体</label>
+                  <div class="ad-checkbox-group">
+                    <label class="ad-check-label"><input type="checkbox" id="ad-tpl-platform-google" checked><span class="ad-check-icon" style="--check-color:#4285f4">G</span> Google Ads</label>
+                    <label class="ad-check-label"><input type="checkbox" id="ad-tpl-platform-meta" checked><span class="ad-check-icon" style="--check-color:#1877f2">M</span> Meta</label>
+                    <label class="ad-check-label"><input type="checkbox" id="ad-tpl-platform-tiktok" checked><span class="ad-check-icon" style="--check-color:#010101">T</span> TikTok</label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="ad-form-section">
+                <div class="ad-form-section-title">予算設定</div>
+                <div class="ad-form-group">
+                  <label>予算タイプ</label>
+                  <select id="ad-tpl-budget-type" class="form-input">
+                    <option value="daily">日予算</option>
+                    <option value="lifetime">通算予算</option>
+                  </select>
+                </div>
+                <div class="ad-form-row">
+                  <div class="ad-form-group"><label>Google (円)</label><input type="number" id="ad-tpl-budget-google" class="form-input" value="3000" min="100"></div>
+                  <div class="ad-form-group"><label>Meta (円)</label><input type="number" id="ad-tpl-budget-meta" class="form-input" value="3000" min="100"></div>
+                  <div class="ad-form-group"><label>TikTok (円)</label><input type="number" id="ad-tpl-budget-tiktok" class="form-input" value="3000" min="2000"></div>
+                </div>
+              </div>
+
+              <div class="ad-form-section">
+                <div class="ad-form-section-title">ターゲティング</div>
+                <div class="ad-form-row">
+                  <div class="ad-form-group"><label>最小年齢</label><input type="number" id="ad-tpl-age-min" class="form-input" value="25" min="13" max="65"></div>
+                  <div class="ad-form-group"><label>最大年齢</label><input type="number" id="ad-tpl-age-max" class="form-input" value="54" min="13" max="65"></div>
+                  <div class="ad-form-group"><label>性別</label>
+                    <select id="ad-tpl-gender" class="form-input"><option value="ALL">全て</option><option value="MALE">男性</option><option value="FEMALE">女性</option></select>
+                  </div>
+                </div>
+                <div class="ad-form-row ad-form-row-2">
+                  <div class="ad-form-group"><label>Google キャンペーンタイプ</label>
+                    <select id="ad-tpl-google-campaign-type" class="form-input"><option value="SEARCH">検索</option><option value="DISPLAY">ディスプレイ</option><option value="PERFORMANCE_MAX">P-MAX</option></select>
+                  </div>
+                  <div class="ad-form-group"><label>Google キーワード（カンマ区切り）</label>
+                    <input type="text" id="ad-tpl-google-keywords" class="form-input" placeholder="例: ダイエット, サプリ, 痩せる">
+                  </div>
+                </div>
+                <div class="ad-form-row ad-form-row-2">
+                  <div class="ad-form-group"><label>Meta 目的</label>
+                    <select id="ad-tpl-meta-objective" class="form-input"><option value="OUTCOME_TRAFFIC">トラフィック</option><option value="OUTCOME_LEADS">リード獲得</option><option value="OUTCOME_SALES">売上</option><option value="OUTCOME_AWARENESS">認知度</option><option value="OUTCOME_ENGAGEMENT">エンゲージメント</option></select>
+                  </div>
+                  <div class="ad-form-group"><label>TikTok 目的</label>
+                    <select id="ad-tpl-tiktok-objective" class="form-input"><option value="TRAFFIC">トラフィック</option><option value="CONVERSIONS">コンバージョン</option><option value="APP_INSTALL">アプリインストール</option><option value="REACH">リーチ</option><option value="VIDEO_VIEWS">動画再生</option></select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="ad-form-section">
+                <div class="ad-form-section-title">スケジュール</div>
+                <div class="ad-form-row ad-form-row-2">
+                  <div class="ad-form-group"><label>開始日</label><input type="date" id="ad-tpl-start-date" class="form-input"></div>
+                  <div class="ad-form-group"><label>終了日</label><input type="date" id="ad-tpl-end-date" class="form-input"></div>
+                </div>
+              </div>
+
+              <div class="ad-form-section">
+                <div class="ad-form-section-title">クリエイティブ</div>
+                <div class="ad-form-group"><label>見出し取得方法</label>
+                  <select id="ad-tpl-headline-source" class="form-input"><option value="auto">自動（ブロックから抽出）</option><option value="manual">手動入力</option></select>
+                </div>
+                <div class="ad-form-row">
+                  <div class="ad-form-group"><label>Google 表示パス1</label><input type="text" id="ad-tpl-google-path1" class="form-input" maxlength="15" placeholder="例: サプリ"></div>
+                  <div class="ad-form-group"><label>Google 表示パス2</label><input type="text" id="ad-tpl-google-path2" class="form-input" maxlength="15" placeholder="例: 公式"></div>
+                  <div class="ad-form-group"></div>
+                </div>
+                <div class="ad-form-row ad-form-row-2">
+                  <div class="ad-form-group"><label>Meta CTA</label>
+                    <select id="ad-tpl-meta-cta" class="form-input"><option value="LEARN_MORE">詳しくはこちら</option><option value="SHOP_NOW">今すぐ購入</option><option value="SIGN_UP">登録する</option><option value="SUBSCRIBE">定期購入</option><option value="DOWNLOAD">ダウンロード</option><option value="GET_OFFER">クーポン取得</option><option value="CONTACT_US">お問い合わせ</option></select>
+                  </div>
+                  <div class="ad-form-group"><label>TikTok CTA</label>
+                    <select id="ad-tpl-tiktok-cta" class="form-input"><option value="LEARN_MORE">詳しくはこちら</option><option value="SHOP_NOW">今すぐ購入</option><option value="SIGN_UP">登録する</option><option value="SUBSCRIBE">定期購入</option><option value="DOWNLOAD">ダウンロード</option><option value="CONTACT_US">お問い合わせ</option><option value="APPLY_NOW">今すぐ申し込む</option></select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="ad-form-section">
+                <div class="ad-form-section-title">命名規則</div>
+                <div class="ad-form-group"><label>キャンペーン名パターン</label>
+                  <input type="text" id="ad-tpl-campaign-pattern" class="form-input" value="{product}_{platform}_{date}">
+                  <span class="ad-form-hint">使える変数: <code>{product}</code> <code>{platform}</code> <code>{date}</code> <code>{targeting}</code></span>
+                </div>
+                <div class="ad-form-group"><label>広告グループ名パターン</label>
+                  <input type="text" id="ad-tpl-adgroup-pattern" class="form-input" value="{product}_{targeting}_{date}">
+                </div>
+                <div class="ad-form-group"><label>商品名</label>
+                  <input type="text" id="ad-tpl-product-name" class="form-input" placeholder="例: 商品A">
+                </div>
+              </div>
+
+              <div class="ad-form-actions">
+                <button class="btn-secondary" id="btn-cancel-ad-template">キャンセル</button>
+                <button class="btn-primary" id="btn-save-ad-template">保存</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab3: 入稿実行 -->
+        <div class="ad-tab-content" data-tab-content="submit">
+          <div class="ad-content-header">
+            <div>
+              <h4>広告入稿</h4>
+              <p>テンプレートを選択し、LP URLを指定して3媒体に一括入稿します。</p>
+            </div>
+          </div>
+          <div class="ad-content-body">
+            <div class="ad-submit-form">
+              <div class="ad-form-group">
+                <label>テンプレート選択 <span class="required">*</span></label>
+                <select id="ad-submit-template" class="form-input"><option value="">テンプレートを選択...</option></select>
+              </div>
+              <div class="ad-form-group">
+                <label>入稿先媒体</label>
+                <div class="ad-checkbox-group">
+                  <label class="ad-check-label"><input type="checkbox" id="ad-submit-google" checked><span class="ad-check-icon" style="--check-color:#4285f4">G</span> Google Ads</label>
+                  <label class="ad-check-label"><input type="checkbox" id="ad-submit-meta" checked><span class="ad-check-icon" style="--check-color:#1877f2">M</span> Meta</label>
+                  <label class="ad-check-label"><input type="checkbox" id="ad-submit-tiktok" checked><span class="ad-check-icon" style="--check-color:#010101">T</span> TikTok</label>
+                </div>
+              </div>
+              <div class="ad-form-group">
+                <label>LP URL</label>
+                <input type="url" id="ad-submit-lp-url" class="form-input" placeholder="https://example.com/lp">
+              </div>
+              <div class="ad-form-actions" style="border-top:none;margin-top:8px;padding-top:0">
+                <button class="btn-secondary" id="btn-ad-preview">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7s2.5-5 6-5 6 5 6 5-2.5 5-6 5-6-5-6-5z" stroke="currentColor" stroke-width="1.2"/><circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.2"/></svg>
+                  プレビュー
+                </button>
+                <button class="btn-primary" id="btn-ad-submit">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7l3.5 3.5L12 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  入稿開始
+                </button>
+              </div>
+            </div>
+            <div id="ad-submit-preview" class="ad-preview-area"></div>
+            <div id="ad-submit-progress" class="ad-progress-area" style="display:none"></div>
+          </div>
+        </div>
+
+        <!-- Tab4: ステータス -->
+        <div class="ad-tab-content" data-tab-content="status">
+          <div class="ad-content-header">
+            <div>
+              <h4>入稿ステータス</h4>
+              <p>入稿履歴と各媒体の審査状況を確認できます。</p>
+            </div>
+            <button class="btn-secondary" onclick="AdManager.loadSubmissions()">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7a6 6 0 0111-3M13 7a6 6 0 01-11 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+              更新
+            </button>
+          </div>
+          <div class="ad-content-body">
+            <div id="ad-submissions-list"></div>
+            <div id="ad-submission-detail" style="display:none"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container" class="toast-container"></div>
 
 <script type="module" src="/js/widgets.js"></script>
@@ -863,6 +1114,7 @@ GEMINI_API_KEY_1=your_key_here<br><br>
 <script src="/js/codemirror-loader.js"></script>
 <script src="/js/color-picker.js"></script>
 <script src="/js/widget-editor.js"></script>
+<script src="/js/ad-manager.js"></script>
 <script type="module" src="/js/app.js"></script>
 </body>
 </html>

@@ -4,6 +4,41 @@
 
 let currentMode = "manual"; // "manual" | "ai"
 
+// ── コミックエディター定数 ─────────────────────────────────
+const COMIC_LAYOUTS = [
+  { id:"full", name:"1コマ", grid:"1fr / 1fr", cells:1 },
+  { id:"h2", name:"2コマ横", grid:"1fr / 1fr 1fr", cells:2 },
+  { id:"v2", name:"2コマ縦", grid:"1fr 1fr / 1fr", cells:2 },
+  { id:"h3", name:"3コマ横", grid:"1fr / 1fr 1fr 1fr", cells:3 },
+  { id:"v3", name:"3コマ縦", grid:"1fr 1fr 1fr / 1fr", cells:3 },
+  { id:"grid4", name:"4コマ (2×2)", grid:"1fr 1fr / 1fr 1fr", cells:4 },
+  { id:"v4", name:"4コマ縦", grid:"1fr 1fr 1fr 1fr / 1fr", cells:4 },
+  { id:"l-shape", name:"L字型", grid:"2fr 1fr / 1fr 1fr", cells:3, areas:"'a a' 'b c'" },
+  { id:"l-shape-r", name:"逆L字型", grid:"1fr 2fr / 1fr 1fr", cells:3, areas:"'a b' 'c c'" },
+  { id:"t-shape", name:"T字型", grid:"1fr 1fr / 1fr 1fr 1fr", cells:4, areas:"'a a a' 'b c d'" },
+  { id:"t-shape-r", name:"逆T字型", grid:"1fr 1fr / 1fr 1fr 1fr", cells:4, areas:"'a b c' 'd d d'" },
+  { id:"big-left", name:"大左+小右2", grid:"1fr 1fr / 2fr 1fr", cells:3, areas:"'a b' 'a c'" },
+  { id:"big-right", name:"大右+小左2", grid:"1fr 1fr / 1fr 2fr", cells:3, areas:"'a b' 'c b'" },
+  { id:"center-4", name:"中央大+周辺4", grid:"1fr 2fr 1fr / 1fr 2fr 1fr", cells:5, areas:"'a b b' 'c d e' 'c f f'" },
+  { id:"grid6-2x3", name:"6コマ (2×3)", grid:"1fr 1fr / 1fr 1fr 1fr", cells:6 },
+  { id:"grid6-3x2", name:"6コマ (3×2)", grid:"1fr 1fr 1fr / 1fr 1fr", cells:6 },
+  { id:"manga3", name:"漫画3コマ", grid:"2fr 1fr / 1fr 1fr", cells:3, areas:"'a b' 'c c'" },
+  { id:"manga5", name:"漫画5コマ", grid:"2fr 1fr 1fr / 1fr 1fr", cells:5, areas:"'a a' 'b c' 'd e'" },
+  { id:"diagonal", name:"斜め2分割", cells:2, diagonal:true, grid:"1fr / 1fr" },
+  { id:"strip3", name:"3段ストリップ", grid:"1fr 1fr 1fr / 1fr", cells:3 },
+];
+
+const BUBBLE_TYPES = [
+  { id:"none", name:"なし" },
+  { id:"round", name:"丸吹き出し", borderRadius:"50%", bg:"#fff", border:"2px solid #000" },
+  { id:"rect", name:"角丸四角", borderRadius:"12px", bg:"#fff", border:"2px solid #000" },
+  { id:"spike", name:"トゲトゲ", svgPath:true, bg:"#fff" },
+  { id:"cloud", name:"もくもく", svgPath:true, bg:"#fff" },
+  { id:"shout", name:"叫び", svgPath:true, bg:"#ff0" },
+  { id:"think", name:"考え中", borderRadius:"50%", bg:"#fff", border:"2px dashed #666" },
+  { id:"narration", name:"ナレーション", borderRadius:"4px", bg:"rgba(0,0,0,0.7)", color:"#fff", border:"none" },
+];
+
 // ── Debounce付き自動保存 ─────────────────────────────────
 let _autoSaveTimer = null;
 let _historyPushTimer = null;
@@ -270,13 +305,18 @@ async function openEditPanel(projectId, blockIndex, blockType) {
     b.classList.toggle("active", b.dataset.mode === effectiveMode);
   });
 
+  // widgetでも画像を含んでいれば画像ブロックとして扱う
+  const blockHtmlLower = (block.html || "").toLowerCase();
+  const widgetHasImage = blockType === "widget" && (blockHtmlLower.includes("<img") || blockHtmlLower.includes("<picture"));
+  const widgetHasVideo = blockType === "widget" && !widgetHasImage && blockHtmlLower.includes("<video");
+
   if (effectiveMode === "ai") {
     // ── AI編集モード ──
     if (blockType === "text" || blockType === "heading") {
       body.appendChild(buildAiTextPanel(projectId, blockIndex, block));
-    } else if (blockType === "image") {
+    } else if (blockType === "image" || widgetHasImage) {
       body.appendChild(buildImagePanel(projectId, blockIndex, block));
-    } else if (blockType === "video") {
+    } else if (blockType === "video" || widgetHasVideo) {
       body.appendChild(buildVideoPanel(projectId, blockIndex, block));
     } else {
       // その他のタイプはAIモードでもマニュアルパネルにフォール
@@ -364,28 +404,25 @@ function buildManualPanelContent(projectId, blockIndex, block, blockType) {
 
   // ─── Step 3: ブロックタイプ別の詳細編集（折りたたみ） ───
   const detailSec = createCollapsibleSection("✏️", "詳細編集", null, false);
-  switch (blockType) {
-    case "text":
-    case "heading":
-      detailSec.body.appendChild(buildTextPanel(projectId, blockIndex, block));
-      break;
-    case "image":
-      detailSec.body.appendChild(buildImageQuickPanel(projectId, blockIndex, block));
-      break;
-    case "video":
-      detailSec.body.appendChild(buildVideoQuickPanel(projectId, blockIndex, block));
-      break;
-    case "cta_link":
-      detailSec.body.appendChild(buildCtaPanel(projectId, blockIndex, block));
-      break;
-    case "widget":
-      detailSec.body.appendChild(buildWidgetPanel(projectId, blockIndex, block));
-      break;
-    case "spacer":
-      detailSec.body.appendChild(buildSpacerPanel(block));
-      break;
-    default:
-      detailSec.body.innerHTML = `<p style="color:var(--text-muted)">タイプ: ${blockType}</p>`;
+  // widgetでも画像/動画を含むか判定
+  const _bHtml = (block.html || "").toLowerCase();
+  const _wHasImg = blockType === "widget" && (_bHtml.includes("<img") || _bHtml.includes("<picture"));
+  const _wHasVid = blockType === "widget" && !_wHasImg && _bHtml.includes("<video");
+
+  if (blockType === "text" || blockType === "heading") {
+    detailSec.body.appendChild(buildTextPanel(projectId, blockIndex, block));
+  } else if (blockType === "image" || _wHasImg) {
+    detailSec.body.appendChild(buildImageQuickPanel(projectId, blockIndex, block));
+  } else if (blockType === "video" || _wHasVid) {
+    detailSec.body.appendChild(buildVideoQuickPanel(projectId, blockIndex, block));
+  } else if (blockType === "cta_link") {
+    detailSec.body.appendChild(buildCtaPanel(projectId, blockIndex, block));
+  } else if (blockType === "widget") {
+    detailSec.body.appendChild(buildWidgetPanel(projectId, blockIndex, block));
+  } else if (blockType === "spacer") {
+    detailSec.body.appendChild(buildSpacerPanel(block));
+  } else {
+    detailSec.body.innerHTML = `<p style="color:var(--text-muted)">タイプ: ${blockType}</p>`;
   }
   frag.appendChild(detailSec.wrapper);
 
@@ -395,130 +432,237 @@ function buildManualPanelContent(projectId, blockIndex, block, blockType) {
   return frag;
 }
 
-// 要素抽出 → 各要素にアニメーション設定
+// 要素抽出 → AI Vision API経由で各要素にアニメーション設定
 function buildExtractedElements(container, projectId, blockIndex, block, blockType, blockHtml) {
-  const parsedDoc = new DOMParser().parseFromString(blockHtml, "text/html");
+  const TYPE_ICONS = { text: "✏️", decoration: "🏷️", badge: "🏷️", photo: "🖼️", background: "🎨", button: "🔘", icon: "⭐", logo: "⭐", separator: "➖" };
+  const cacheKey = `extract_${projectId}_${blockIndex}`;
 
-  // 要素を収集
-  const elements = [];
-
-  // テキスト要素
-  const textEls = parsedDoc.querySelectorAll("p, h1, h2, h3, h4, h5, h6, span, strong, em, a, li, td, div");
-  const seenText = new Set();
-  textEls.forEach(el => {
-    const text = el.textContent?.trim();
-    if (text && text.length > 1 && text.length < 200 && !seenText.has(text) && el.children.length === 0) {
-      seenText.add(text);
-      elements.push({ type: "text", tag: el.tagName.toLowerCase(), content: text, icon: "📝" });
-    }
-  });
-
-  // 画像要素
-  const imgEls = parsedDoc.querySelectorAll("img");
-  imgEls.forEach((img, i) => {
-    const src = img.getAttribute("data-src") || img.getAttribute("src") || "";
-    const alt = img.getAttribute("alt") || "";
-    if (src) {
-      elements.push({ type: "image", src, alt, index: i, icon: "🖼️", content: alt || `画像 ${i + 1}` });
-    }
-  });
-
-  // 動画要素
-  const videoEls = parsedDoc.querySelectorAll("video");
-  videoEls.forEach((vid, i) => {
-    elements.push({ type: "video", index: i, icon: "🎬", content: `動画 ${i + 1}` });
-  });
-
-  // リンク要素
-  const linkEls = parsedDoc.querySelectorAll("a[href]");
-  const seenHref = new Set();
-  linkEls.forEach(a => {
-    const href = a.getAttribute("href") || "";
-    const text = a.textContent?.trim();
-    if (href && text && !seenHref.has(href)) {
-      seenHref.add(href);
-      elements.push({ type: "link", href, content: text, icon: "🔗" });
-    }
-  });
-
-  if (elements.length === 0) {
-    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:16px">要素が見つかりませんでした</div>';
-    return;
+  // Check localStorage cache first
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    try {
+      const elements = JSON.parse(cached);
+      renderElementsList(container, elements, projectId, blockIndex, blockHtml, TYPE_ICONS);
+      return;
+    } catch {}
   }
 
-  // ヘッダー
+  // Show loading spinner
+  container.innerHTML = '<div style="text-align:center;padding:20px"><span class="spinner"></span><div style="font-size:12px;color:var(--text-muted);margin-top:8px">AI Vision で要素を解析中...</div></div>';
+
+  // Call API
+  window.API.extractElements(projectId, blockIndex).then(result => {
+    container.innerHTML = "";
+    if (result.elements && result.elements.length > 0) {
+      // Cache result
+      try { localStorage.setItem(cacheKey, JSON.stringify(result.elements)); } catch {}
+      renderElementsList(container, result.elements, projectId, blockIndex, blockHtml, TYPE_ICONS);
+    } else {
+      container.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:16px">要素が見つかりませんでした</div>';
+    }
+  }).catch(err => {
+    container.innerHTML = `<div style="text-align:center;padding:16px"><div style="color:#ef4444;font-size:12px;margin-bottom:8px">要素抽出エラー: ${err.message}</div><button class="panel-btn" id="retry-extract" style="font-size:11px">再試行</button></div>`;
+    container.querySelector("#retry-extract")?.addEventListener("click", () => {
+      container.innerHTML = "";
+      buildExtractedElements(container, projectId, blockIndex, block, blockType, blockHtml);
+    });
+  });
+}
+
+function renderElementsList(container, elements, projectId, blockIndex, blockHtml, TYPE_ICONS) {
+  // Type badge colors
+  const TYPE_COLORS = {
+    text: { bg: "rgba(59,130,246,0.12)", color: "#3b82f6" },
+    decoration: { bg: "rgba(139,92,246,0.12)", color: "#8b5cf6" },
+    badge: { bg: "rgba(245,158,11,0.12)", color: "#f59e0b" },
+    photo: { bg: "rgba(16,185,129,0.12)", color: "#10b981" },
+    background: { bg: "rgba(107,114,128,0.12)", color: "#6b7280" },
+    button: { bg: "rgba(236,72,153,0.12)", color: "#ec4899" },
+    icon: { bg: "rgba(6,182,212,0.12)", color: "#06b6d4" },
+    logo: { bg: "rgba(168,85,247,0.12)", color: "#a855f7" },
+    separator: { bg: "rgba(107,114,128,0.12)", color: "#6b7280" },
+  };
+
+  // Categorize elements
+  const textElements = elements.filter(el => el.type === "text");
+  const visualElements = elements.filter(el => el.type !== "text");
+
+  // ─── Header ───
   const header = document.createElement("div");
-  header.style.cssText = "font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px";
-  header.innerHTML = `<span>${elements.length}個の要素を検出</span>`;
+  header.style.cssText = "font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:10px;display:flex;align-items:center;justify-content:space-between";
+  header.innerHTML = `<span>📑 抽出された要素（${elements.length}）</span>`;
+  const refreshBtn = document.createElement("button");
+  refreshBtn.style.cssText = "font-size:10px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:none;color:var(--text-muted);cursor:pointer;transition:all 0.15s";
+  refreshBtn.textContent = "🔄 再検出";
+  refreshBtn.addEventListener("mouseenter", () => { refreshBtn.style.borderColor = "#ec4899"; refreshBtn.style.color = "#ec4899"; });
+  refreshBtn.addEventListener("mouseleave", () => { refreshBtn.style.borderColor = ""; refreshBtn.style.color = ""; });
+  refreshBtn.addEventListener("click", () => {
+    const cacheKey = `extract_${projectId}_${blockIndex}`;
+    localStorage.removeItem(cacheKey);
+    container.innerHTML = "";
+    buildExtractedElements(container, projectId, blockIndex, null, null, blockHtml);
+  });
+  header.appendChild(refreshBtn);
   container.appendChild(header);
 
-  // 各要素カード
+  // ─── Type summary chips ───
+  const typeSummary = document.createElement("div");
+  typeSummary.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px";
+  const typeCounts = {};
+  elements.forEach(el => { typeCounts[el.type] = (typeCounts[el.type] || 0) + 1; });
+  Object.entries(typeCounts).forEach(([type, count]) => {
+    const tc = TYPE_COLORS[type] || { bg: "rgba(236,72,153,0.12)", color: "#ec4899" };
+    const chip = document.createElement("span");
+    chip.style.cssText = `font-size:10px;padding:2px 8px;border-radius:8px;font-weight:600;background:${tc.bg};color:${tc.color}`;
+    chip.textContent = `${TYPE_ICONS[type] || "📦"} ${type} ${count}`;
+    typeSummary.appendChild(chip);
+  });
+  container.appendChild(typeSummary);
+
+  // ─── OCR テキスト要素セクション ───
+  if (textElements.length > 0) {
+    const ocrSec = document.createElement("div");
+    ocrSec.style.cssText = "margin-bottom:12px;border:1px solid rgba(59,130,246,0.2);border-radius:8px;overflow:hidden";
+    const ocrHeader = document.createElement("div");
+    ocrHeader.style.cssText = "padding:8px 12px;background:rgba(59,130,246,0.06);display:flex;align-items:center;justify-content:space-between;cursor:pointer";
+    ocrHeader.innerHTML = `<span style="font-size:11px;font-weight:600;color:#3b82f6">📝 テキスト要素 ${textElements.length}</span>`;
+    const ocrArrow = document.createElement("span");
+    ocrArrow.textContent = "▼";
+    ocrArrow.style.cssText = "font-size:10px;color:#3b82f6;transition:transform 0.2s";
+    ocrHeader.appendChild(ocrArrow);
+    ocrSec.appendChild(ocrHeader);
+
+    const ocrBody = document.createElement("div");
+    ocrBody.style.cssText = "padding:8px 12px";
+    textElements.forEach((el, i) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)";
+      if (i === textElements.length - 1) row.style.borderBottom = "none";
+      const textSpan = document.createElement("span");
+      textSpan.style.cssText = "flex:1;font-size:12px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+      textSpan.textContent = `「${el.content}」`;
+      const editBtn = document.createElement("button");
+      editBtn.style.cssText = "font-size:10px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:none;color:var(--text-muted);cursor:pointer;flex-shrink:0;transition:all 0.15s";
+      editBtn.textContent = "編集";
+      editBtn.addEventListener("mouseenter", () => { editBtn.style.borderColor = "#3b82f6"; editBtn.style.color = "#3b82f6"; });
+      editBtn.addEventListener("mouseleave", () => { editBtn.style.borderColor = ""; editBtn.style.color = ""; });
+      editBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        // Find the element card and open it
+        const elIdx = elements.indexOf(el);
+        const cards = container.querySelectorAll(".extract-element-card");
+        if (cards[elIdx]) cards[elIdx].querySelector("[data-card-header]")?.click();
+      });
+      row.appendChild(textSpan);
+      row.appendChild(editBtn);
+      ocrBody.appendChild(row);
+    });
+    // OCR status line
+    const ocrStatus = document.createElement("div");
+    ocrStatus.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:10px;color:var(--text-muted)";
+    ocrStatus.innerHTML = `<span style="color:#10b981">✅</span> ${textElements.length}個のテキストを検出（AI Vision OCR）`;
+    ocrBody.appendChild(ocrStatus);
+    ocrSec.appendChild(ocrBody);
+
+    let ocrOpen = true;
+    ocrHeader.addEventListener("click", () => {
+      ocrOpen = !ocrOpen;
+      ocrBody.style.display = ocrOpen ? "" : "none";
+      ocrArrow.style.transform = ocrOpen ? "" : "rotate(-90deg)";
+    });
+
+    container.appendChild(ocrSec);
+  }
+
+  // ─── All element cards (layer list) ───
+  const layerHeader = document.createElement("div");
+  layerHeader.style.cssText = "font-size:11px;font-weight:600;color:var(--text-muted);margin:8px 0 6px;text-transform:uppercase;letter-spacing:0.3px";
+  layerHeader.textContent = "レイヤー一覧";
+  container.appendChild(layerHeader);
+
   elements.forEach((el, elIdx) => {
     const card = document.createElement("div");
-    card.style.cssText = "border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden;transition:border-color 0.15s";
+    card.className = "extract-element-card";
+    card.style.cssText = "border:1px solid var(--border);border-radius:8px;margin-bottom:6px;overflow:hidden;transition:border-color 0.15s";
 
-    // カードヘッダー（クリックで展開）
+    // Card header
+    const tc = TYPE_COLORS[el.type] || { bg: "rgba(236,72,153,0.12)", color: "#ec4899" };
     const cardHeader = document.createElement("div");
-    cardHeader.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;background:var(--bg-tertiary);font-size:12px;transition:background 0.15s";
+    cardHeader.setAttribute("data-card-header", "true");
+    cardHeader.style.cssText = "display:flex;align-items:center;gap:6px;padding:7px 10px;cursor:pointer;background:var(--bg-tertiary);font-size:12px;transition:background 0.15s";
     cardHeader.addEventListener("mouseenter", () => { cardHeader.style.background = "var(--bg-secondary)"; });
-    cardHeader.addEventListener("mouseleave", () => { cardHeader.style.background = "var(--bg-tertiary)"; });
+    cardHeader.addEventListener("mouseleave", () => { if (!card._isOpen) cardHeader.style.background = "var(--bg-tertiary)"; });
 
-    // サムネイル
-    if (el.type === "image" && el.src) {
-      const thumb = document.createElement("img");
-      thumb.src = el.src;
-      thumb.style.cssText = "width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0";
-      thumb.onerror = () => { thumb.style.display = "none"; };
-      cardHeader.appendChild(thumb);
-    } else {
-      const iconSpan = document.createElement("span");
-      iconSpan.textContent = el.icon;
-      iconSpan.style.cssText = "font-size:16px;flex-shrink:0;width:36px;text-align:center";
-      cardHeader.appendChild(iconSpan);
-    }
+    // Type icon
+    const iconSpan = document.createElement("span");
+    iconSpan.textContent = TYPE_ICONS[el.type] || "📦";
+    iconSpan.style.cssText = "font-size:14px;flex-shrink:0;width:20px;text-align:center";
+    cardHeader.appendChild(iconSpan);
 
-    // 要素名
+    // Element name (truncated)
     const nameSpan = document.createElement("span");
-    nameSpan.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary);font-weight:500";
-    nameSpan.textContent = el.content;
+    nameSpan.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary);font-weight:500;font-size:11px";
+    const displayContent = el.type === "text" ? `「${el.content}」` : (el.content || el.type);
+    nameSpan.textContent = displayContent.length > 25 ? displayContent.slice(0, 25) + "…" : displayContent;
     cardHeader.appendChild(nameSpan);
 
-    // タグバッジ
+    // Type badge with color
     const tagBadge = document.createElement("span");
-    tagBadge.style.cssText = "font-size:9px;padding:1px 6px;background:rgba(236,72,153,0.1);color:#ec4899;border-radius:4px;font-weight:700;flex-shrink:0";
-    tagBadge.textContent = el.type === "text" ? el.tag : el.type;
+    tagBadge.style.cssText = `font-size:9px;padding:1px 6px;background:${tc.bg};color:${tc.color};border-radius:4px;font-weight:700;flex-shrink:0`;
+    tagBadge.textContent = el.type;
     cardHeader.appendChild(tagBadge);
 
-    // 展開矢印
+    // z-index badge
+    const zBadge = document.createElement("span");
+    zBadge.style.cssText = "font-size:9px;padding:1px 4px;background:var(--bg-secondary);color:var(--text-muted);border-radius:3px;flex-shrink:0";
+    zBadge.textContent = `z${el.zIndex}`;
+    cardHeader.appendChild(zBadge);
+
+    // Expand arrow
     const arrow = document.createElement("span");
     arrow.textContent = "▶";
-    arrow.style.cssText = "font-size:10px;color:var(--text-muted);transition:transform 0.2s;flex-shrink:0";
+    arrow.style.cssText = "font-size:8px;color:var(--text-muted);transition:transform 0.2s;flex-shrink:0";
     cardHeader.appendChild(arrow);
 
     card.appendChild(cardHeader);
 
-    // カードボディ（アニメーション設定）- 初期非表示
+    // Card body (design edit panel) - initially hidden
     const cardBody = document.createElement("div");
     cardBody.style.cssText = "display:none;padding:10px 12px;border-top:1px solid var(--border)";
-
-    // アニメーション選択UI
-    buildElementAnimationUI(cardBody, blockIndex, elIdx, el);
-
     card.appendChild(cardBody);
 
-    // トグル
-    let isOpen = false;
+    // Toggle + highlight in iframe
+    card._isOpen = false;
     cardHeader.addEventListener("click", () => {
-      isOpen = !isOpen;
-      cardBody.style.display = isOpen ? "" : "none";
-      arrow.style.transform = isOpen ? "rotate(90deg)" : "";
-      card.style.borderColor = isOpen ? "#ec4899" : "";
+      card._isOpen = !card._isOpen;
+      cardBody.style.display = card._isOpen ? "" : "none";
+      arrow.style.transform = card._isOpen ? "rotate(90deg)" : "";
+      card.style.borderColor = card._isOpen ? tc.color : "";
+      cardHeader.style.background = card._isOpen ? "var(--bg-secondary)" : "var(--bg-tertiary)";
+
+      // Build design panel on first open
+      if (card._isOpen && !cardBody._built) {
+        cardBody._built = true;
+        buildElementDesignPanel(cardBody, el, elIdx, blockIndex, projectId);
+      }
+
+      // Highlight element overlay in iframe
+      const iframe = document.getElementById("preview-iframe");
+      if (iframe?.contentWindow) {
+        iframe.contentWindow.postMessage({
+          type: "elementOverlay",
+          blockIndex,
+          elementIndex: card._isOpen ? elIdx : -1,
+          boundingBox: card._isOpen ? el.boundingBox : null,
+          elements: card._isOpen ? elements : null,
+        }, "*");
+      }
     });
 
     container.appendChild(card);
   });
 
-  // ブロック全体アニメーション
+  // Block-wide animation
   const blockAnimSec = createCollapsibleSection("🎭", "ブロック全体のアニメーション", null, false);
   const animResult = buildAnimationSection(blockIndex);
   blockAnimSec.body.appendChild(animResult.section);
@@ -612,6 +756,618 @@ function buildElementAnimationUI(container, blockIndex, elIdx, el) {
   }
 }
 
+// 改善5: デザイン・配置編集パネル
+function buildElementDesignPanel(container, element, elIdx, blockIndex, projectId) {
+  // ── Text content editing (for text elements) ──
+  if (element.type === "text" && element.content) {
+    const textLabel = document.createElement("div");
+    textLabel.style.cssText = "font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.3px";
+    textLabel.textContent = "テキスト内容";
+    container.appendChild(textLabel);
+
+    const textInput = document.createElement("input");
+    textInput.type = "text";
+    textInput.value = element.content;
+    textInput.style.cssText = "width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);margin-bottom:10px;font-weight:500";
+    textInput.addEventListener("input", () => {
+      element.content = textInput.value;
+      // Update the card header name
+      const card = container.closest(".extract-element-card");
+      if (card) {
+        const nameSpan = card.querySelector("[data-card-header] span:nth-child(2)");
+        if (nameSpan) {
+          const display = `「${textInput.value}」`;
+          nameSpan.textContent = display.length > 25 ? display.slice(0, 25) + "…" : display;
+        }
+      }
+      sendElementUpdate();
+    });
+    container.appendChild(textInput);
+  }
+
+  // Position & Size
+  const posLabel = document.createElement("div");
+  posLabel.style.cssText = "font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.3px";
+  posLabel.textContent = "📐 位置・サイズ（%）";
+  container.appendChild(posLabel);
+
+  const posGrid = document.createElement("div");
+  posGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:10px";
+  const bb = element.boundingBox || { x: 0, y: 0, width: 100, height: 10 };
+  const posState = { x: bb.x, y: bb.y, width: bb.width, height: bb.height };
+
+  function sendElementUpdate() {
+    const iframe = document.getElementById("preview-iframe");
+    if (iframe?.contentWindow) {
+      iframe.contentWindow.postMessage({
+        type: "elementUpdate",
+        blockIndex,
+        elementIndex: elIdx,
+        content: element.content,
+        boundingBox: { ...posState },
+        style: { ...styleState },
+        zIndex: zState.z,
+        visible: zState.visible,
+      }, "*");
+    }
+  }
+
+  [["X", "x"], ["Y", "y"], ["W", "width"], ["H", "height"]].forEach(([label, key]) => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:4px";
+    const lbl = document.createElement("span");
+    lbl.style.cssText = "font-size:10px;color:var(--text-muted);width:14px;font-weight:600";
+    lbl.textContent = label;
+    const inp = document.createElement("input");
+    inp.type = "number";
+    inp.min = 0; inp.max = 100; inp.step = 1;
+    inp.value = Math.round(posState[key]);
+    inp.style.cssText = "width:100%;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary)";
+    inp.addEventListener("input", () => {
+      posState[key] = parseFloat(inp.value) || 0;
+      sendElementUpdate();
+    });
+    row.appendChild(lbl);
+    row.appendChild(inp);
+    posGrid.appendChild(row);
+  });
+  container.appendChild(posGrid);
+
+  // Style section
+  const styleLabel = document.createElement("div");
+  styleLabel.style.cssText = "font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.3px";
+  styleLabel.textContent = "🎨 スタイル";
+  container.appendChild(styleLabel);
+
+  const styleState = {
+    fontSize: element.style?.fontSize || "medium",
+    fontWeight: element.style?.fontWeight || "normal",
+    color: element.style?.color || "#000000",
+    backgroundColor: element.style?.backgroundColor || "",
+  };
+
+  const styleGrid = document.createElement("div");
+  styleGrid.style.cssText = "display:flex;flex-direction:column;gap:6px;margin-bottom:10px";
+
+  // Font size
+  const sizeRow = document.createElement("div");
+  sizeRow.style.cssText = "display:flex;gap:4px";
+  ["small", "medium", "large", "xlarge"].forEach(sz => {
+    const btn = document.createElement("button");
+    btn.className = "anim-chip" + (sz === styleState.fontSize ? " active" : "");
+    btn.textContent = { small: "S", medium: "M", large: "L", xlarge: "XL" }[sz];
+    btn.style.cssText += ";font-size:10px;padding:3px 8px;min-width:28px";
+    btn.addEventListener("click", () => {
+      styleState.fontSize = sz;
+      sizeRow.querySelectorAll(".anim-chip").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      sendElementUpdate();
+    });
+    sizeRow.appendChild(btn);
+  });
+  // Bold toggle
+  const boldBtn = document.createElement("button");
+  boldBtn.className = "anim-chip" + (styleState.fontWeight === "bold" ? " active" : "");
+  boldBtn.innerHTML = "<b>B</b>";
+  boldBtn.style.cssText += ";font-size:10px;padding:3px 8px;min-width:28px";
+  boldBtn.addEventListener("click", () => {
+    styleState.fontWeight = styleState.fontWeight === "bold" ? "normal" : "bold";
+    boldBtn.classList.toggle("active");
+    sendElementUpdate();
+  });
+  sizeRow.appendChild(boldBtn);
+  styleGrid.appendChild(sizeRow);
+
+  // Colors row
+  const colorRow = document.createElement("div");
+  colorRow.style.cssText = "display:flex;align-items:center;gap:8px";
+  // Text color
+  const textColorLabel = document.createElement("span");
+  textColorLabel.style.cssText = "font-size:10px;color:var(--text-muted)";
+  textColorLabel.textContent = "文字色";
+  const textColorInput = document.createElement("input");
+  textColorInput.type = "color";
+  textColorInput.value = styleState.color;
+  textColorInput.style.cssText = "width:28px;height:22px;border:1px solid var(--border);border-radius:4px;cursor:pointer;padding:0";
+  textColorInput.addEventListener("input", () => { styleState.color = textColorInput.value; sendElementUpdate(); });
+  // Background color
+  const bgColorLabel = document.createElement("span");
+  bgColorLabel.style.cssText = "font-size:10px;color:var(--text-muted)";
+  bgColorLabel.textContent = "背景";
+  const bgColorInput = document.createElement("input");
+  bgColorInput.type = "color";
+  bgColorInput.value = styleState.backgroundColor || "#ffffff";
+  bgColorInput.style.cssText = "width:28px;height:22px;border:1px solid var(--border);border-radius:4px;cursor:pointer;padding:0";
+  bgColorInput.addEventListener("input", () => { styleState.backgroundColor = bgColorInput.value; sendElementUpdate(); });
+  colorRow.appendChild(textColorLabel);
+  colorRow.appendChild(textColorInput);
+  colorRow.appendChild(bgColorLabel);
+  colorRow.appendChild(bgColorInput);
+  styleGrid.appendChild(colorRow);
+  container.appendChild(styleGrid);
+
+  // Layer (z-index + visibility)
+  const layerLabel = document.createElement("div");
+  layerLabel.style.cssText = "font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.3px";
+  layerLabel.textContent = "📊 レイヤー";
+  container.appendChild(layerLabel);
+
+  const zState = { z: element.zIndex ?? 0, visible: true };
+  const layerRow = document.createElement("div");
+  layerRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:10px";
+  const zLabel = document.createElement("span");
+  zLabel.style.cssText = "font-size:10px;color:var(--text-muted)";
+  zLabel.textContent = "Z-Index";
+  const zInput = document.createElement("input");
+  zInput.type = "number"; zInput.min = 0; zInput.max = 100; zInput.value = zState.z;
+  zInput.style.cssText = "width:50px;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary)";
+  zInput.addEventListener("input", () => { zState.z = parseInt(zInput.value) || 0; sendElementUpdate(); });
+  const visCheck = document.createElement("input");
+  visCheck.type = "checkbox"; visCheck.checked = true;
+  visCheck.style.cursor = "pointer";
+  visCheck.addEventListener("change", () => { zState.visible = visCheck.checked; sendElementUpdate(); });
+  const visLabel = document.createElement("span");
+  visLabel.style.cssText = "font-size:10px;color:var(--text-muted)";
+  visLabel.textContent = "表示";
+  layerRow.appendChild(zLabel);
+  layerRow.appendChild(zInput);
+  layerRow.appendChild(visCheck);
+  layerRow.appendChild(visLabel);
+  container.appendChild(layerRow);
+
+  // Animation (reuse element animation UI)
+  buildElementAnimationUI(container, blockIndex, elIdx, element);
+}
+
+// SB互換HTML生成: 要素オーバーレイをabsolute positioned divとして出力
+function buildElementOverlayHtml(elements, baseImageSrc) {
+  if (!elements || elements.length === 0) return "";
+  const partId = "sb-part-" + Math.random().toString(36).slice(2, 7) + Date.now().toString(36).slice(-4);
+  const cls = partId.replace("sb-part-", "sb-custom-part-");
+
+  const fontSizes = { small: "12px", medium: "16px", large: "24px", xlarge: "36px" };
+
+  let css = `#${partId}.${cls} { position: relative; }\n`;
+  let html = "";
+
+  elements.forEach((el, i) => {
+    const bb = el.boundingBox || {};
+    const style = el.style || {};
+    const elClass = `el-overlay-${i}`;
+    css += `#${partId}.${cls} .${elClass} {
+  position: absolute;
+  left: ${bb.x || 0}%;
+  top: ${bb.y || 0}%;
+  width: ${bb.width || 100}%;
+  height: ${bb.height || 10}%;
+  z-index: ${el.zIndex || i};
+  font-size: ${fontSizes[style.fontSize] || "16px"};
+  font-weight: ${style.fontWeight || "normal"};
+  color: ${style.color || "#000"};
+  ${style.backgroundColor ? "background-color:" + style.backgroundColor + ";" : ""}
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}\n`;
+    if (el.type === "text" && el.content) {
+      html += `<div class="${elClass}">${el.content}</div>\n`;
+    } else {
+      html += `<div class="${elClass}"></div>\n`;
+    }
+  });
+
+  return `<style>${css}</style><div id="${partId}" class="${cls}">\n${baseImageSrc ? `<img class="lazyload" data-src="${baseImageSrc}" style="width:100%;display:block">\n` : ""}${html}</div>`;
+}
+
+// 改善4: 類似画像検索セクション（自動キーワード生成 + RED対応）
+function buildImageSearchSection(projectId, blockIndex) {
+  const section = document.createElement("div");
+  section.className = "image-search-section";
+
+  // Auto-detected keywords label
+  const autoLabel = document.createElement("div");
+  autoLabel.style.cssText = "font-size:10px;color:var(--text-muted);margin-bottom:6px";
+  autoLabel.textContent = "自動検出キーワード:";
+  section.appendChild(autoLabel);
+
+  // Search input row
+  const searchRow = document.createElement("div");
+  searchRow.className = "image-search-row";
+  const searchInput = document.createElement("input");
+  searchInput.className = "image-search-input";
+  searchInput.placeholder = "AI がキーワードを生成中...";
+  const searchBtn = document.createElement("button");
+  searchBtn.className = "image-search-btn";
+  searchBtn.textContent = "🔄 検索";
+  searchRow.appendChild(searchInput);
+  searchRow.appendChild(searchBtn);
+  section.appendChild(searchRow);
+
+  // Source chips (Google, Unsplash, RED)
+  const chipRow = document.createElement("div");
+  chipRow.className = "image-search-chips";
+  let selectedSource = "google";
+  [{ id: "google", label: "Google" }, { id: "unsplash", label: "Unsplash" }, { id: "red", label: "📕 RED" }].forEach(s => {
+    const chip = document.createElement("button");
+    chip.className = "image-search-chip" + (s.id === "google" ? " active" : "");
+    chip.textContent = s.label;
+    chip.addEventListener("click", () => {
+      selectedSource = s.id;
+      chipRow.querySelectorAll(".image-search-chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      if (s.id === "red") {
+        resultsGrid.style.display = "none";
+        redSection.style.display = "";
+      } else {
+        resultsGrid.style.display = "";
+        redSection.style.display = "none";
+      }
+    });
+    chipRow.appendChild(chip);
+  });
+  section.appendChild(chipRow);
+
+  // Results grid (Google/Unsplash)
+  const resultsGrid = document.createElement("div");
+  resultsGrid.className = "image-search-results";
+  section.appendChild(resultsGrid);
+
+  // RED manual import section (initially hidden)
+  const redSection = document.createElement("div");
+  redSection.style.cssText = "display:none;margin-top:8px";
+  redSection.innerHTML = `
+    <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">
+      <div style="font-weight:600;margin-bottom:6px">📕 REDから画像を取り込む</div>
+      <div style="margin-bottom:4px"><span style="color:#ec4899;font-weight:700">①</span> 下のリンクをクリックしてREDで検索</div>
+      <div id="red-search-links" style="margin-bottom:8px"></div>
+      <div style="margin-bottom:4px"><span style="color:#ec4899;font-weight:700">②</span> 気に入った画像を右クリック→保存 or スクショ</div>
+      <div style="margin-bottom:6px"><span style="color:#ec4899;font-weight:700">③</span> 下のエリアにドロップ or クリックで選択（Ctrl+Vも可）</div>
+    </div>
+    <div id="red-drop-zone" style="border:2px dashed var(--border);border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:border-color 0.15s">
+      <div style="font-size:16px;margin-bottom:4px">📷</div>
+      <div style="font-size:11px;color:var(--text-muted)">画像をドロップ / クリックで選択 / Ctrl+V</div>
+    </div>
+    <div id="red-imported-images" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px"></div>
+  `;
+  section.appendChild(redSection);
+
+  // RED drop zone events
+  setTimeout(() => {
+    const dropZone = redSection.querySelector("#red-drop-zone");
+    const importedGrid = redSection.querySelector("#red-imported-images");
+    if (!dropZone) return;
+
+    dropZone.addEventListener("click", () => {
+      const inp = document.createElement("input");
+      inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
+      inp.addEventListener("change", () => { if (inp.files) handleRedFiles(inp.files); });
+      inp.click();
+    });
+    dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.style.borderColor = "#ec4899"; });
+    dropZone.addEventListener("dragleave", () => { dropZone.style.borderColor = ""; });
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault(); dropZone.style.borderColor = "";
+      if (e.dataTransfer?.files) handleRedFiles(e.dataTransfer.files);
+    });
+
+    // Clipboard paste
+    function handlePasteForRed(e) {
+      if (selectedSource !== "red") return;
+      const items = Array.from(e.clipboardData?.items || []);
+      const imgItems = items.filter(i => i.type.startsWith("image/"));
+      if (imgItems.length > 0) {
+        e.preventDefault();
+        const files = imgItems.map(i => i.getAsFile()).filter(Boolean);
+        if (files.length > 0) handleRedFiles(files);
+      }
+    }
+    document.addEventListener("paste", handlePasteForRed);
+
+    async function handleRedFiles(files) {
+      for (const file of Array.from(files).filter(f => f.type.startsWith("image/"))) {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            const result = await window.API.uploadFree(projectId, { imageData: reader.result, fileName: file.name });
+            if (result.ok && result.imageUrl) {
+              const card = document.createElement("div");
+              card.style.cssText = "position:relative;border-radius:6px;overflow:hidden;border:1px solid var(--border);cursor:pointer";
+              const img = document.createElement("img");
+              img.src = result.imageUrl;
+              img.style.cssText = "width:100%;aspect-ratio:1;object-fit:cover;display:block";
+              card.appendChild(img);
+              card.addEventListener("click", async () => {
+                if (!confirm("この画像で差し替えますか？")) return;
+                try {
+                  await window.API.applyImage(projectId, blockIndex, { imageUrl: result.imageUrl });
+                  window.loadPreview?.(true);
+                  window.pushHistory?.("image_search", `ブロック ${blockIndex} RED画像差替`);
+                  window.showToast("画像を差し替えました", "success");
+                } catch (err) { window.showToast(`エラー: ${err.message}`, "error"); }
+              });
+              importedGrid.appendChild(card);
+            }
+          } catch (err) { window.showToast(`アップロードエラー: ${err.message}`, "error"); }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  }, 0);
+
+  // Search handler
+  async function doSearch() {
+    const query = searchInput.value.trim();
+    if (!query) return;
+    if (selectedSource === "red") return; // RED uses manual import
+    searchBtn.disabled = true;
+    searchBtn.textContent = "検索中...";
+    resultsGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--text-muted);font-size:12px"><span class="spinner"></span></div>';
+    try {
+      const resp = await window.API.searchImages(query, selectedSource);
+      resultsGrid.innerHTML = "";
+      if (resp.error) {
+        resultsGrid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:12px;color:var(--text-muted);font-size:11px">${resp.error}</div>`;
+        return;
+      }
+      if (!resp.results || resp.results.length === 0) {
+        resultsGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:12px;color:var(--text-muted);font-size:12px">結果が見つかりませんでした</div>';
+        return;
+      }
+      resp.results.forEach(img => {
+        const card = document.createElement("div");
+        card.className = "image-search-result-card";
+        const thumb = document.createElement("img");
+        thumb.src = img.thumbnail || img.src;
+        thumb.alt = img.title || "";
+        thumb.loading = "lazy";
+        thumb.onerror = () => { card.style.display = "none"; };
+        card.appendChild(thumb);
+        if (img.credit) {
+          const credit = document.createElement("div");
+          credit.style.cssText = "position:absolute;bottom:2px;left:2px;font-size:8px;color:#fff;background:rgba(0,0,0,0.5);padding:1px 4px;border-radius:2px";
+          credit.textContent = img.credit;
+          card.appendChild(credit);
+        }
+        card.addEventListener("click", async () => {
+          if (!confirm(`この画像で差し替えますか？`)) return;
+          try {
+            await window.API.applyImage(projectId, blockIndex, { imageUrl: img.src });
+            window.loadPreview?.(true);
+            window.pushHistory?.("image_search", `ブロック ${blockIndex} 画像検索差替`);
+            window.showToast("画像を差し替えました", "success");
+          } catch (err) { window.showToast(`エラー: ${err.message}`, "error"); }
+        });
+        resultsGrid.appendChild(card);
+      });
+    } catch (err) {
+      resultsGrid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:12px;color:#ef4444;font-size:11px">検索エラー: ${err.message}</div>`;
+    } finally {
+      searchBtn.disabled = false;
+      searchBtn.textContent = "🔄 検索";
+    }
+  }
+
+  searchBtn.addEventListener("click", doSearch);
+  searchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+
+  // Auto-generate keywords and search on load
+  (async () => {
+    try {
+      autoLabel.textContent = "自動検出キーワード: 生成中...";
+      const kwResult = await window.API.autoKeywords(projectId, blockIndex);
+      if (kwResult.keywords) {
+        searchInput.value = kwResult.keywords;
+        searchInput.placeholder = "キーワードを編集可能";
+        autoLabel.textContent = `自動検出キーワード: ${kwResult.keywords}`;
+        // Auto-search
+        doSearch();
+        // Populate RED search links
+        if (kwResult.redKeywords && kwResult.redKeywords.length > 0) {
+          const linksDiv = redSection.querySelector("#red-search-links");
+          if (linksDiv) {
+            kwResult.redKeywords.forEach(kw => {
+              const link = document.createElement("a");
+              link.href = `https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(kw)}&type=54`;
+              link.target = "_blank";
+              link.rel = "noopener noreferrer";
+              link.style.cssText = "display:block;font-size:11px;color:#3b82f6;text-decoration:none;margin-bottom:3px";
+              link.textContent = `🔗「${kw}」で検索`;
+              link.addEventListener("mouseenter", () => { link.style.textDecoration = "underline"; });
+              link.addEventListener("mouseleave", () => { link.style.textDecoration = "none"; });
+              linksDiv.appendChild(link);
+            });
+          }
+        }
+      } else {
+        searchInput.placeholder = "画像を検索...（例：美容 女性 化粧品）";
+        autoLabel.textContent = "自動検出キーワード: （検出失敗 — 手動入力してください）";
+      }
+    } catch {
+      searchInput.placeholder = "画像を検索...（例：美容 女性 化粧品）";
+      autoLabel.textContent = "自動検出キーワード: （生成エラー）";
+    }
+  })();
+
+  return section;
+}
+
+// 改善6: 画像ピッカーモーダル
+function openImagePickerModal(projectId, blockIndex) {
+  // Remove existing modal if any
+  document.querySelector(".image-picker-overlay")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.className = "image-picker-overlay";
+
+  const modal = document.createElement("div");
+  modal.className = "image-picker-modal";
+
+  // Header
+  const header = document.createElement("div");
+  header.className = "image-picker-header";
+  header.innerHTML = '<span>画像を挿入</span>';
+  const closeBtn = document.createElement("button");
+  closeBtn.style.cssText = "background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-muted);padding:4px";
+  closeBtn.textContent = "✕";
+  closeBtn.addEventListener("click", () => overlay.remove());
+  header.appendChild(closeBtn);
+  modal.appendChild(header);
+
+  // Body
+  const body = document.createElement("div");
+  body.className = "image-picker-body";
+
+  // Upload area
+  const uploadZone = document.createElement("div");
+  uploadZone.className = "image-picker-upload-zone";
+  uploadZone.innerHTML = '<div style="font-size:24px;margin-bottom:6px">📁</div><div style="font-size:12px;color:var(--text-muted)">画像をドラッグ＆ドロップ or クリックして選択（4枚まで）</div>';
+  const fileInput = document.createElement("input");
+  fileInput.type = "file"; fileInput.accept = "image/*"; fileInput.multiple = true; fileInput.style.display = "none";
+  uploadZone.appendChild(fileInput);
+  uploadZone.addEventListener("click", () => fileInput.click());
+  uploadZone.addEventListener("dragover", (e) => { e.preventDefault(); uploadZone.classList.add("dragover"); });
+  uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("dragover"));
+
+  const uploadPreview = document.createElement("div");
+  uploadPreview.style.cssText = "display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px";
+
+  function handleFiles(files) {
+    const fileArr = Array.from(files).filter(f => f.type.startsWith("image/")).slice(0, 4);
+    fileArr.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const card = document.createElement("div");
+        card.style.cssText = "position:relative;border-radius:6px;overflow:hidden;border:1px solid var(--border)";
+        const img = document.createElement("img");
+        img.src = reader.result;
+        img.style.cssText = "width:100%;aspect-ratio:4/3;object-fit:cover;display:block";
+        card.appendChild(img);
+        const btn = document.createElement("button");
+        btn.style.cssText = "position:absolute;bottom:4px;left:4px;right:4px;padding:6px;font-size:11px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer";
+        btn.textContent = "挿入";
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          btn.innerHTML = '<span class="spinner"></span>';
+          try {
+            const uploadResult = await window.API.uploadFree(projectId, { imageData: reader.result, fileName: file.name });
+            if (uploadResult.ok && uploadResult.imageUrl) {
+              await insertImageBlock(projectId, blockIndex, uploadResult.imageUrl);
+              window.showToast("画像を挿入しました", "success");
+              overlay.remove();
+            }
+          } catch (err) { window.showToast(`エラー: ${err.message}`, "error"); }
+          finally { btn.disabled = false; btn.textContent = "挿入"; }
+        });
+        card.appendChild(btn);
+        uploadPreview.appendChild(card);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  uploadZone.addEventListener("drop", (e) => {
+    e.preventDefault(); uploadZone.classList.remove("dragover");
+    if (e.dataTransfer?.files) handleFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener("change", () => { if (fileInput.files) handleFiles(fileInput.files); });
+
+  body.appendChild(uploadZone);
+  body.appendChild(uploadPreview);
+
+  // Existing images grid
+  const existingLabel = document.createElement("div");
+  existingLabel.style.cssText = "font-size:12px;font-weight:600;color:var(--text-secondary);margin:14px 0 8px;border-top:1px solid var(--border);padding-top:12px";
+  existingLabel.textContent = "プロジェクト内の画像";
+  body.appendChild(existingLabel);
+
+  const imageGrid = document.createElement("div");
+  imageGrid.className = "image-picker-grid";
+  imageGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--text-muted);font-size:12px"><span class="spinner"></span> 読み込み中...</div>';
+  body.appendChild(imageGrid);
+
+  // Load existing images
+  window.API.getProjectImages(projectId).then(result => {
+    imageGrid.innerHTML = "";
+    const images = result.images || [];
+    if (images.length === 0) {
+      imageGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--text-muted);font-size:12px">画像がありません</div>';
+      return;
+    }
+    images.forEach(img => {
+      const thumb = document.createElement("img");
+      thumb.className = "image-picker-thumb";
+      thumb.src = img.src;
+      thumb.title = img.src.split("/").pop() || "";
+      thumb.onerror = () => { thumb.style.display = "none"; };
+      thumb.addEventListener("click", async () => {
+        if (!confirm("この画像を新しいブロックとして挿入しますか？")) return;
+        try {
+          await insertImageBlock(projectId, blockIndex, img.src);
+          window.showToast("画像を挿入しました", "success");
+          overlay.remove();
+        } catch (err) { window.showToast(`エラー: ${err.message}`, "error"); }
+      });
+      imageGrid.appendChild(thumb);
+    });
+  }).catch(() => {
+    imageGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);font-size:12px">読み込みエラー</div>';
+  });
+
+  modal.appendChild(body);
+  overlay.appendChild(modal);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+  // Clipboard paste support (Ctrl+V)
+  function handlePaste(e) {
+    const items = Array.from(e.clipboardData?.items || []);
+    const imageItems = items.filter(item => item.type.startsWith("image/"));
+    if (imageItems.length > 0) {
+      e.preventDefault();
+      const files = imageItems.map(item => item.getAsFile()).filter(Boolean);
+      if (files.length > 0) handleFiles(files);
+    }
+  }
+  document.addEventListener("paste", handlePaste);
+  // Clean up paste listener when modal closes
+  const origRemove = overlay.remove.bind(overlay);
+  overlay.remove = function() { document.removeEventListener("paste", handlePaste); origRemove(); };
+
+  document.body.appendChild(overlay);
+}
+
+async function insertImageBlock(projectId, afterBlockIndex, imageUrl) {
+  const imgHtml = `<picture><source type="image/webp" data-srcset="${imageUrl}"><img class="lazyload" data-src="${imageUrl}" alt="" style="width:100%"></picture>`;
+  await window.API.insertBlock(projectId, {
+    afterIndex: afterBlockIndex,
+    type: "image",
+    html: imgHtml,
+  });
+  window.loadPreview?.(true);
+  window.pushHistory?.("insert_block", `画像ブロック挿入`);
+}
+
+window.openImagePickerModal = openImagePickerModal;
 window.openEditPanel = openEditPanel;
 
 document.getElementById("edit-panel-close")?.addEventListener("click", () => {
@@ -638,16 +1394,16 @@ function buildAiTextPanel(projectId, blockIndex, block) {
   if (!providers.includes("pixai")) { providerPixAI.style.opacity = "0.5"; providerPixAI.title = "PixAI APIキー未設定"; }
   providerBtns.pixai = providerPixAI;
 
-  // Gemini
+  // Nano Banana Pro
   const providerGemini = document.createElement("button");
   providerGemini.className = "panel-btn";
-  providerGemini.textContent = "Gemini";
-  providerGemini.dataset.provider = "gemini";
-  if (!providers.includes("gemini")) { providerGemini.style.opacity = "0.5"; providerGemini.title = "Gemini APIキー未設定"; }
-  providerBtns.gemini = providerGemini;
+  providerGemini.textContent = "Nano Banana";
+  providerGemini.dataset.provider = "nanobanana";
+  if (!providers.includes("nanobanana")) { providerGemini.style.opacity = "0.5"; providerGemini.title = "Nano Banana APIキー未設定"; }
+  providerBtns.nanobanana = providerGemini;
 
   // デフォルトプロバイダー: PixAI優先
-  let selectedProvider = window._selectedProvider || (providers.includes("pixai") ? "pixai" : providers.includes("gemini") ? "gemini" : "gemini");
+  let selectedProvider = window._selectedProvider || (providers.includes("pixai") ? "pixai" : providers.includes("nanobanana") ? "nanobanana" : "nanobanana");
   window._selectedProvider = selectedProvider;
 
   function updateProviderBtns() {
@@ -661,8 +1417,8 @@ function buildAiTextPanel(projectId, blockIndex, block) {
     selectedProvider = "pixai"; window._selectedProvider = "pixai"; updateProviderBtns();
   });
   providerGemini.addEventListener("click", () => {
-    if (!providers.includes("gemini")) { window.showToast("Gemini APIキーを設定してください", "info"); return; }
-    selectedProvider = "gemini"; window._selectedProvider = "gemini"; updateProviderBtns();
+    if (!providers.includes("nanobanana")) { window.showToast("Nano Banana APIキーを設定してください", "info"); return; }
+    selectedProvider = "nanobanana"; window._selectedProvider = "nanobanana"; updateProviderBtns();
   });
 
   providerRow.appendChild(providerPixAI);
@@ -1203,16 +1959,16 @@ function buildImagePanel(projectId, blockIndex, block) {
 
   const imgProviderGemini = document.createElement("button");
   imgProviderGemini.className = "panel-btn";
-  imgProviderGemini.textContent = "Gemini";
-  if (!imgProviders.includes("gemini")) { imgProviderGemini.style.opacity = "0.5"; imgProviderGemini.title = "Gemini APIキー未設定"; }
+  imgProviderGemini.textContent = "Nano Banana";
+  if (!imgProviders.includes("nanobanana")) { imgProviderGemini.style.opacity = "0.5"; imgProviderGemini.title = "Nano Banana APIキー未設定"; }
 
   // デフォルト: PixAI優先
-  let imgSelectedProvider = window._selectedProvider || (imgProviders.includes("pixai") ? "pixai" : "gemini");
+  let imgSelectedProvider = window._selectedProvider || (imgProviders.includes("pixai") ? "pixai" : "nanobanana");
   function updateImgProviderBtns() {
     imgProviderPixai.className = imgSelectedProvider === "pixai" ? "panel-btn primary" : "panel-btn";
     imgProviderPixai.style.opacity = imgSelectedProvider === "pixai" || imgProviders.includes("pixai") ? "1" : "0.5";
-    imgProviderGemini.className = imgSelectedProvider === "gemini" ? "panel-btn primary" : "panel-btn";
-    imgProviderGemini.style.opacity = imgSelectedProvider === "gemini" || imgProviders.includes("gemini") ? "1" : "0.5";
+    imgProviderGemini.className = imgSelectedProvider === "nanobanana" ? "panel-btn primary" : "panel-btn";
+    imgProviderGemini.style.opacity = imgSelectedProvider === "nanobanana" || imgProviders.includes("nanobanana") ? "1" : "0.5";
   }
   updateImgProviderBtns();
 
@@ -1221,8 +1977,8 @@ function buildImagePanel(projectId, blockIndex, block) {
     imgSelectedProvider = "pixai"; window._selectedProvider = "pixai"; updateImgProviderBtns();
   });
   imgProviderGemini.addEventListener("click", () => {
-    if (!imgProviders.includes("gemini")) { window.showToast("Gemini APIキーを設定してください", "info"); return; }
-    imgSelectedProvider = "gemini"; window._selectedProvider = "gemini"; updateImgProviderBtns();
+    if (!imgProviders.includes("nanobanana")) { window.showToast("Nano Banana APIキーを設定してください", "info"); return; }
+    imgSelectedProvider = "nanobanana"; window._selectedProvider = "nanobanana"; updateImgProviderBtns();
   });
 
   imgProviderRow.appendChild(imgProviderPixai);
@@ -1441,7 +2197,7 @@ function buildImagePanel(projectId, blockIndex, block) {
     try {
       const customPrompt = promptInput.value.trim();
       let result;
-      const aiProvider = window._selectedProvider || "gemini";
+      const aiProvider = window._selectedProvider || "pixai";
       if (imgPanelRefPath) {
         result = await window.API.aiFromReference(projectId, {
           localPath: imgPanelRefPath,
@@ -1475,9 +2231,19 @@ function buildImagePanel(projectId, blockIndex, block) {
             applyBtn.innerHTML = '<span class="spinner"></span>';
             try {
               await window.API.applyImage(projectId, blockIndex, { imageUrl: imgUrl });
-              window.showToast("画像を適用しました", "success");
               window.loadPreview(true);
               window.pushHistory?.("image_apply", `ブロック ${blockIndex} AI画像適用`);
+              // PixAI の場合のみ確認ダイアログを表示
+              const provider = window._selectedProvider || "pixai";
+              if (provider === "pixai") {
+                showPixAIConfirmation(resultGrid, projectId, blockIndex, imgUrl, {
+                  nuance: nuanceGroup?.querySelector("input:checked")?.value || "same",
+                  style: styleGroup?.querySelector("input:checked")?.value || "photo",
+                  promptInput,
+                });
+                return;
+              }
+              window.showToast("画像を適用しました", "success");
             } catch (err) {
               window.showToast(`エラー: ${err.message}`, "error");
             } finally {
@@ -1611,7 +2377,7 @@ function buildImagePanel(projectId, blockIndex, block) {
     descBtn.disabled = true;
     descBtn.innerHTML = '<span class="spinner"></span> 分析中...';
     try {
-      const result = await window.API.describeImage(projectId, blockIndex, { provider: window._selectedProvider || "gemini" });
+      const result = await window.API.describeImage(projectId, blockIndex, { provider: window._selectedProvider || "pixai" });
       descArea.value = result.description;
     } catch (err) {
       window.showToast(`エラー: ${err.message}`, "error");
@@ -1654,7 +2420,7 @@ function buildImagePanel(projectId, blockIndex, block) {
       const result = await window.API.generateImage(projectId, blockIndex, {
         prompt: prompt || undefined,
         description: desc || undefined,
-        provider: window._selectedProvider || "gemini",
+        provider: window._selectedProvider || "pixai",
       });
       if (result.ok) {
         window.showToast("画像を生成しました", "success");
@@ -1694,6 +2460,11 @@ function buildImagePanel(projectId, blockIndex, block) {
   advancedContent.appendChild(promptSection);
 
   frag.appendChild(advancedContent);
+
+  // 改善4: 類似画像検索
+  const searchSection = createSection("類似画像検索");
+  searchSection.appendChild(buildImageSearchSection(projectId, blockIndex));
+  frag.appendChild(searchSection);
 
   // HTMLソース
   const htmlSection = createSection("HTMLソース");
@@ -1853,7 +2624,7 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
       const result = await window.API.oneClickImage(projectId, blockIndex, {
         nuance: aiNuance, style: aiStyle,
         designRequirements: window._designRequirements || "",
-        genMode: "similar", provider: window._selectedProvider || "gemini",
+        genMode: "similar", provider: window._selectedProvider || "pixai",
       });
       if (result.ok && result.images) {
         window.showToast(`${result.images.length}パターン生成しました`, "success");
@@ -1872,9 +2643,17 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
             applyBtn.innerHTML = '<span class="spinner"></span>';
             try {
               await window.API.applyImage(projectId, blockIndex, { imageUrl: imgUrl });
-              window.showToast("画像を適用しました", "success");
               window.loadPreview(true);
               window.pushHistory?.("image_apply", `ブロック ${blockIndex} AI画像適用`);
+              // PixAI の場合のみ確認ダイアログを表示
+              const provider = window._selectedProvider || "pixai";
+              if (provider === "pixai") {
+                showPixAIConfirmation(aiResultGrid, projectId, blockIndex, imgUrl, {
+                  nuance: aiNuance, style: aiStyle,
+                });
+                return;
+              }
+              window.showToast("画像を適用しました", "success");
             } catch (err) { window.showToast(`エラー: ${err.message}`, "error"); }
             finally { applyBtn.disabled = false; applyBtn.textContent = "これを使う"; }
           });
@@ -1959,6 +2738,9 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
     aiPanel.style.display = "none";
   });
 
+  // 改善4: 類似画像検索セクション
+  imgSec.body.appendChild(buildImageSearchSection(projectId, blockIndex));
+
   frag.appendChild(imgSec.wrapper);
 
   // ============================================================
@@ -2005,50 +2787,79 @@ function buildImageQuickPanel(projectId, blockIndex, block) {
   }
   textSec.body.appendChild(textContainer);
 
-  // 画像内テキスト（OCR）
+  // 画像内テキスト（OCR via AI Vision）
   const ocrArea = document.createElement("div");
   ocrArea.className = "bp-ocr-area";
   const ocrLabel = document.createElement("div");
   ocrLabel.style.cssText = "font-size:11px;color:var(--text-muted);margin:10px 0 4px;font-weight:600";
-  ocrLabel.textContent = "── 画像内テキスト（OCR）──";
+  ocrLabel.textContent = "── 画像内テキスト（AI Vision）──";
   ocrArea.appendChild(ocrLabel);
   const ocrResults = document.createElement("div");
   ocrResults.style.cssText = "font-size:12px;color:var(--text-secondary);padding:6px 8px;background:var(--bg-tertiary);border-radius:6px;min-height:30px";
   ocrResults.textContent = "「OCR検出」ボタンで画像内テキストを抽出";
   ocrArea.appendChild(ocrResults);
+  const ocrBtnRow = document.createElement("div");
+  ocrBtnRow.style.cssText = "display:flex;gap:6px;margin-top:6px";
   const ocrBtn = document.createElement("button");
   ocrBtn.className = "panel-btn";
-  ocrBtn.style.cssText = "margin-top:6px;font-size:11px";
+  ocrBtn.style.cssText = "font-size:11px;flex:1";
   ocrBtn.textContent = "OCR検出";
-  ocrBtn.addEventListener("click", async () => {
+  const ocrRetryBtn = document.createElement("button");
+  ocrRetryBtn.className = "panel-btn";
+  ocrRetryBtn.style.cssText = "font-size:11px;display:none";
+  ocrRetryBtn.textContent = "再検出";
+
+  async function runOcr() {
     ocrBtn.disabled = true;
-    ocrBtn.innerHTML = '<span class="spinner"></span> 検出中...';
+    ocrRetryBtn.style.display = "none";
+    ocrBtn.innerHTML = '<span class="spinner"></span> AI Vision で検出中...';
     try {
-      const resp = await fetch(`/api/projects/${projectId}/ocr`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blockIndex }),
-      });
-      const data = await resp.json();
-      if (data.texts && data.texts.length > 0) {
-        ocrResults.innerHTML = "";
-        data.texts.forEach(t => {
+      // Use extract-elements API (returns text elements via OCR endpoint)
+      const resp = await window.API.extractElements(projectId, blockIndex);
+      const textElements = (resp.elements || []).filter(el => el.type === "text");
+      ocrResults.innerHTML = "";
+      if (textElements.length > 0) {
+        const badge = document.createElement("div");
+        badge.style.cssText = "font-size:11px;color:#22c55e;font-weight:600;margin-bottom:6px";
+        badge.textContent = `✅ ${textElements.length}個のテキストが検出されました`;
+        ocrResults.appendChild(badge);
+        textElements.forEach(el => {
           const line = document.createElement("div");
-          line.style.cssText = "padding:2px 0;border-bottom:1px solid var(--border)";
-          line.textContent = t;
+          line.style.cssText = "padding:4px 0;border-bottom:1px solid var(--border);font-size:12px;display:flex;align-items:flex-start;gap:6px";
+          const icon = document.createElement("span");
+          icon.textContent = "✏️";
+          icon.style.cssText = "flex-shrink:0;font-size:11px";
+          const text = document.createElement("span");
+          text.textContent = el.content;
+          text.style.cssText = "flex:1";
+          line.appendChild(icon);
+          line.appendChild(text);
           ocrResults.appendChild(line);
         });
+        ocrRetryBtn.style.display = "";
       } else {
         ocrResults.textContent = "テキストが検出されませんでした";
+        ocrRetryBtn.style.display = "";
       }
     } catch (err) {
       ocrResults.textContent = "OCRエラー: " + err.message;
+      ocrRetryBtn.style.display = "";
     } finally {
       ocrBtn.disabled = false;
       ocrBtn.textContent = "OCR検出";
     }
+  }
+
+  ocrBtn.addEventListener("click", runOcr);
+  ocrRetryBtn.addEventListener("click", () => {
+    // Clear cache and retry
+    const cacheKey = `extract_${projectId}_${blockIndex}`;
+    localStorage.removeItem(cacheKey);
+    runOcr();
   });
-  ocrArea.appendChild(ocrBtn);
+  ocrBtnRow.appendChild(ocrBtn);
+  ocrBtnRow.appendChild(ocrRetryBtn);
+  ocrArea.appendChild(ocrBtnRow);
   textSec.body.appendChild(ocrArea);
 
   frag.appendChild(textSec.wrapper);
@@ -3305,7 +4116,7 @@ function build3PanePanel(projectId, blockIndex, block) {
       aiResultGrid.innerHTML = "";
       try {
         let result;
-        const prov3 = window._selectedProvider || "gemini";
+        const prov3 = window._selectedProvider || "pixai";
         if (refLocalPath) {
           result = await window.API.aiFromReference(projectId, {
             localPath: refLocalPath,
@@ -3542,6 +4353,770 @@ function extractCssFromHtml(html) {
     css += `/* inline */ ${tag}${cls} { ${el.getAttribute("style")} }\n`;
   });
   return css.trim();
+}
+
+// ── コミックエディター ─────────────────────────────────────
+
+/**
+ * PixAI生成後の確認UI
+ */
+function showPixAIConfirmation(container, projectId, blockIndex, imgUrl, opts) {
+  // 既存の確認UIがあれば削除
+  const existing = container.parentElement?.querySelector(".pixai-confirm-ui");
+  if (existing) existing.remove();
+
+  const wrap = document.createElement("div");
+  wrap.className = "pixai-confirm-ui";
+  wrap.innerHTML = '<div class="pixai-confirm-title">この画像でよろしいですか？</div>';
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex;gap:8px;margin-top:8px";
+
+  // はい → コミック編集へ
+  const yesBtn = document.createElement("button");
+  yesBtn.className = "panel-btn primary";
+  yesBtn.textContent = "はい → コミック編集へ";
+  yesBtn.addEventListener("click", () => {
+    wrap.remove();
+    openComicEditor(projectId, blockIndex, imgUrl);
+  });
+
+  // いいえ → 再生成
+  const noBtn = document.createElement("button");
+  noBtn.className = "panel-btn";
+  noBtn.textContent = "いいえ → 再生成";
+  noBtn.addEventListener("click", () => {
+    wrap.innerHTML = "";
+    const retryLabel = document.createElement("div");
+    retryLabel.style.cssText = "font-size:12px;color:var(--text-secondary);margin-bottom:6px";
+    retryLabel.textContent = "プロンプトを修正して再生成:";
+    wrap.appendChild(retryLabel);
+
+    const retryInput = document.createElement("textarea");
+    retryInput.className = "panel-textarea";
+    retryInput.rows = 2;
+    retryInput.placeholder = "修正指示を入力...";
+    retryInput.value = opts.promptInput?.value || "";
+    wrap.appendChild(retryInput);
+
+    const retryBtn = document.createElement("button");
+    retryBtn.className = "panel-btn primary";
+    retryBtn.style.cssText = "margin-top:6px;width:100%";
+    retryBtn.textContent = "再生成する";
+    retryBtn.addEventListener("click", async () => {
+      retryBtn.disabled = true;
+      retryBtn.innerHTML = '<span class="spinner"></span> 再生成中...';
+      try {
+        if (opts.promptInput) opts.promptInput.value = retryInput.value;
+        // 再生成トリガー: opts.genFunction があればそれを呼ぶ
+        if (typeof opts.genFunction === "function") {
+          wrap.remove();
+          await opts.genFunction();
+        } else {
+          // フォールバック: oneClickImage API直接呼び出し
+          const result = await window.API.oneClickImage(projectId, blockIndex, {
+            nuance: opts.nuance || "same",
+            style: opts.style || "photo",
+            designRequirements: window._designRequirements || "",
+            customPrompt: retryInput.value,
+            genMode: "similar",
+            provider: "pixai",
+          });
+          if (result.ok && result.images && result.images.length > 0) {
+            window.showToast(`${result.images.length}パターン再生成しました`, "success");
+            wrap.remove();
+            // 親のresultGridに再表示（container = resultGrid）
+            container.innerHTML = "";
+            result.images.forEach((newUrl, i) => {
+              const card = document.createElement("div");
+              card.className = "oneclick-variant-card";
+              const vImg = document.createElement("img");
+              vImg.src = newUrl; vImg.alt = `パターン ${i + 1}`;
+              card.appendChild(vImg);
+              const apBtn = document.createElement("button");
+              apBtn.className = "oneclick-apply-btn";
+              apBtn.textContent = "これを使う";
+              apBtn.addEventListener("click", async () => {
+                apBtn.disabled = true;
+                apBtn.innerHTML = '<span class="spinner"></span>';
+                try {
+                  await window.API.applyImage(projectId, blockIndex, { imageUrl: newUrl });
+                  window.loadPreview(true);
+                  showPixAIConfirmation(container, projectId, blockIndex, newUrl, opts);
+                } catch (err) {
+                  window.showToast(`エラー: ${err.message}`, "error");
+                } finally {
+                  apBtn.disabled = false; apBtn.textContent = "これを使う";
+                }
+              });
+              card.appendChild(apBtn);
+              container.appendChild(card);
+            });
+          }
+        }
+      } catch (err) {
+        window.showToast(`再生成エラー: ${err.message}`, "error");
+      } finally {
+        retryBtn.disabled = false;
+        retryBtn.textContent = "再生成する";
+      }
+    });
+    wrap.appendChild(retryBtn);
+  });
+
+  btnRow.appendChild(yesBtn);
+  btnRow.appendChild(noBtn);
+  wrap.appendChild(btnRow);
+
+  // resultGridの親（oneClickSection）に追加
+  const parent = container.parentElement || container;
+  parent.appendChild(wrap);
+}
+
+/**
+ * ステップインジケーター生成
+ */
+function buildStepIndicator(totalSteps, labels) {
+  const el = document.createElement("div");
+  el.className = "comic-step-bar";
+  const steps = [];
+  labels.forEach((label, i) => {
+    const step = document.createElement("div");
+    step.className = "comic-step" + (i === 0 ? " active" : "");
+    step.innerHTML = `<span class="comic-step-num">${i + 1}</span><span class="comic-step-label">${label}</span>`;
+    el.appendChild(step);
+    steps.push(step);
+    if (i < labels.length - 1) {
+      const line = document.createElement("div");
+      line.className = "comic-step-line";
+      el.appendChild(line);
+    }
+  });
+  return {
+    el,
+    setStep(idx) {
+      steps.forEach((s, i) => {
+        s.classList.toggle("active", i === idx);
+        s.classList.toggle("done", i < idx);
+      });
+    }
+  };
+}
+
+/**
+ * コミックエディター メインウィザード
+ */
+function openComicEditor(projectId, blockIndex, imageUrl) {
+  const body = document.getElementById("edit-panel-body");
+  if (!body) return;
+  body.innerHTML = "";
+
+  // ヘッダー
+  const header = document.createElement("div");
+  header.className = "comic-editor-header";
+  header.innerHTML = '<span class="comic-editor-icon">📖</span> コミックエディター';
+  body.appendChild(header);
+
+  // ステップインジケーター
+  const stepBar = buildStepIndicator(4, ["コマ配置", "吹き出し", "文字", "動き"]);
+  body.appendChild(stepBar.el);
+
+  // コンテンツエリア
+  const content = document.createElement("div");
+  content.className = "comic-editor-content";
+  body.appendChild(content);
+
+  // 状態管理
+  const state = {
+    currentStep: 0,
+    layout: null,
+    bubbles: [],    // [{cellIndex, type}]
+    texts: [],      // [{bubbleIndex, text, fontSize, bold}]
+    animations: [], // [{target, targetType, anim, speed}]
+    imageUrl,
+  };
+
+  renderComicStep(content, state, stepBar, projectId, blockIndex);
+}
+
+/**
+ * ステップ切り替えルーター
+ */
+function renderComicStep(container, state, stepBar, projectId, blockIndex) {
+  container.innerHTML = "";
+  stepBar.setStep(state.currentStep);
+
+  const onNext = () => {
+    state.currentStep++;
+    renderComicStep(container, state, stepBar, projectId, blockIndex);
+  };
+  const onBack = () => {
+    state.currentStep--;
+    renderComicStep(container, state, stepBar, projectId, blockIndex);
+  };
+
+  switch (state.currentStep) {
+    case 0:
+      renderPanelLayoutStep(container, state, onNext, projectId, blockIndex);
+      break;
+    case 1:
+      renderBubbleStep(container, state, onNext, onBack, projectId, blockIndex);
+      break;
+    case 2:
+      renderTextStep(container, state, onNext, onBack, projectId, blockIndex);
+      break;
+    case 3:
+      renderAnimationStep(container, state, onBack, projectId, blockIndex);
+      break;
+  }
+}
+
+/**
+ * Step 1: コマ配置 — 20種テンプレート選択
+ */
+function renderPanelLayoutStep(container, state, onNext, projectId, blockIndex) {
+  const desc = document.createElement("div");
+  desc.className = "comic-step-desc";
+  desc.textContent = "コマ割りレイアウトを選択してください";
+  container.appendChild(desc);
+
+  const grid = document.createElement("div");
+  grid.className = "comic-layout-grid";
+
+  let selectedIdx = state.layout ? COMIC_LAYOUTS.findIndex(l => l.id === state.layout.id) : -1;
+
+  COMIC_LAYOUTS.forEach((layout, i) => {
+    const card = document.createElement("div");
+    card.className = "comic-layout-card" + (i === selectedIdx ? " selected" : "");
+    card.title = layout.name;
+
+    // ミニプレビュー
+    const preview = document.createElement("div");
+    preview.className = "comic-layout-preview";
+    if (layout.diagonal) {
+      preview.innerHTML = '<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(135deg,var(--accent-light) 50%,var(--bg-tertiary) 50%)"></div></div>';
+      preview.style.position = "relative";
+    } else {
+      preview.style.display = "grid";
+      preview.style.gridTemplate = layout.grid;
+      if (layout.areas) preview.style.gridTemplateAreas = layout.areas;
+      preview.style.gap = "2px";
+      const areaLetters = "abcdefghij";
+      for (let c = 0; c < layout.cells; c++) {
+        const cell = document.createElement("div");
+        cell.className = "comic-layout-cell";
+        if (layout.areas) cell.style.gridArea = areaLetters[c];
+        cell.textContent = c + 1;
+        preview.appendChild(cell);
+      }
+    }
+    card.appendChild(preview);
+
+    const name = document.createElement("div");
+    name.className = "comic-layout-name";
+    name.textContent = layout.name;
+    card.appendChild(name);
+
+    card.addEventListener("click", () => {
+      grid.querySelectorAll(".comic-layout-card").forEach(c => c.classList.remove("selected"));
+      card.classList.add("selected");
+      selectedIdx = i;
+      state.layout = layout;
+
+      // iframe にオーバーレイ送信
+      const iframe = document.getElementById("preview-iframe");
+      if (iframe?.contentWindow) {
+        iframe.contentWindow.postMessage({
+          type: "comicOverlay",
+          blockIndex,
+          layout,
+          imageUrl: state.imageUrl,
+        }, "*");
+      }
+    });
+    grid.appendChild(card);
+  });
+
+  container.appendChild(grid);
+
+  // ナビゲーション
+  const nav = document.createElement("div");
+  nav.className = "comic-nav-row";
+  const nextBtn = document.createElement("button");
+  nextBtn.className = "panel-btn primary";
+  nextBtn.textContent = "次へ → 吹き出し配置";
+  nextBtn.addEventListener("click", () => {
+    if (!state.layout) { window.showToast("レイアウトを選択してください", "info"); return; }
+    // 吹き出し配列を初期化
+    if (state.bubbles.length === 0) {
+      for (let c = 0; c < state.layout.cells; c++) {
+        state.bubbles.push({ cellIndex: c, type: "none" });
+      }
+    }
+    onNext();
+  });
+  nav.appendChild(nextBtn);
+  container.appendChild(nav);
+}
+
+/**
+ * Step 2: 吹き出し配置
+ */
+function renderBubbleStep(container, state, onNext, onBack, projectId, blockIndex) {
+  const desc = document.createElement("div");
+  desc.className = "comic-step-desc";
+  desc.textContent = "各コマに吹き出しタイプを設定";
+  container.appendChild(desc);
+
+  const list = document.createElement("div");
+  list.className = "comic-bubble-list";
+
+  // bubbles配列をlayoutに合わせてリサイズ
+  while (state.bubbles.length < state.layout.cells) {
+    state.bubbles.push({ cellIndex: state.bubbles.length, type: "none" });
+  }
+
+  state.bubbles.forEach((bubble, idx) => {
+    const card = document.createElement("div");
+    card.className = "comic-bubble-card";
+
+    const label = document.createElement("div");
+    label.className = "comic-bubble-label";
+    label.textContent = `コマ ${idx + 1}`;
+    card.appendChild(label);
+
+    const chips = document.createElement("div");
+    chips.className = "comic-bubble-chips";
+    BUBBLE_TYPES.forEach(bt => {
+      const chip = document.createElement("button");
+      chip.className = "anim-chip" + (bubble.type === bt.id ? " active" : "");
+      chip.textContent = bt.name;
+      chip.addEventListener("click", () => {
+        chips.querySelectorAll(".anim-chip").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        bubble.type = bt.id;
+        // iframeに吹き出しプレビュー送信
+        const iframe = document.getElementById("preview-iframe");
+        if (iframe?.contentWindow) {
+          iframe.contentWindow.postMessage({
+            type: "comicBubble",
+            blockIndex,
+            cellIndex: idx,
+            bubbleType: bt.id,
+            layout: state.layout,
+          }, "*");
+        }
+      });
+      chips.appendChild(chip);
+    });
+    card.appendChild(chips);
+    list.appendChild(card);
+  });
+
+  container.appendChild(list);
+
+  // ナビゲーション
+  const nav = document.createElement("div");
+  nav.className = "comic-nav-row";
+  const backBtn = document.createElement("button");
+  backBtn.className = "panel-btn";
+  backBtn.textContent = "← 戻る";
+  backBtn.addEventListener("click", onBack);
+  const nextBtn = document.createElement("button");
+  nextBtn.className = "panel-btn primary";
+  nextBtn.textContent = "次へ → 文字入力";
+  nextBtn.addEventListener("click", () => {
+    // テキスト配列を吹き出しがある分だけ初期化
+    const bubblesWithType = state.bubbles.filter(b => b.type !== "none");
+    if (state.texts.length === 0) {
+      bubblesWithType.forEach((b, i) => {
+        state.texts.push({ bubbleIndex: state.bubbles.indexOf(b), text: "", fontSize: 16, bold: false });
+      });
+    }
+    onNext();
+  });
+  nav.appendChild(backBtn);
+  nav.appendChild(nextBtn);
+  container.appendChild(nav);
+}
+
+/**
+ * Step 3: 文字入力
+ */
+function renderTextStep(container, state, onNext, onBack, projectId, blockIndex) {
+  const desc = document.createElement("div");
+  desc.className = "comic-step-desc";
+  desc.textContent = "吹き出しにテキストを入力";
+  container.appendChild(desc);
+
+  // 吹き出しが設定されたコマのみ
+  const bubblesWithType = state.bubbles.filter(b => b.type !== "none");
+
+  if (bubblesWithType.length === 0) {
+    const noMsg = document.createElement("div");
+    noMsg.style.cssText = "padding:20px;text-align:center;color:var(--text-muted);font-size:13px";
+    noMsg.textContent = "吹き出しが設定されていません。スキップできます。";
+    container.appendChild(noMsg);
+  } else {
+    // texts配列を同期
+    while (state.texts.length < bubblesWithType.length) {
+      state.texts.push({ bubbleIndex: state.bubbles.indexOf(bubblesWithType[state.texts.length]), text: "", fontSize: 16, bold: false });
+    }
+
+    const list = document.createElement("div");
+    list.className = "comic-text-list";
+
+    bubblesWithType.forEach((bubble, tIdx) => {
+      const card = document.createElement("div");
+      card.className = "comic-text-card";
+
+      const header = document.createElement("div");
+      header.className = "comic-text-header";
+      const btInfo = BUBBLE_TYPES.find(bt => bt.id === bubble.type) || BUBBLE_TYPES[0];
+      header.textContent = `コマ ${bubble.cellIndex + 1} — ${btInfo.name}`;
+      card.appendChild(header);
+
+      const textData = state.texts[tIdx] || { text: "", fontSize: 16, bold: false };
+
+      const textarea = document.createElement("textarea");
+      textarea.className = "panel-textarea";
+      textarea.rows = 2;
+      textarea.placeholder = "セリフを入力...";
+      textarea.value = textData.text;
+      textarea.addEventListener("input", () => {
+        textData.text = textarea.value;
+        // iframeにテキストプレビュー送信
+        const iframe = document.getElementById("preview-iframe");
+        if (iframe?.contentWindow) {
+          iframe.contentWindow.postMessage({
+            type: "comicText",
+            blockIndex,
+            cellIndex: bubble.cellIndex,
+            text: textarea.value,
+            fontSize: textData.fontSize,
+            bold: textData.bold,
+            bubbleType: bubble.type,
+            layout: state.layout,
+          }, "*");
+        }
+      });
+      card.appendChild(textarea);
+
+      // フォントサイズ + 太字
+      const optRow = document.createElement("div");
+      optRow.style.cssText = "display:flex;gap:6px;align-items:center;margin-top:6px";
+
+      const sizeLabel = document.createElement("span");
+      sizeLabel.style.cssText = "font-size:11px;color:var(--text-muted)";
+      sizeLabel.textContent = "文字サイズ:";
+      optRow.appendChild(sizeLabel);
+
+      const sizeChips = document.createElement("div");
+      sizeChips.style.cssText = "display:flex;gap:3px";
+      [{ v: 12, l: "小" }, { v: 16, l: "中" }, { v: 20, l: "大" }, { v: 24, l: "特大" }].forEach(s => {
+        const chip = document.createElement("button");
+        chip.className = "anim-chip" + (textData.fontSize === s.v ? " active" : "");
+        chip.textContent = s.l;
+        chip.style.cssText += ";font-size:10px;padding:2px 6px";
+        chip.addEventListener("click", () => {
+          sizeChips.querySelectorAll(".anim-chip").forEach(c => c.classList.remove("active"));
+          chip.classList.add("active");
+          textData.fontSize = s.v;
+        });
+        sizeChips.appendChild(chip);
+      });
+      optRow.appendChild(sizeChips);
+
+      const boldLabel = document.createElement("label");
+      boldLabel.style.cssText = "font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px;margin-left:8px;cursor:pointer";
+      const boldCb = document.createElement("input");
+      boldCb.type = "checkbox";
+      boldCb.checked = textData.bold;
+      boldCb.addEventListener("change", () => { textData.bold = boldCb.checked; });
+      boldLabel.appendChild(boldCb);
+      boldLabel.appendChild(document.createTextNode("太字"));
+      optRow.appendChild(boldLabel);
+
+      card.appendChild(optRow);
+      list.appendChild(card);
+    });
+    container.appendChild(list);
+  }
+
+  // ナビゲーション
+  const nav = document.createElement("div");
+  nav.className = "comic-nav-row";
+  const backBtn = document.createElement("button");
+  backBtn.className = "panel-btn";
+  backBtn.textContent = "← 戻る";
+  backBtn.addEventListener("click", onBack);
+  const nextBtn = document.createElement("button");
+  nextBtn.className = "panel-btn primary";
+  nextBtn.textContent = "次へ → 動き追加";
+  nextBtn.addEventListener("click", onNext);
+  nav.appendChild(backBtn);
+  nav.appendChild(nextBtn);
+  container.appendChild(nav);
+}
+
+/**
+ * Step 4: 動き追加
+ */
+function renderAnimationStep(container, state, onBack, projectId, blockIndex) {
+  const desc = document.createElement("div");
+  desc.className = "comic-step-desc";
+  desc.textContent = "各要素にアニメーションを追加（任意）";
+  container.appendChild(desc);
+
+  const animations = [
+    { value: "", label: "なし" },
+    { value: "fadeIn", label: "フェードイン" },
+    { value: "slideInUp", label: "下から" },
+    { value: "slideInLeft", label: "左から" },
+    { value: "slideInRight", label: "右から" },
+    { value: "bounceIn", label: "バウンス" },
+    { value: "zoomIn", label: "ズーム" },
+    { value: "pulse", label: "パルス" },
+    { value: "shake", label: "シェイク" },
+  ];
+  const speeds = [
+    { value: "0.3s", label: "速い" },
+    { value: "0.6s", label: "普通" },
+    { value: "1s", label: "遅い" },
+  ];
+
+  // 要素リスト生成
+  const elements = [];
+  // コマ枠
+  for (let c = 0; c < (state.layout?.cells || 0); c++) {
+    elements.push({ target: `cell-${c}`, targetType: "cell", label: `コマ ${c + 1}` });
+  }
+  // 吹き出し
+  state.bubbles.forEach((b, i) => {
+    if (b.type !== "none") {
+      elements.push({ target: `bubble-${i}`, targetType: "bubble", label: `吹き出し (コマ${b.cellIndex + 1})` });
+    }
+  });
+
+  // animations配列を初期化
+  if (state.animations.length === 0) {
+    elements.forEach(el => {
+      state.animations.push({ target: el.target, targetType: el.targetType, anim: "", speed: "0.6s" });
+    });
+  }
+
+  const list = document.createElement("div");
+  list.className = "comic-anim-list";
+
+  elements.forEach((el, eIdx) => {
+    const card = document.createElement("div");
+    card.className = "comic-anim-card";
+
+    const header = document.createElement("div");
+    header.className = "comic-anim-header";
+    header.textContent = el.label;
+    card.appendChild(header);
+
+    const animData = state.animations[eIdx] || { anim: "", speed: "0.6s" };
+
+    // アニメーション選択チップ
+    const animChips = document.createElement("div");
+    animChips.style.cssText = "display:flex;flex-wrap:wrap;gap:3px;margin:6px 0";
+    animations.forEach(a => {
+      const chip = document.createElement("button");
+      chip.className = "anim-chip" + (animData.anim === a.value ? " active" : "");
+      chip.textContent = a.label;
+      chip.style.cssText += ";font-size:10px;padding:2px 7px";
+      chip.addEventListener("click", () => {
+        animChips.querySelectorAll(".anim-chip").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        animData.anim = a.value;
+      });
+      animChips.appendChild(chip);
+    });
+    card.appendChild(animChips);
+
+    // 速度チップ
+    const speedChips = document.createElement("div");
+    speedChips.style.cssText = "display:flex;gap:3px;margin-bottom:6px";
+    speeds.forEach(s => {
+      const chip = document.createElement("button");
+      chip.className = "anim-chip" + (animData.speed === s.value ? " active" : "");
+      chip.textContent = s.label;
+      chip.style.cssText += ";font-size:10px;padding:2px 7px";
+      chip.addEventListener("click", () => {
+        speedChips.querySelectorAll(".anim-chip").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        animData.speed = s.value;
+      });
+      speedChips.appendChild(chip);
+    });
+    card.appendChild(speedChips);
+
+    // プレビューボタン
+    const previewBtn = document.createElement("button");
+    previewBtn.className = "anim-preview-btn";
+    previewBtn.style.cssText += ";width:100%;font-size:10px;padding:4px";
+    previewBtn.textContent = "▶ プレビュー";
+    previewBtn.addEventListener("click", () => {
+      if (!animData.anim) return;
+      const iframe = document.getElementById("preview-iframe");
+      if (iframe?.contentWindow) {
+        iframe.contentWindow.postMessage({
+          type: "comicAnimation",
+          blockIndex,
+          target: el.target,
+          anim: animData.anim,
+          speed: animData.speed,
+          layout: state.layout,
+        }, "*");
+      }
+    });
+    card.appendChild(previewBtn);
+    list.appendChild(card);
+  });
+
+  container.appendChild(list);
+
+  // ナビゲーション
+  const nav = document.createElement("div");
+  nav.className = "comic-nav-row";
+  const backBtn = document.createElement("button");
+  backBtn.className = "panel-btn";
+  backBtn.textContent = "← 戻る";
+  backBtn.addEventListener("click", onBack);
+  const finishBtn = document.createElement("button");
+  finishBtn.className = "panel-btn primary";
+  finishBtn.textContent = "完了 → 保存";
+  finishBtn.addEventListener("click", async () => {
+    finishBtn.disabled = true;
+    finishBtn.innerHTML = '<span class="spinner"></span> 保存中...';
+    try {
+      const html = buildComicBlockHtml(state);
+      await window.API.updateBlock(projectId, blockIndex, { html });
+      window.loadPreview(true);
+      window.pushHistory?.("comic_save", `ブロック ${blockIndex} コミック保存`);
+      window.showToast("コミックを保存しました", "success");
+      // iframeのオーバーレイをクリア
+      const iframe = document.getElementById("preview-iframe");
+      if (iframe?.contentWindow) {
+        iframe.contentWindow.postMessage({ type: "comicOverlay", blockIndex, layout: null }, "*");
+      }
+      // エディターパネルを閉じる
+      document.getElementById("edit-panel")?.classList.remove("open");
+    } catch (err) {
+      window.showToast(`保存エラー: ${err.message}`, "error");
+    } finally {
+      finishBtn.disabled = false;
+      finishBtn.textContent = "完了 → 保存";
+    }
+  });
+  nav.appendChild(backBtn);
+  nav.appendChild(finishBtn);
+  container.appendChild(nav);
+}
+
+/**
+ * コミック状態 → SB互換HTML生成
+ */
+function buildComicBlockHtml(state) {
+  const partId = "sb-part-" + Math.random().toString(36).slice(2, 7) + Date.now().toString(36).slice(-4);
+  const cls = partId.replace("sb-part-", "sb-custom-part-");
+  const layout = state.layout;
+  const gridTpl = layout.grid || "1fr / 1fr";
+  const gridAreas = layout.areas || "";
+
+  // CSS生成
+  let css = `
+#${partId}.${cls} .comic-container { position:relative; width:100%; }
+#${partId}.${cls} .comic-base-img { width:100%; display:block; }
+#${partId}.${cls} .comic-grid {
+  position:absolute; top:0; left:0; right:0; bottom:0;
+  display:grid; grid-template:${gridTpl}; gap:3px;
+  ${gridAreas ? "grid-template-areas:" + gridAreas + ";" : ""}
+}
+#${partId}.${cls} .comic-cell {
+  border:2px solid #000; position:relative; overflow:hidden;
+}
+#${partId}.${cls} .comic-bubble {
+  position:absolute; padding:8px 12px; max-width:70%;
+  bottom:10%; left:50%; transform:translateX(-50%);
+  text-align:center; z-index:2;
+}
+#${partId}.${cls} .bubble-round { background:#fff; border:2px solid #000; border-radius:50%; }
+#${partId}.${cls} .bubble-rect { background:#fff; border:2px solid #000; border-radius:12px; }
+#${partId}.${cls} .bubble-spike { background:#fff; border:2px solid #000; clip-path:polygon(0% 20%,8% 0%,16% 18%,30% 4%,40% 16%,50% 0%,60% 16%,70% 4%,84% 18%,92% 0%,100% 20%,100% 80%,92% 100%,84% 82%,70% 96%,60% 84%,50% 100%,40% 84%,30% 96%,16% 82%,8% 100%,0% 80%); padding:16px; }
+#${partId}.${cls} .bubble-cloud { background:#fff; border:2px solid #000; border-radius:50% 50% 50% 50% / 60% 60% 40% 40%; filter:drop-shadow(0 2px 2px rgba(0,0,0,0.1)); }
+#${partId}.${cls} .bubble-shout { background:#ff0; border:2px solid #000; clip-path:polygon(0% 20%,15% 0%,25% 25%,50% 0%,75% 25%,85% 0%,100% 20%,100% 80%,85% 100%,75% 75%,50% 100%,25% 75%,15% 100%,0% 80%); padding:16px; }
+#${partId}.${cls} .bubble-think { background:#fff; border:2px dashed #666; border-radius:50%; }
+#${partId}.${cls} .bubble-narration { background:rgba(0,0,0,0.7); color:#fff; border:none; border-radius:4px; }
+`;
+
+  // アニメーション用キーフレーム（使用されているもののみ）
+  const usedAnims = new Set(state.animations.filter(a => a.anim).map(a => a.anim));
+  const keyframeMap = {
+    fadeIn: "@keyframes fadeIn{from{opacity:0}to{opacity:1}}",
+    slideInUp: "@keyframes slideInUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}",
+    slideInLeft: "@keyframes slideInLeft{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}",
+    slideInRight: "@keyframes slideInRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}",
+    bounceIn: "@keyframes bounceIn{0%{opacity:0;transform:scale(0.3)}50%{opacity:1;transform:scale(1.05)}70%{transform:scale(0.9)}100%{transform:scale(1)}}",
+    zoomIn: "@keyframes zoomIn{from{opacity:0;transform:scale(0.5)}to{opacity:1;transform:scale(1)}}",
+    pulse: "@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}",
+    shake: "@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}",
+  };
+  usedAnims.forEach(a => {
+    if (keyframeMap[a]) css += "\n" + keyframeMap[a];
+  });
+
+  // アニメーションスタイル
+  state.animations.forEach((animCfg, idx) => {
+    if (animCfg.anim) {
+      const targetClass = animCfg.target.replace("-", "-cell-");
+      css += `\n#${partId}.${cls} .comic-anim-${animCfg.target} { animation:${animCfg.anim} ${animCfg.speed} ease forwards; }`;
+    }
+  });
+
+  // HTML生成
+  const areaLetters = "abcdefghij";
+  let cellsHtml = "";
+  for (let c = 0; c < layout.cells; c++) {
+    const cellAnim = state.animations.find(a => a.target === `cell-${c}`);
+    const animClass = cellAnim?.anim ? ` comic-anim-cell-${c}` : "";
+    const areaStyle = layout.areas ? ` style="grid-area:${areaLetters[c]}"` : "";
+    let bubbleHtml = "";
+    const bubble = state.bubbles[c];
+    if (bubble && bubble.type !== "none") {
+      const textEntry = state.texts.find(t => t.bubbleIndex === c);
+      const text = textEntry?.text || "";
+      const fontSize = textEntry?.fontSize || 16;
+      const bold = textEntry?.bold ? "font-weight:bold;" : "";
+      const bubbleAnim = state.animations.find(a => a.target === `bubble-${c}`);
+      const bubbleAnimClass = bubbleAnim?.anim ? ` comic-anim-bubble-${c}` : "";
+      bubbleHtml = `
+      <div class="comic-bubble bubble-${bubble.type}${bubbleAnimClass}">
+        <span style="font-size:${fontSize}px;${bold}">${text}</span>
+      </div>`;
+    }
+    cellsHtml += `
+    <div class="comic-cell${animClass}"${areaStyle}>${bubbleHtml}
+    </div>`;
+  }
+
+  // 画像URL処理
+  const imgUrl = state.imageUrl || "";
+  const webpUrl = imgUrl.replace(/\.(jpg|jpeg|png|gif)$/i, ".webp");
+
+  const html = `<div><div class="sb-custom"><span><div id="${partId}" class="${cls}">
+<style>${css}
+</style>
+<div class="comic-container">
+  <picture><source type="image/webp" data-srcset="${webpUrl}"><img class="lazyload comic-base-img" data-src="${imgUrl}" alt="comic"></picture>
+  <div class="comic-grid">${cellsHtml}
+  </div>
+</div>
+</div></span></div></div>`;
+
+  return html;
 }
 
 // ── ヘルパー ───────────────────────────────────────────────

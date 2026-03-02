@@ -114,6 +114,28 @@ function renderHistoryList(filter = "all") {
     return;
   }
 
+  // アクションタイプ→CSSクラスのマッピング
+  function getActionTypeClass(action) {
+    if (action.includes("edit") || action === "inline_edit" || action === "ai_rewrite") return "type-edit";
+    if (action.includes("image")) return "type-image";
+    if (action.includes("insert")) return "type-insert";
+    if (action.includes("text")) return "type-text";
+    if (action === "save_point" || action === "manual_save") return "type-save";
+    if (action === "tag_change" || action === "exit_popup_change") return "type-tag";
+    return "";
+  }
+
+  // 相対時間の計算
+  function getRelativeTime(timestamp) {
+    const diff = Date.now() - new Date(timestamp).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "たった今";
+    if (mins < 60) return `${mins}分前`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}時間前`;
+    return `${Math.floor(hours / 24)}日前`;
+  }
+
   // Reverse to show newest first
   [...filtered].reverse().forEach((entry) => {
     const realIdx = editHistory.entries.indexOf(entry);
@@ -121,6 +143,7 @@ function renderHistoryList(filter = "all") {
     item.className = "history-item" + (realIdx === editHistory.currentIndex ? " current" : "");
 
     const time = new Date(entry.timestamp).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+    const relTime = getRelativeTime(entry.timestamp);
     const actionLabel = {
       initial: "初期",
       edit_block: "編集",
@@ -137,11 +160,13 @@ function renderHistoryList(filter = "all") {
       tag_change: "タグ",
       exit_popup_change: "離脱POP",
     }[entry.action] || entry.action;
+    const typeClass = getActionTypeClass(entry.action);
 
     item.innerHTML = `
       <div class="history-item-header">
         <span class="history-time">${time}</span>
-        <span class="history-action-badge">${escapeHtml(actionLabel)}</span>
+        <span class="history-action-badge ${typeClass}">${escapeHtml(actionLabel)}</span>
+        <span class="history-relative-time">${relTime}</span>
       </div>
       <div class="history-item-desc">${escapeHtml(entry.description)}</div>
       ${realIdx !== editHistory.currentIndex ? '<button class="history-restore-btn">この状態に戻す</button>' : '<span class="history-current-label">現在の状態</span>'}
@@ -155,7 +180,8 @@ function renderHistoryList(filter = "all") {
           editHistory.currentIndex = realIdx;
           await loadEditor();
           updateUndoRedoButtons();
-          renderHistoryList(document.getElementById("history-filter")?.value || "all");
+          const activeChip = document.querySelector(".history-chip.active");
+          renderHistoryList(activeChip?.dataset.filter || "all");
           showToast(`「${entry.description}」の状態に戻しました`, "info");
         } catch (err) {
           showToast(`復元エラー: ${err.message}`, "error");
@@ -171,6 +197,26 @@ document.getElementById("history-sidebar-close")?.addEventListener("click", () =
   document.getElementById("history-sidebar")?.classList.remove("open");
 });
 
+// フィルタチップのイベントリスナー
+document.getElementById("history-filter-chips")?.addEventListener("click", (e) => {
+  const chip = e.target.closest(".history-chip");
+  if (!chip) return;
+  document.querySelectorAll(".history-chip").forEach(c => c.classList.remove("active"));
+  chip.classList.add("active");
+  renderHistoryList(chip.dataset.filter);
+});
+
+// 全クリアボタン
+document.getElementById("history-clear-all")?.addEventListener("click", () => {
+  if (editHistory.entries.length === 0) return;
+  if (!confirm("全ての履歴をクリアしますか？")) return;
+  editHistory.entries = [];
+  editHistory.currentIndex = -1;
+  renderHistoryList();
+  showToast("履歴をクリアしました", "info");
+});
+
+// 旧selectフィルタとの互換（存在する場合）
 document.getElementById("history-filter")?.addEventListener("change", (e) => {
   renderHistoryList(e.target.value);
 });
@@ -565,6 +611,14 @@ window.addEventListener("message", (e) => {
       }
     }
   }
+
+  // Image picker request from iframe
+  if (e.data?.type === "openImagePicker") {
+    const bi = e.data.blockIndex ?? -1;
+    if (window.openImagePickerModal && state.projectId) {
+      window.openImagePickerModal(state.projectId, bi);
+    }
+  }
 });
 
 // ── Tabs ───────────────────────────────────────────────────
@@ -700,7 +754,11 @@ document.getElementById("btn-insert-block")?.addEventListener("click", async () 
     return;
   }
   const posVal = document.getElementById("add-block-position").value;
-  const afterIndex = posVal === "end" ? null : parseInt(posVal, 10);
+  let afterIndex = posVal === "end" ? null : parseInt(posVal, 10);
+  // 選択ブロックがある場合、その直下に挿入
+  if (afterIndex === null && window._selectedBlockIndex != null) {
+    afterIndex = window._selectedBlockIndex;
+  }
   try {
     const result = await window.API.insertBlock(state.projectId, {
       afterIndex,
@@ -708,7 +766,7 @@ document.getElementById("btn-insert-block")?.addEventListener("click", async () 
       type: "widget",
     });
     if (result.ok) {
-      showToast(`ブロック ${result.insertedIndex} に挿入しました`, "success");
+      showToast(afterIndex != null ? `ブロック ${afterIndex} の下に挿入しました` : `ブロック ${result.insertedIndex} に挿入しました`, "success");
       closeModal("modal-add-block");
       await loadEditor(result.insertedIndex);
       pushHistory("insert_block", `ブロック ${result.insertedIndex} を挿入`);
@@ -980,7 +1038,11 @@ function openWidgetSidebar() {
       try {
         const generated = tmpl.generate();
         const posVal = document.getElementById("widget-insert-position").value;
-        const afterIndex = posVal === "end" ? null : parseInt(posVal, 10);
+        let afterIndex = posVal === "end" ? null : parseInt(posVal, 10);
+        // 選択ブロックがある場合、その直下に挿入
+        if (afterIndex === null && window._selectedBlockIndex != null) {
+          afterIndex = window._selectedBlockIndex;
+        }
         const result = await window.API.insertBlock(state.projectId, {
           afterIndex,
           html: generated.html,
@@ -988,7 +1050,7 @@ function openWidgetSidebar() {
           widgetType: generated.widgetType,
         });
         if (result.ok) {
-          showToast(`${tmpl.name} を挿入しました`, "success");
+          showToast(afterIndex != null ? `${tmpl.name} をブロック ${afterIndex} の下に挿入しました` : `${tmpl.name} を挿入しました`, "success");
           await loadEditor(result.insertedIndex);
           pushHistory("insert_widget", `${tmpl.name} を挿入`);
         }
@@ -1471,7 +1533,7 @@ async function checkStatus() {
     const body = document.getElementById("api-key-body");
     const hint = document.getElementById("api-key-hint");
 
-    if (data.gemini) {
+    if (data.gemini || data.nanobanana) {
       statusEl.classList.add("connected");
       statusEl.classList.remove("disconnected");
       statusEl.querySelector(".api-key-status-text").textContent = `接続済 (${data.geminiKeyCount}キー)`;
@@ -1547,7 +1609,7 @@ document.getElementById("btn-save-key")?.addEventListener("click", async () => {
     if (res.ok && data.ok) {
       hint.innerHTML = '<span style="color:var(--green)">APIキーを保存しました! AI機能が使えます。</span>';
       input.value = "";
-      showToast("Gemini APIキーを設定しました", "success");
+      showToast("Nano Banana Pro APIキーを設定しました", "success");
       await checkStatus();
     } else {
       hint.innerHTML = `<span style="color:var(--red)">${escapeHtml(data.error || "保存に失敗しました")}</span>`;
