@@ -1864,6 +1864,15 @@ app.get("/api/projects/:id/export", (req, res) => {
   res.send(html);
 });
 
+// GET /api/projects/:id/editor-html - Get current editor HTML (modifiedHtml, not built)
+app.get("/api/projects/:id/editor-html", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  const html = project.modifiedHtml || project.blocks.map(b => b.html).join("\n") || project.html || "";
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
+
 // POST /api/projects/:id/ai-rewrite/:idx - AI text rewrite
 app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
   trackAiUsage("ai-rewrite");
@@ -2667,14 +2676,26 @@ app.get("/ad-manager", (req, res) => {
   res.sendFile(path.join(PROJECT_ROOT, "public", "ad-manager.html"));
 });
 
+// APP_MODE=ad-manager → ルートで広告マネージャーを表示
+const AD_MODE = process.env.APP_MODE === "ad-manager";
+
 // SPA fallback
 app.get("*", (req, res) => {
-  res.sendFile(path.join(PROJECT_ROOT, "public", "index.html"));
+  if (AD_MODE) {
+    res.sendFile(path.join(PROJECT_ROOT, "public", "ad-manager.html"));
+  } else {
+    res.sendFile(path.join(PROJECT_ROOT, "public", "index.html"));
+  }
 });
 
 app.listen(PORT, () => {
-  console.log(`\n  Article Cloner UI`);
-  console.log(`  http://localhost:${PORT}`);
-  console.log(`  広告入稿マネージャー`);
-  console.log(`  http://localhost:${PORT}/ad-manager\n`);
+  if (AD_MODE) {
+    console.log(`\n  広告入稿マネージャー（スタンドアロン）`);
+    console.log(`  http://localhost:${PORT}\n`);
+  } else {
+    console.log(`\n  Article Cloner UI`);
+    console.log(`  http://localhost:${PORT}`);
+    console.log(`  広告入稿マネージャー`);
+    console.log(`  http://localhost:${PORT}/ad-manager\n`);
+  }
 });
