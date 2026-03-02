@@ -80,10 +80,23 @@ function openaiAvailable() {
   return !!process.env.OPENAI_API_KEY;
 }
 
+// ── PixAI helpers ──
+
+function getPixAIKey() {
+  const k = process.env.PIXAI_API_KEY;
+  if (!k) throw new Error("PIXAI_API_KEY が未設定です");
+  return k;
+}
+
+function pixaiAvailable() {
+  return !!process.env.PIXAI_API_KEY;
+}
+
 // ── Provider router ──
 
 export function getAvailableProviders() {
   const providers = [];
+  if (pixaiAvailable()) providers.push("pixai");
   if (keyRotator.available) providers.push("gemini");
   if (openaiAvailable()) providers.push("openai");
   return providers;
@@ -173,7 +186,8 @@ export function buildImagePrompt(description, context, options = {}) {
 // ── generateImage ──
 
 export async function generateImage(prompt, options = {}) {
-  const provider = options.provider || "gemini";
+  const provider = options.provider || (pixaiAvailable() ? "pixai" : "gemini");
+  if (provider === "pixai") return generateImagePixAI(prompt, options);
   if (provider === "openai") return generateImageOpenAI(prompt, options);
   return generateImageGemini(prompt, options);
 }
@@ -312,10 +326,178 @@ async function generateImageOpenAI(prompt, options = {}) {
   }
 }
 
+// ── PixAI 画像生成 ──
+
+async function generateImagePixAI(prompt, options = {}) {
+  const key = getPixAIKey();
+  const outputPath = options.outputPath || `generated_${Date.now()}.png`;
+  const width = options.width || 580;
+  const height = options.height || 580;
+
+  try {
+    // 1) タスク作成
+    const createResp = await fetch("https://api.pixai.art/v1/task", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        parameters: {
+          prompts: prompt,
+          modelId: "1648918127446573124",
+          width,
+          height,
+          batchSize: 1,
+        },
+      }),
+    });
+
+    if (!createResp.ok) {
+      const errText = await createResp.text();
+      throw new Error(`PixAI create task failed: ${createResp.status} - ${errText.substring(0, 200)}`);
+    }
+
+    const taskData = await createResp.json();
+    const taskId = taskData.id;
+    console.log(`[image-gen] PixAI task created: ${taskId}`);
+
+    // 2) ポーリングで完了待ち（最大120秒）
+    const maxWait = 120000;
+    const interval = 3000;
+    let elapsed = 0;
+
+    while (elapsed < maxWait) {
+      await sleep(interval);
+      elapsed += interval;
+
+      const statusResp = await fetch(`https://api.pixai.art/v1/task/${taskId}`, {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+
+      if (!statusResp.ok) continue;
+      const status = await statusResp.json();
+
+      if (status.status === "failed" || status.status === "cancelled") {
+        throw new Error(`PixAI task ${status.status}`);
+      }
+
+      if (status.status === "completed") {
+        const mediaUrl = status.outputs?.mediaUrls?.[0]?.url;
+        if (!mediaUrl) throw new Error("PixAI: No media URL in completed task");
+
+        // 3) 画像ダウンロード → リサイズ → 保存
+        const imgResp = await fetch(mediaUrl);
+        if (!imgResp.ok) throw new Error(`PixAI image download failed: ${imgResp.status}`);
+        const buf = Buffer.from(await imgResp.arrayBuffer());
+        const resized = await sharp(buf).resize(width, height, { fit: "cover" }).jpeg({ quality: 85 }).toBuffer();
+        await writeFile(outputPath, resized);
+        console.log(`[image-gen] Generated (PixAI): ${outputPath} (${width}x${height})`);
+        return outputPath;
+      }
+
+      console.log(`[image-gen] PixAI task ${taskId}: ${status.status} (${elapsed / 1000}s)`);
+    }
+
+    throw new Error("PixAI task timed out after 120s");
+  } catch (err) {
+    console.error(`[image-gen] PixAI generation failed: ${err.message}`);
+    // フォールバック: Gemini
+    if (keyRotator.available) {
+      console.log("[image-gen] Falling back to Gemini...");
+      return generateImageGemini(prompt, options);
+    }
+    throw err;
+  }
+}
+
+// ── Veo 3 動画生成 ──
+
+export async function generateVideo(prompt, options = {}) {
+  const key = keyRotator.getKey();
+  const outputPath = options.outputPath || `generated_${Date.now()}.mp4`;
+  const aspectRatio = options.aspectRatio || "16:9";
+  const resolution = options.resolution || "720p";
+  const duration = options.durationSeconds || "6";
+
+  try {
+    // 1) タスク作成
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-generate-preview:predictLongRunning`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": key,
+      },
+      body: JSON.stringify({
+        instances: [{ prompt }],
+        parameters: {
+          aspectRatio,
+          resolution,
+          durationSeconds: duration,
+        },
+      }),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`Veo 3 create failed: ${resp.status} - ${errText.substring(0, 300)}`);
+    }
+
+    const opData = await resp.json();
+    const opName = opData.name;
+    console.log(`[video-gen] Veo 3 operation: ${opName}`);
+
+    // 2) ポーリングで完了待ち（最大180秒）
+    const baseUrl = "https://generativelanguage.googleapis.com/v1beta";
+    const maxWait = 180000;
+    const interval = 5000;
+    let elapsed = 0;
+
+    while (elapsed < maxWait) {
+      await sleep(interval);
+      elapsed += interval;
+
+      const statusResp = await fetch(`${baseUrl}/${opName}`, {
+        headers: { "x-goog-api-key": key },
+      });
+
+      if (!statusResp.ok) continue;
+      const statusData = await statusResp.json();
+
+      if (statusData.error) {
+        throw new Error(`Veo 3 error: ${statusData.error.message || JSON.stringify(statusData.error)}`);
+      }
+
+      if (statusData.done) {
+        const videoUri = statusData.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri;
+        if (!videoUri) throw new Error("Veo 3: No video URI in response");
+
+        // 3) 動画ダウンロード → 保存
+        const dlUrl = `${videoUri}&key=${key}`;
+        const vidResp = await fetch(dlUrl);
+        if (!vidResp.ok) throw new Error(`Veo 3 download failed: ${vidResp.status}`);
+        const buf = Buffer.from(await vidResp.arrayBuffer());
+        await writeFile(outputPath, buf);
+        console.log(`[video-gen] Generated (Veo 3): ${outputPath}`);
+        return outputPath;
+      }
+
+      console.log(`[video-gen] Veo 3 operation pending (${elapsed / 1000}s)`);
+    }
+
+    throw new Error("Veo 3 task timed out after 180s");
+  } catch (err) {
+    console.error(`[video-gen] Veo 3 generation failed: ${err.message}`);
+    throw err;
+  }
+}
+
 // ── generateImageFromReference ──
 
 export async function generateImageFromReference(imagePath, options = {}) {
-  const provider = options.provider || "gemini";
+  const provider = options.provider || (pixaiAvailable() ? "pixai" : "gemini");
+  if (provider === "pixai") return generateImagePixAI(await describeImage(imagePath), options);
   if (provider === "openai") return generateImageFromReferenceOpenAI(imagePath, options);
   return generateImageFromReferenceGemini(imagePath, options);
 }

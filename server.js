@@ -12,7 +12,7 @@ import fetch from "node-fetch";
 import { scrape } from "./src/scraper.js";
 import { parseHtml } from "./src/parser.js";
 import { applyTextModifications, analyzeForReplacement, applyBlockReplacements } from "./src/text-modifier.js";
-import { describeImage, generateImage, generateImageFromReference, buildImagePrompt, aiRewriteText, getAvailableProviders } from "./src/image-generator.js";
+import { describeImage, generateImage, generateImageFromReference, generateVideo, buildImagePrompt, aiRewriteText, getAvailableProviders } from "./src/image-generator.js";
 import { buildSbHtml, validateSbHtml } from "./src/html-builder.js";
 import {
   PROJECT_ROOT, SCRAPED_DIR, ANALYSIS_DIR, IMAGES_DIR, FINAL_DIR,
@@ -1547,12 +1547,14 @@ app.get("/api/status", (req, res) => {
   }
   if (keys.length === 0 && process.env.GEMINI_API_KEY) keys.push(0);
   const hasOpenAI = !!process.env.OPENAI_API_KEY;
+  const hasPixAI = !!process.env.PIXAI_API_KEY;
   res.json({
     gemini: keys.length > 0,
     geminiKeyCount: keys.length,
     openai: hasOpenAI,
+    pixai: hasPixAI,
     providers: getAvailableProviders(),
-    version: "1.2.0",
+    version: "1.3.0",
   });
 });
 
