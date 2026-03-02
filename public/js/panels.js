@@ -290,48 +290,326 @@ async function openEditPanel(projectId, blockIndex, blockType) {
   panel.classList.add("open");
 }
 
-// 手動モード: 各ブロックタイプのパネル + アニメーション + 折りたたみ3パネル
+// 手動モード: プレビュー画像 → 要素抽出 → 各要素にアニメーション設定
 function buildManualPanelContent(projectId, blockIndex, block, blockType) {
   const frag = document.createDocumentFragment();
+  const blockHtml = block.html || "";
 
-  // ブロックタイプ別パネル
+  // ─── Step 1: ブロックプレビュー画像 ───
+  const previewSec = document.createElement("div");
+  previewSec.style.cssText = "padding:12px 14px;border-bottom:1px solid var(--border)";
+
+  // プレビュー画像（HTMLからキャプチャ的に表示）
+  const previewBox = document.createElement("div");
+  previewBox.style.cssText = "background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:300px;overflow-y:auto";
+  const previewContent = document.createElement("div");
+  previewContent.style.cssText = "padding:8px;font-size:12px;line-height:1.6";
+  // ブロックタイプに応じたプレビュー
+  const parsedDoc = new DOMParser().parseFromString(blockHtml, "text/html");
+  const imgEls = parsedDoc.querySelectorAll("img");
+  const videoEls = parsedDoc.querySelectorAll("video, source[type*=video]");
+  if (imgEls.length > 0) {
+    imgEls.forEach(img => {
+      const src = img.getAttribute("data-src") || img.getAttribute("src") || "";
+      if (src) {
+        const previewImg = document.createElement("img");
+        previewImg.src = src;
+        previewImg.style.cssText = "width:100%;height:auto;display:block;border-radius:4px;margin-bottom:4px";
+        previewImg.onerror = () => { previewImg.style.display = "none"; };
+        previewContent.appendChild(previewImg);
+      }
+    });
+  } else if (videoEls.length > 0) {
+    const videoIcon = document.createElement("div");
+    videoIcon.style.cssText = "text-align:center;padding:32px;color:var(--text-muted);font-size:14px";
+    videoIcon.innerHTML = "🎬 動画ブロック";
+    previewContent.appendChild(videoIcon);
+  } else {
+    // テキストやウィジェットはHTMLレンダリング
+    previewContent.innerHTML = blockHtml;
+  }
+  previewBox.appendChild(previewContent);
+  previewSec.appendChild(previewBox);
+
+  // ブロック情報バッジ
+  const infoBadge = document.createElement("div");
+  infoBadge.style.cssText = "display:flex;gap:6px;margin-top:8px;flex-wrap:wrap";
+  const typeLabel = { text: "テキスト", heading: "見出し", image: "画像", video: "動画", cta_link: "CTAリンク", widget: "ウィジェット", spacer: "スペーサー" };
+  infoBadge.innerHTML = `<span style="font-size:10px;padding:2px 8px;background:rgba(236,72,153,0.1);color:#ec4899;border-radius:8px;font-weight:600">${typeLabel[blockType] || blockType}</span><span style="font-size:10px;padding:2px 8px;background:var(--bg-tertiary);color:var(--text-muted);border-radius:8px">Block #${blockIndex}</span>`;
+  previewSec.appendChild(infoBadge);
+
+  frag.appendChild(previewSec);
+
+  // ─── Step 2: 「要素を抽出」ボタン → 各要素リスト ───
+  const extractSec = document.createElement("div");
+  extractSec.style.cssText = "padding:12px 14px;border-bottom:1px solid var(--border)";
+
+  const extractBtn = document.createElement("button");
+  extractBtn.className = "bp-action-btn bp-action-ai";
+  extractBtn.style.cssText = "width:100%;margin-bottom:10px";
+  extractBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" stroke="currentColor" stroke-width="1.2"/></svg> 要素を抽出する';
+
+  const elementsContainer = document.createElement("div");
+  elementsContainer.style.display = "none";
+
+  extractBtn.addEventListener("click", () => {
+    extractBtn.style.display = "none";
+    elementsContainer.style.display = "";
+    buildExtractedElements(elementsContainer, projectId, blockIndex, block, blockType, blockHtml);
+  });
+
+  extractSec.appendChild(extractBtn);
+  extractSec.appendChild(elementsContainer);
+  frag.appendChild(extractSec);
+
+  // ─── Step 3: ブロックタイプ別の詳細編集（折りたたみ） ───
+  const detailSec = createCollapsibleSection("✏️", "詳細編集", null, false);
   switch (blockType) {
     case "text":
     case "heading":
-      frag.appendChild(buildTextPanel(projectId, blockIndex, block));
+      detailSec.body.appendChild(buildTextPanel(projectId, blockIndex, block));
       break;
     case "image":
-      frag.appendChild(buildImageQuickPanel(projectId, blockIndex, block));
+      detailSec.body.appendChild(buildImageQuickPanel(projectId, blockIndex, block));
       break;
     case "video":
-      frag.appendChild(buildVideoQuickPanel(projectId, blockIndex, block));
+      detailSec.body.appendChild(buildVideoQuickPanel(projectId, blockIndex, block));
       break;
     case "cta_link":
-      frag.appendChild(buildCtaPanel(projectId, blockIndex, block));
+      detailSec.body.appendChild(buildCtaPanel(projectId, blockIndex, block));
       break;
     case "widget":
-      frag.appendChild(buildWidgetPanel(projectId, blockIndex, block));
+      detailSec.body.appendChild(buildWidgetPanel(projectId, blockIndex, block));
       break;
     case "spacer":
-      frag.appendChild(buildSpacerPanel(block));
+      detailSec.body.appendChild(buildSpacerPanel(block));
       break;
     default:
-      const defaultEl = document.createElement("div");
-      defaultEl.className = "panel-section";
-      defaultEl.innerHTML = `<p>タイプ: ${blockType}</p>`;
-      frag.appendChild(defaultEl);
+      detailSec.body.innerHTML = `<p style="color:var(--text-muted)">タイプ: ${blockType}</p>`;
   }
+  frag.appendChild(detailSec.wrapper);
 
-  // 共通アニメーションセクション（image/videoは既存の持っているので追加しない）
-  if (blockType !== "image" && blockType !== "video") {
-    const animResult = buildAnimationSection(blockIndex);
-    frag.appendChild(animResult.section);
-  }
-
-  // 折りたたみ3パネルビュー（CSS/テキスト/HTMLソース）
+  // ─── 折りたたみ3パネルビュー（CSS/テキスト/HTMLソース） ───
   frag.appendChild(buildCollapsible3Pane(projectId, blockIndex, block));
 
   return frag;
+}
+
+// 要素抽出 → 各要素にアニメーション設定
+function buildExtractedElements(container, projectId, blockIndex, block, blockType, blockHtml) {
+  const parsedDoc = new DOMParser().parseFromString(blockHtml, "text/html");
+
+  // 要素を収集
+  const elements = [];
+
+  // テキスト要素
+  const textEls = parsedDoc.querySelectorAll("p, h1, h2, h3, h4, h5, h6, span, strong, em, a, li, td, div");
+  const seenText = new Set();
+  textEls.forEach(el => {
+    const text = el.textContent?.trim();
+    if (text && text.length > 1 && text.length < 200 && !seenText.has(text) && el.children.length === 0) {
+      seenText.add(text);
+      elements.push({ type: "text", tag: el.tagName.toLowerCase(), content: text, icon: "📝" });
+    }
+  });
+
+  // 画像要素
+  const imgEls = parsedDoc.querySelectorAll("img");
+  imgEls.forEach((img, i) => {
+    const src = img.getAttribute("data-src") || img.getAttribute("src") || "";
+    const alt = img.getAttribute("alt") || "";
+    if (src) {
+      elements.push({ type: "image", src, alt, index: i, icon: "🖼️", content: alt || `画像 ${i + 1}` });
+    }
+  });
+
+  // 動画要素
+  const videoEls = parsedDoc.querySelectorAll("video");
+  videoEls.forEach((vid, i) => {
+    elements.push({ type: "video", index: i, icon: "🎬", content: `動画 ${i + 1}` });
+  });
+
+  // リンク要素
+  const linkEls = parsedDoc.querySelectorAll("a[href]");
+  const seenHref = new Set();
+  linkEls.forEach(a => {
+    const href = a.getAttribute("href") || "";
+    const text = a.textContent?.trim();
+    if (href && text && !seenHref.has(href)) {
+      seenHref.add(href);
+      elements.push({ type: "link", href, content: text, icon: "🔗" });
+    }
+  });
+
+  if (elements.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:16px">要素が見つかりませんでした</div>';
+    return;
+  }
+
+  // ヘッダー
+  const header = document.createElement("div");
+  header.style.cssText = "font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px";
+  header.innerHTML = `<span>${elements.length}個の要素を検出</span>`;
+  container.appendChild(header);
+
+  // 各要素カード
+  elements.forEach((el, elIdx) => {
+    const card = document.createElement("div");
+    card.style.cssText = "border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden;transition:border-color 0.15s";
+
+    // カードヘッダー（クリックで展開）
+    const cardHeader = document.createElement("div");
+    cardHeader.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;background:var(--bg-tertiary);font-size:12px;transition:background 0.15s";
+    cardHeader.addEventListener("mouseenter", () => { cardHeader.style.background = "var(--bg-secondary)"; });
+    cardHeader.addEventListener("mouseleave", () => { cardHeader.style.background = "var(--bg-tertiary)"; });
+
+    // サムネイル
+    if (el.type === "image" && el.src) {
+      const thumb = document.createElement("img");
+      thumb.src = el.src;
+      thumb.style.cssText = "width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0";
+      thumb.onerror = () => { thumb.style.display = "none"; };
+      cardHeader.appendChild(thumb);
+    } else {
+      const iconSpan = document.createElement("span");
+      iconSpan.textContent = el.icon;
+      iconSpan.style.cssText = "font-size:16px;flex-shrink:0;width:36px;text-align:center";
+      cardHeader.appendChild(iconSpan);
+    }
+
+    // 要素名
+    const nameSpan = document.createElement("span");
+    nameSpan.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary);font-weight:500";
+    nameSpan.textContent = el.content;
+    cardHeader.appendChild(nameSpan);
+
+    // タグバッジ
+    const tagBadge = document.createElement("span");
+    tagBadge.style.cssText = "font-size:9px;padding:1px 6px;background:rgba(236,72,153,0.1);color:#ec4899;border-radius:4px;font-weight:700;flex-shrink:0";
+    tagBadge.textContent = el.type === "text" ? el.tag : el.type;
+    cardHeader.appendChild(tagBadge);
+
+    // 展開矢印
+    const arrow = document.createElement("span");
+    arrow.textContent = "▶";
+    arrow.style.cssText = "font-size:10px;color:var(--text-muted);transition:transform 0.2s;flex-shrink:0";
+    cardHeader.appendChild(arrow);
+
+    card.appendChild(cardHeader);
+
+    // カードボディ（アニメーション設定）- 初期非表示
+    const cardBody = document.createElement("div");
+    cardBody.style.cssText = "display:none;padding:10px 12px;border-top:1px solid var(--border)";
+
+    // アニメーション選択UI
+    buildElementAnimationUI(cardBody, blockIndex, elIdx, el);
+
+    card.appendChild(cardBody);
+
+    // トグル
+    let isOpen = false;
+    cardHeader.addEventListener("click", () => {
+      isOpen = !isOpen;
+      cardBody.style.display = isOpen ? "" : "none";
+      arrow.style.transform = isOpen ? "rotate(90deg)" : "";
+      card.style.borderColor = isOpen ? "#ec4899" : "";
+    });
+
+    container.appendChild(card);
+  });
+
+  // ブロック全体アニメーション
+  const blockAnimSec = createCollapsibleSection("🎭", "ブロック全体のアニメーション", null, false);
+  const animResult = buildAnimationSection(blockIndex);
+  blockAnimSec.body.appendChild(animResult.section);
+  container.appendChild(blockAnimSec.wrapper);
+}
+
+// 各要素のアニメーション設定UI
+function buildElementAnimationUI(container, blockIndex, elIdx, el) {
+  const animations = [
+    { value: "", label: "なし" },
+    { value: "fadeIn", label: "フェードイン" },
+    { value: "slideInUp", label: "下から" },
+    { value: "slideInLeft", label: "左から" },
+    { value: "slideInRight", label: "右から" },
+    { value: "bounceIn", label: "バウンス" },
+    { value: "zoomIn", label: "ズーム" },
+    { value: "pulse", label: "パルス" },
+    { value: "shake", label: "シェイク" },
+  ];
+
+  const speeds = [
+    { value: "0.3s", label: "速い" },
+    { value: "0.6s", label: "普通" },
+    { value: "1s", label: "遅い" },
+  ];
+
+  // アニメーション選択
+  const animLabel = document.createElement("div");
+  animLabel.style.cssText = "font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.3px";
+  animLabel.textContent = "アニメーション";
+  container.appendChild(animLabel);
+
+  const animGrid = document.createElement("div");
+  animGrid.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px";
+  let selectedAnim = "";
+  animations.forEach(a => {
+    const chip = document.createElement("button");
+    chip.className = "anim-chip" + (a.value === "" ? " active" : "");
+    chip.textContent = a.label;
+    chip.style.cssText += ";font-size:10px;padding:3px 8px";
+    chip.addEventListener("click", () => {
+      animGrid.querySelectorAll(".anim-chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      selectedAnim = a.value;
+      previewElementAnim();
+    });
+    animGrid.appendChild(chip);
+  });
+  container.appendChild(animGrid);
+
+  // スピード選択
+  const speedLabel = document.createElement("div");
+  speedLabel.style.cssText = "font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.3px";
+  speedLabel.textContent = "速度";
+  container.appendChild(speedLabel);
+
+  const speedGrid = document.createElement("div");
+  speedGrid.style.cssText = "display:flex;gap:4px;margin-bottom:10px";
+  let selectedSpeed = "0.6s";
+  speeds.forEach(s => {
+    const chip = document.createElement("button");
+    chip.className = "anim-chip" + (s.value === "0.6s" ? " active" : "");
+    chip.textContent = s.label;
+    chip.style.cssText += ";font-size:10px;padding:3px 8px";
+    chip.addEventListener("click", () => {
+      speedGrid.querySelectorAll(".anim-chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      selectedSpeed = s.value;
+      previewElementAnim();
+    });
+    speedGrid.appendChild(chip);
+  });
+  container.appendChild(speedGrid);
+
+  // プレビューボタン
+  const previewBtn = document.createElement("button");
+  previewBtn.className = "anim-preview-btn";
+  previewBtn.style.cssText += ";width:100%;font-size:11px";
+  previewBtn.textContent = "▶ プレビュー";
+  previewBtn.addEventListener("click", previewElementAnim);
+  container.appendChild(previewBtn);
+
+  function previewElementAnim() {
+    if (!selectedAnim) return;
+    triggerAnimationPreview(blockIndex, {
+      anim: selectedAnim,
+      scroll: "",
+      hover: "",
+      speed: selectedSpeed,
+    });
+  }
 }
 
 window.openEditPanel = openEditPanel;
