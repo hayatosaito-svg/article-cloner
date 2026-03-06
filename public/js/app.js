@@ -1150,11 +1150,11 @@ document.getElementById("btn-copy-editor")?.addEventListener("click", async () =
   const btn = document.getElementById("btn-copy-editor");
   btn.disabled = true;
   try {
-    const res = await fetch(`/api/projects/${state.projectId}/editor-html`);
-    const html = await res.text();
-    await navigator.clipboard.writeText(html);
+    const res = await fetch(`/api/projects/${state.projectId}/editor-text`);
+    const text = await res.text();
+    await navigator.clipboard.writeText(text);
     btn.textContent = "コピー完了!";
-    showToast("エディターHTMLをコピーしました", "success");
+    showToast("テキストコピーをコピーしました", "success");
     setTimeout(() => { btn.textContent = "エディターコピー"; }, 2000);
   } catch (err) {
     showToast(`コピーエラー: ${err.message}`, "error");

@@ -2079,6 +2079,64 @@ app.get("/api/projects/:id/editor-html", (req, res) => {
   res.send(html);
 });
 
+// GET /api/projects/:id/editor-text - Get clean text copy (no HTML tags)
+app.get("/api/projects/:id/editor-text", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const html = project.modifiedHtml || project.blocks.map(b => b.html).join("\n") || project.html || "";
+
+  // Use cheerio to extract clean text
+  const cheerio = await import("cheerio");
+  const $ = cheerio.load(html, { decodeEntities: false });
+
+  // Remove script/style tags
+  $("script, style, noscript").remove();
+
+  // Process block by block for better formatting
+  const textParts = [];
+  const processNode = (el) => {
+    const $el = $(el);
+    const tagName = (el.tagName || el.name || "").toLowerCase();
+
+    // Skip hidden elements
+    if (tagName === "script" || tagName === "style" || tagName === "noscript") return "";
+
+    // Block-level tags that should add line breaks
+    const blockTags = ["div", "p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "br", "hr", "section", "article", "header", "footer", "tr", "blockquote"];
+
+    let text = "";
+    if (el.type === "text") {
+      text = el.data || "";
+    } else if (el.children) {
+      for (const child of el.children) {
+        text += processNode(child);
+      }
+    }
+
+    if (tagName === "br") return "\n";
+    if (tagName === "hr") return "\n---\n";
+    if (blockTags.includes(tagName) && text.trim()) {
+      return "\n" + text.trim() + "\n";
+    }
+    return text;
+  };
+
+  // Process body children
+  const body = $("body").length ? $("body") : $.root();
+  body.children().each((_, el) => {
+    const text = processNode(el).trim();
+    if (text) textParts.push(text);
+  });
+
+  // Clean up: collapse multiple blank lines to max 2
+  let result = textParts.join("\n\n");
+  result = result.replace(/\n{3,}/g, "\n\n").trim();
+
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.send(result);
+});
+
 // POST /api/projects/:id/ai-rewrite/:idx - AI text rewrite
 app.post("/api/projects/:id/ai-rewrite/:idx", async (req, res) => {
   trackAiUsage("ai-rewrite");
