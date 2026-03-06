@@ -19,6 +19,7 @@ import {
   initOutputDirs, urlToSlug, saveJson, loadJson, formatBytes,
 } from "./src/utils.js";
 import { createAdRoutes } from "./src/ad-submitter/ad-routes.js";
+import { screenshotScalp, generateSbHtml } from "./src/screenshot-scalper.js";
 
 // API key is set via .env or UI (no hardcoded default)
 
@@ -3746,6 +3747,76 @@ app.post("/api/decompose-image", async (req, res) => {
     console.error(`[decompose-image] Error: ${err.message}`);
     res.status(500).json({ error: `分解エラー: ${err.message}` });
   }
+});
+
+// ── Screenshot Scalper ────────────────────────────────────
+const scalpProjects = new Map();
+
+// POST /api/scalp - Start screenshot scalping
+app.post("/api/scalp", async (req, res) => {
+  const { url, sliceHeight } = req.body;
+  if (!url) return res.status(400).json({ error: "url is required" });
+
+  const projectId = genId();
+  scalpProjects.set(projectId, { id: projectId, url, status: "processing", slices: [], error: null, sseClients: [], log: [] });
+  res.json({ id: projectId, status: "processing" });
+
+  const project = scalpProjects.get(projectId);
+
+  function sendScalpSSE(event, data) {
+    const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    project.log.push({ event, data });
+    project.sseClients = project.sseClients.filter(c => { try { c.write(msg); return true; } catch { return false; } });
+  }
+
+  (async () => {
+    try {
+      const result = await screenshotScalp(url, {
+        sliceHeight: sliceHeight || 800,
+        projectId,
+        onProgress: (msg) => sendScalpSSE("progress", { message: msg }),
+      });
+      project.result = result;
+      project.slices = result.slices;
+      project.status = "done";
+      sendScalpSSE("done", { sliceCount: result.sliceCount, slices: result.slices });
+    } catch (err) {
+      project.status = "error";
+      project.error = err.message;
+      sendScalpSSE("error", { message: err.message });
+    }
+  })();
+});
+
+// GET /api/scalp/:id/sse - SSE for scalp progress
+app.get("/api/scalp/:id/sse", (req, res) => {
+  const project = scalpProjects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Not found" });
+  res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+  res.write(":\n\n");
+  for (const entry of project.log) res.write(`event: ${entry.event}\ndata: ${JSON.stringify(entry.data)}\n\n`);
+  project.sseClients.push(res);
+  req.on("close", () => { project.sseClients = project.sseClients.filter(c => c !== res); });
+});
+
+// GET /api/scalp/:id - Get scalp project state
+app.get("/api/scalp/:id", (req, res) => {
+  const project = scalpProjects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Not found" });
+  res.json({ id: project.id, url: project.url, status: project.status, slices: project.slices, error: project.error });
+});
+
+// Serve scalp slice images
+app.use("/output/scalp", express.static(path.join(PROJECT_ROOT, "output", "scalp")));
+
+// GET /api/scalp/:id/sb-html - Generate SB-compatible HTML
+app.get("/api/scalp/:id/sb-html", (req, res) => {
+  const project = scalpProjects.get(req.params.id);
+  if (!project || project.status !== "done") return res.status(404).json({ error: "Not ready" });
+
+  const baseUrl = `${req.protocol}://${req.get("host")}/output/scalp/${project.id}`;
+  const html = generateSbHtml(project.id, project.slices, baseUrl);
+  res.json({ html });
 });
 
 // 広告マネージャー スタンドアロンページ

@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LP Screenshot Scalper</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f0f13;
+    color: #e2e8f0;
+    min-height: 100vh;
+  }
+  a { color: #ec4899; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border-bottom: 1px solid #2a2a3e;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .header-back {
+    color: #94a3b8;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .header-back:hover { color: #ec4899; text-decoration: none; }
+  .header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #ec4899, #ff0066);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 32px 24px;
+  }
+
+  .input-card {
+    background: #1a1a2e;
+    border: 1px solid #2a2a3e;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  .input-card label {
+    display: block;
+    font-size: 13px;
+    color: #94a3b8;
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .input-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .input-row input[type="url"] {
+    flex: 1;
+  }
+  input[type="url"], input[type="number"] {
+    background: #0f0f13;
+    border: 1px solid #3a3a4e;
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #e2e8f0;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus {
+    border-color: #ec4899;
+  }
+  input[type="number"] {
+    width: 120px;
+  }
+
+  .settings-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    margin-bottom: 0;
+  }
+  .settings-row .field { display: flex; flex-direction: column; }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #ec4899, #ff0066);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 28px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    white-space: nowrap;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-primary:active { transform: scale(0.97); }
+  .btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .btn-secondary {
+    background: #2a2a3e;
+    color: #e2e8f0;
+    border: 1px solid #3a3a4e;
+    border-radius: 8px;
+    padding: 10px 28px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+    white-space: nowrap;
+  }
+  .btn-secondary:hover { background: #3a3a4e; border-color: #ec4899; }
+
+  /* Progress */
+  .progress-area {
+    display: none;
+    margin-bottom: 24px;
+  }
+  .progress-area.active { display: block; }
+  .progress-bar-outer {
+    background: #1a1a2e;
+    border: 1px solid #2a2a3e;
+    border-radius: 8px;
+    height: 8px;
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+  .progress-bar-inner {
+    height: 100%;
+    background: linear-gradient(90deg, #ec4899, #ff0066);
+    border-radius: 8px;
+    width: 0%;
+    transition: width 0.3s;
+  }
+  .progress-bar-inner.indeterminate {
+    width: 30%;
+    animation: indeterminate 1.5s ease-in-out infinite;
+  }
+  @keyframes indeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+  }
+  .progress-log {
+    background: #0f0f13;
+    border: 1px solid #2a2a3e;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 12px;
+    color: #94a3b8;
+    max-height: 160px;
+    overflow-y: auto;
+    line-height: 1.8;
+  }
+  .progress-log .log-entry {
+    display: block;
+  }
+  .progress-log .log-entry::before {
+    content: "> ";
+    color: #ec4899;
+  }
+
+  /* Results */
+  .results-area {
+    display: none;
+  }
+  .results-area.active { display: block; }
+
+  .results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .results-header h2 {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .results-actions {
+    display: flex;
+    gap: 10px;
+  }
+
+  .slice-count-badge {
+    background: #2a2a3e;
+    border: 1px solid #3a3a4e;
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: #ec4899;
+    font-weight: 600;
+  }
+
+  .preview-container {
+    background: #1a1a2e;
+    border: 1px solid #2a2a3e;
+    border-radius: 12px;
+    padding: 16px;
+    overflow: hidden;
+  }
+  .preview-scroll {
+    max-height: 70vh;
+    overflow-y: auto;
+    border-radius: 8px;
+  }
+  .preview-scroll::-webkit-scrollbar { width: 6px; }
+  .preview-scroll::-webkit-scrollbar-track { background: #0f0f13; }
+  .preview-scroll::-webkit-scrollbar-thumb { background: #3a3a4e; border-radius: 3px; }
+
+  .preview-scroll img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .slice-divider {
+    height: 2px;
+    background: repeating-linear-gradient(90deg, #ec4899 0, #ec4899 8px, transparent 8px, transparent 16px);
+    opacity: 0.5;
+    position: relative;
+  }
+  .slice-label {
+    position: absolute;
+    right: 8px;
+    top: -10px;
+    background: #1a1a2e;
+    color: #ec4899;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #1a1a2e;
+    border: 1px solid #ec4899;
+    color: #e2e8f0;
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    opacity: 0;
+    transition: transform 0.3s, opacity 0.3s;
+    z-index: 1000;
+    pointer-events: none;
+  }
+  .toast.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+
+  /* Error */
+  .error-msg {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: #f87171;
+    font-size: 13px;
+    margin-top: 12px;
+    display: none;
+  }
+  .error-msg.active { display: block; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="header-back">← トップ</a>
+  <h1>LP Screenshot Scalper</h1>
+</div>
+
+<div class="container">
+  <div class="input-card">
+    <label for="url-input">競合LP URL</label>
+    <div class="input-row">
+      <input type="url" id="url-input" placeholder="https://example.com/lp/" autocomplete="off">
+    </div>
+    <div class="settings-row">
+      <div class="field">
+        <label for="slice-height">スライス高さ (px)</label>
+        <input type="number" id="slice-height" value="800" min="200" max="3000" step="100">
+      </div>
+      <button class="btn-primary" id="start-btn">スクリーンショット開始</button>
+    </div>
+    <div class="error-msg" id="error-msg"></div>
+  </div>
+
+  <div class="progress-area" id="progress-area">
+    <div class="progress-bar-outer">
+      <div class="progress-bar-inner" id="progress-bar"></div>
+    </div>
+    <div class="progress-log" id="progress-log"></div>
+  </div>
+
+  <div class="results-area" id="results-area">
+    <div class="results-header">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <h2>プレビュー</h2>
+        <span class="slice-count-badge" id="slice-count"></span>
+      </div>
+      <div class="results-actions">
+        <button class="btn-secondary" id="copy-btn">SB HTMLをコピー</button>
+      </div>
+    </div>
+    <div class="preview-container">
+      <div class="preview-scroll" id="preview-scroll"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function() {
+  const urlInput = document.getElementById("url-input");
+  const sliceHeightInput = document.getElementById("slice-height");
+  const startBtn = document.getElementById("start-btn");
+  const progressArea = document.getElementById("progress-area");
+  const progressBar = document.getElementById("progress-bar");
+  const progressLog = document.getElementById("progress-log");
+  const resultsArea = document.getElementById("results-area");
+  const sliceCountEl = document.getElementById("slice-count");
+  const previewScroll = document.getElementById("preview-scroll");
+  const copyBtn = document.getElementById("copy-btn");
+  const errorMsg = document.getElementById("error-msg");
+  const toast = document.getElementById("toast");
+
+  let currentProjectId = null;
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorMsg.classList.add("active");
+  }
+  function hideError() {
+    errorMsg.classList.remove("active");
+  }
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add("show");
+    setTimeout(() => toast.classList.remove("show"), 2500);
+  }
+  function addLog(msg) {
+    const entry = document.createElement("span");
+    entry.className = "log-entry";
+    entry.textContent = msg;
+    progressLog.appendChild(entry);
+    progressLog.scrollTop = progressLog.scrollHeight;
+  }
+
+  startBtn.addEventListener("click", async () => {
+    hideError();
+    const url = urlInput.value.trim();
+    if (!url) { showError("URLを入力してください"); return; }
+    try { new URL(url); } catch { showError("有効なURLを入力してください"); return; }
+
+    const sliceHeight = parseInt(sliceHeightInput.value, 10) || 800;
+
+    // Reset UI
+    startBtn.disabled = true;
+    startBtn.textContent = "処理中...";
+    progressArea.classList.add("active");
+    resultsArea.classList.remove("active");
+    progressLog.innerHTML = "";
+    progressBar.style.width = "0%";
+    progressBar.classList.add("indeterminate");
+    previewScroll.innerHTML = "";
+
+    try {
+      // 1. Start scalping
+      const res = await fetch("/api/scalp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, sliceHeight }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "リクエストに失敗しました");
+      }
+      const { id } = await res.json();
+      currentProjectId = id;
+
+      // 2. Connect SSE
+      await new Promise((resolve, reject) => {
+        const es = new EventSource(`/api/scalp/${id}/sse`);
+
+        es.addEventListener("progress", (e) => {
+          const data = JSON.parse(e.data);
+          addLog(data.message);
+          // Try to parse slice progress for bar
+          const m = data.message.match(/スライス (\d+)\/(\d+)/);
+          if (m) {
+            const pct = Math.round((parseInt(m[1]) / parseInt(m[2])) * 100);
+            progressBar.classList.remove("indeterminate");
+            progressBar.style.width = pct + "%";
+          }
+        });
+
+        es.addEventListener("done", (e) => {
+          progressBar.classList.remove("indeterminate");
+          progressBar.style.width = "100%";
+          addLog("完了！");
+          es.close();
+          resolve();
+        });
+
+        es.addEventListener("error", (e) => {
+          // SSE error event - check if it's our custom error or connection error
+          try {
+            const data = JSON.parse(e.data);
+            es.close();
+            reject(new Error(data.message || "処理中にエラーが発生しました"));
+          } catch {
+            // Connection error, might just be server closing
+            es.close();
+            reject(new Error("SSE接続が切断されました"));
+          }
+        });
+      });
+
+      // 3. Fetch result and render preview
+      const stateRes = await fetch(`/api/scalp/${id}`);
+      const state = await stateRes.json();
+
+      if (state.status === "error") throw new Error(state.error);
+
+      sliceCountEl.textContent = state.slices.length + " スライス";
+
+      state.slices.forEach((slice, i) => {
+        if (i > 0) {
+          const divider = document.createElement("div");
+          divider.className = "slice-divider";
+          divider.innerHTML = `<span class="slice-label">#${i}</span>`;
+          previewScroll.appendChild(divider);
+        }
+        const img = document.createElement("img");
+        img.src = `/output/scalp/${id}/${slice.filename}`;
+        img.alt = `Slice ${i}`;
+        img.loading = "lazy";
+        previewScroll.appendChild(img);
+      });
+
+      resultsArea.classList.add("active");
+
+    } catch (err) {
+      showError(err.message);
+    } finally {
+      startBtn.disabled = false;
+      startBtn.textContent = "スクリーンショット開始";
+    }
+  });
+
+  // Copy SB HTML
+  copyBtn.addEventListener("click", async () => {
+    if (!currentProjectId) return;
+    try {
+      const res = await fetch(`/api/scalp/${currentProjectId}/sb-html`);
+      if (!res.ok) throw new Error("HTML取得に失敗しました");
+      const { html } = await res.json();
+      await navigator.clipboard.writeText(html);
+      showToast("SB HTMLをクリップボードにコピーしました");
+    } catch (err) {
+      showToast("コピーに失敗: " + err.message);
+    }
+  });
+
+  // Enter key on URL input
+  urlInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !startBtn.disabled) startBtn.click();
+  });
+})();
+</script>
+</body>
+</html>
