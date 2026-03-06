@@ -49,9 +49,16 @@ html, body {
   inset: 0;
   display: none;
   z-index: 1;
+  overflow-y: auto;
 }
 .screen.active {
   display: flex;
+}
+
+/* ランディング画面のスクロール対応 */
+#screen-landing.active {
+  display: block;
+  overflow-y: auto;
 }
 
 /* ── Screen 1: Landing ───────────────────────────────────── */
@@ -77,9 +84,10 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  min-height: 100vh;
   width: 100%;
-  padding: 40px 24px;
+  padding: 60px 24px 40px;
   gap: 28px;
 }
 

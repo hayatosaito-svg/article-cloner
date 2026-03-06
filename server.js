@@ -12,7 +12,7 @@ import fetch from "node-fetch";
 import { scrape } from "./src/scraper.js";
 import { parseHtml } from "./src/parser.js";
 import { applyTextModifications, analyzeForReplacement, applyBlockReplacements } from "./src/text-modifier.js";
-import { describeImage, generateImage, generateImageFromReference, generateVideo, buildImagePrompt, aiRewriteText, getAvailableProviders, composeImages } from "./src/image-generator.js";
+import { describeImage, generateImage, generateImageFromReference, generateVideo, buildImagePrompt, aiRewriteText, getAvailableProviders, composeImages, removeTextFromImage, discoverModels } from "./src/image-generator.js";
 import { buildSbHtml, validateSbHtml } from "./src/html-builder.js";
 import {
   PROJECT_ROOT, SCRAPED_DIR, ANALYSIS_DIR, IMAGES_DIR, FINAL_DIR,
@@ -53,6 +53,7 @@ if (process.env.APP_MODE === "ad-manager") {
 }
 
 app.use(express.static(path.join(PROJECT_ROOT, "public")));
+app.use("/output", express.static(path.join(PROJECT_ROOT, "output")));
 
 // ── AI Usage Counter ──────────────────────────────────────
 const apiUsage = {};
@@ -956,6 +957,7 @@ ${html}
   var editingWrapper = null;
   var editingContent = null;
   var originalHtml = '';
+  var _inlineEditTimer = null;
 
   // Create floating toolbar
   var toolbar = document.createElement('div');
@@ -1068,6 +1070,22 @@ ${html}
       wrapper.classList.add('editing');
       editingContent.contentEditable = 'true';
       editingContent.focus();
+
+      // ★ リアルタイム保存: 入力のたびに親に通知（サイレント）
+      editingContent.addEventListener('input', function() {
+        if (!editingWrapper || !editingContent) return;
+        var blockIdx = parseInt(editingWrapper.dataset.blockIndex);
+        if (_inlineEditTimer) clearTimeout(_inlineEditTimer);
+        _inlineEditTimer = setTimeout(function() {
+          window.parent.postMessage({
+            type: 'inlineEditSave',
+            blockIndex: blockIdx,
+            html: editingContent.innerHTML,
+            text: editingContent.textContent,
+            silent: true
+          }, '*');
+        }, 800);
+      });
 
       // Show toolbar immediately above the block
       var rect = wrapper.getBoundingClientRect();
@@ -1219,6 +1237,38 @@ ${html}
       wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
+    // ── リアルタイムテキストオーバーレイ（レイヤーエディター用） ──
+    if (e.data.type === 'layerTextOverlay') {
+      // 既存のテキストオーバーレイを削除
+      document.querySelectorAll('.layer-text-ov').forEach(function(o) { o.remove(); });
+      var wrapper = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
+      if (!wrapper) return;
+      var content = wrapper.children[0] || wrapper;
+      content.style.position = 'relative';
+
+      var changes = e.data.changes || [];
+      var sizes = { small: '12px', medium: '16px', large: '24px', xlarge: '36px' };
+      changes.forEach(function(ch) {
+        var bb = ch.boundingBox || {};
+        var s = ch.style || {};
+        var div = document.createElement('div');
+        div.className = 'layer-text-ov';
+        div.style.cssText = 'position:absolute;pointer-events:none;z-index:' + ((ch.zIndex||0)+100) + ';display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.2;padding:2px;box-sizing:border-box;';
+        div.style.left = (bb.x||0) + '%';
+        div.style.top = (bb.y||0) + '%';
+        div.style.width = (bb.width||10) + '%';
+        div.style.height = (bb.height||5) + '%';
+        div.style.fontSize = sizes[s.fontSize] || '16px';
+        div.style.fontWeight = s.fontWeight || 'bold';
+        div.style.color = s.color || '#000';
+        div.style.background = s.backgroundColor || 'rgba(255,255,255,0.9)';
+        div.style.borderRadius = '2px';
+        div.style.boxShadow = '0 0 4px rgba(0,0,0,0.15)';
+        div.textContent = ch.content;
+        content.appendChild(div);
+      });
+    }
+
     if (e.data.type === 'elementUpdate') {
       // Update overlay position/style + real-time text/animation preview
       document.querySelectorAll('.ai-element-overlay').forEach(function(o) { o.remove(); });
@@ -1279,6 +1329,125 @@ ${html}
       }
 
       wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // ★ decomposeBlock: 元画像を維持し、テキストオーバーレイは非表示で準備
+    //   クリーン画像が来たら表示、またはユーザー編集時に個別表示
+    if (e.data.type === 'decomposeBlock') {
+      var wrapper = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
+      if (!wrapper) return;
+      var content = wrapper.children[0] || wrapper;
+
+      // 既存の分解コンテナがあれば削除
+      content.querySelectorAll('.decompose-container').forEach(function(o) { o.remove(); });
+
+      // 元画像の親をposition:relativeにしてオーバーレイの基準にする
+      var baseImg = content.querySelector('img');
+      var overlayParent = baseImg ? (baseImg.closest('picture') || baseImg).parentElement || content : content;
+      overlayParent.style.position = 'relative';
+
+      // オーバーレイコンテナ（元画像の上に被せる、初期は非表示）
+      var canvas = document.createElement('div');
+      canvas.className = 'decompose-container';
+      canvas.setAttribute('data-clean-ready', 'false');
+      canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;';
+
+      var fontSizes = { small: '10px', medium: '14px', large: '20px', xlarge: '28px' };
+      var elements = e.data.elements || [];
+      elements.forEach(function(el) {
+        if (el.type !== 'text') return;
+        var bb = el.boundingBox || {};
+        var div = document.createElement('div');
+        div.className = 'decompose-el';
+        div.setAttribute('data-decompose-id', el.id || '');
+        // ★ 初期状態: visibility:hidden（元画像のテキストと二重表示を防ぐ）
+        div.style.cssText = 'position:absolute;display:flex;align-items:center;overflow:hidden;white-space:pre-wrap;word-break:break-all;line-height:1.2;padding:2px 4px;box-sizing:border-box;pointer-events:auto;visibility:hidden;';
+        var fs = el.style && el.style.fontSize ? (fontSizes[el.style.fontSize] || el.style.fontSize) : '14px';
+        if (typeof fs === 'number' || /^\\d+$/.test(fs)) fs = fs + 'px';
+        div.style.fontSize = fs;
+        div.style.fontWeight = (el.style && el.style.fontWeight) || 'normal';
+        div.style.color = (el.style && el.style.color) || '#000';
+        if (el.style && el.style.backgroundColor && el.style.backgroundColor !== 'transparent') {
+          div.style.background = el.style.backgroundColor;
+        }
+        if (el.style && el.style.textAlign) div.style.textAlign = el.style.textAlign;
+        div.textContent = el.content || '';
+        div.style.left = (bb.x || 0) + '%';
+        div.style.top = (bb.y || 0) + '%';
+        div.style.width = (bb.width || 10) + '%';
+        div.style.height = (bb.height || 5) + '%';
+        div.style.zIndex = el.zIndex || 10;
+        canvas.appendChild(div);
+      });
+
+      overlayParent.appendChild(canvas);
+      wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // ★ updateDecomposedText: 編集されたテキストを更新＆表示
+    if (e.data.type === 'updateDecomposedText') {
+      var elDiv = document.querySelector('[data-decompose-id="' + e.data.elementId + '"]');
+      if (elDiv) {
+        elDiv.textContent = e.data.content || '';
+        // ユーザーが編集した要素は即座に表示（元テキストの上に被せる）
+        elDiv.style.visibility = 'visible';
+      }
+    }
+
+    // ★ restoreBlock: テキストオーバーレイを除去
+    if (e.data.type === 'restoreBlock') {
+      var wrapper = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
+      if (!wrapper) return;
+      var content = wrapper.children[0] || wrapper;
+      content.querySelectorAll('.decompose-container').forEach(function(o) { o.remove(); });
+    }
+
+    // ★ setCleanImage: 元画像→クリーン画像に差し替え＋全テキストオーバーレイ表示
+    if (e.data.type === 'setCleanImage') {
+      var wrapper = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
+      if (!wrapper) return;
+      var content = wrapper.children[0] || wrapper;
+
+      // 画像srcをクリーン画像に差し替え
+      var imgs = content.querySelectorAll('img');
+      imgs.forEach(function(img) {
+        if (img.getAttribute('data-src')) img.setAttribute('data-src', e.data.cleanImageUrl);
+        img.src = e.data.cleanImageUrl;
+      });
+      var sources = content.querySelectorAll('source[data-srcset]');
+      sources.forEach(function(src) {
+        src.setAttribute('data-srcset', e.data.cleanImageUrl);
+        src.setAttribute('srcset', e.data.cleanImageUrl);
+      });
+
+      // ★ クリーン画像到着 → 全テキストオーバーレイを表示（二重にならない）
+      var canvas = content.querySelector('.decompose-container');
+      if (canvas) {
+        canvas.setAttribute('data-clean-ready', 'true');
+        canvas.querySelectorAll('.decompose-el').forEach(function(el) {
+          el.style.visibility = 'visible';
+        });
+      }
+    }
+
+    // ★ replaceBlockImage: Canvas方式 — 画像をdata URLで直接差し替え
+    if (e.data.type === 'replaceBlockImage') {
+      var wrapper = document.querySelector('[data-block-index="' + e.data.blockIndex + '"]');
+      if (!wrapper) return;
+      var content = wrapper.children[0] || wrapper;
+      var imgs = content.querySelectorAll('img');
+      imgs.forEach(function(img) {
+        img.src = e.data.dataUrl;
+        if (img.getAttribute('data-src')) img.removeAttribute('data-src');
+        img.classList.remove('lazyload');
+        img.style.opacity = '1';
+      });
+      // <source> タグも更新（<picture>パターン）
+      var sources = content.querySelectorAll('source[data-srcset], source[srcset]');
+      sources.forEach(function(src) {
+        src.setAttribute('srcset', e.data.dataUrl);
+        if (src.getAttribute('data-srcset')) src.removeAttribute('data-srcset');
+      });
     }
   });
 })();
@@ -1768,6 +1937,18 @@ app.get("/api/projects/:id/generated-images/:file", (req, res) => {
   res.sendFile(filePath);
 });
 
+// Serve layer crop images (subdirectory pattern)
+app.get("/api/projects/:id/generated-images/:subdir/:file", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project || !project.dirs) return res.status(404).send("Not found");
+
+  const subPath = path.join(req.params.subdir, req.params.file);
+  const filePath = safePath(project.dirs.images, subPath);
+  if (!filePath || !existsSync(filePath)) return res.status(404).send("Not found");
+
+  res.sendFile(filePath);
+});
+
 // GET /api/projects/:id/text-blocks - Get text blocks for editing
 app.get("/api/projects/:id/text-blocks", (req, res) => {
   const project = projects.get(req.params.id);
@@ -2031,20 +2212,46 @@ app.post("/api/projects/:id/extract-elements/:idx", async (req, res) => {
   }
   if (!geminiKey) geminiKey = process.env.GEMINI_API_KEY;
 
-  const visionPrompt = `この広告画像を分析し、含まれるすべての視覚要素を抽出してください。
+  const visionPrompt = `この広告画像をPhotoshop/Figmaのように「レイヤー階層分解」してください。
 
-各要素について以下の情報をJSON配列で返してください：
-- type: "text" | "decoration" | "badge" | "photo" | "background" | "button" | "icon" | "logo" | "separator"
-- content: 要素の内容（テキストの場合はテキスト内容、画像の場合は説明）
-- boundingBox: { x: 数値(%), y: 数値(%), width: 数値(%), height: 数値(%) } - 画像内での位置（パーセント）
-- style: { fontSize: "small"|"medium"|"large"|"xlarge", fontWeight: "normal"|"bold", color: "#hexcolor", backgroundColor: "#hexcolor" または null }
-- zIndex: レイヤー順序（0が最背面、大きいほど前面）
+★最重要ルール：1パーツ＝1レイヤー。絶対にグループ化しないこと★
 
-重要：
-- JSON配列のみを返し、他のテキストは含めないでください
-- boundingBoxの値は画像全体に対するパーセンテージで指定
-- テキスト要素は文字内容を正確に読み取ってください
-- 背景、装飾、バッジ、ボタン、アイコンなども含めてください`;
+テキストの分解例（この画像の場合）：
+- 「韓国発!!」→ 1レイヤー
+- 「日本最速」→ 1レイヤー
+- 「同時パーソナル」→ 1レイヤー
+- 「美肌治療」→ 1レイヤー
+- 「50%」→ 1レイヤー
+- 「OFF」→ 1レイヤー
+- 「LINE追加で」→ 1レイヤー
+- 「クーポン配布」→ 1レイヤー
+※ 1行ごと、1フレーズごとに別レイヤー。複数行を1つにまとめない。
+
+ビジュアル要素の分解：
+- 各写真・商品画像 → それぞれ1レイヤー（例：美顔器A、美顔器B、人物写真）
+- 各装飾（枠線、リボン、吹き出し、矢印）→ それぞれ1レイヤー
+- 各バッジ・ラベル（「先着5名限定!」等）→ 1レイヤー
+- 背景の色面・グラデーション → 1レイヤー
+- ボタン → 1レイヤー
+- ロゴ・アイコン → それぞれ1レイヤー
+
+各レイヤーのJSON形式：
+{
+  "type": "text" | "photo" | "decoration" | "badge" | "background" | "button" | "icon" | "logo" | "separator",
+  "content": "テキスト内容 or 画像の説明",
+  "boundingBox": { "x": %, "y": %, "width": %, "height": % },
+  "style": { "fontSize": "small"|"medium"|"large"|"xlarge", "fontWeight": "normal"|"bold", "color": "#hex", "backgroundColor": "#hex or null" },
+  "zIndex": 数値（0=最背面、大きい=前面）
+}
+
+絶対ルール：
+1. JSON配列のみ返す（他のテキスト不要）
+2. boundingBox は画像全体に対するパーセンテージ
+3. テキストは1行・1フレーズごとに分割。「同時パーソナル美肌治療」を1つにしない
+4. 写真・製品画像も1個ずつ分離
+5. 装飾要素（枠、線、帯、背景色面）も個別に
+6. できるだけ細かく。30個以上のレイヤーを目指す
+7. zIndex は背景→装飾→写真→テキスト→バッジの順で前面に`;
 
   try {
     let elements = [];
@@ -2060,7 +2267,7 @@ app.post("/api/projects/:id/extract-elements/:idx", async (req, res) => {
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
-          max_tokens: 4096,
+          max_tokens: 8192,
           messages: [{
             role: "user",
             content: [
@@ -2080,6 +2287,7 @@ app.post("/api/projects/:id/extract-elements/:idx", async (req, res) => {
       const anthropicData = await anthropicResp.json();
       const responseText = anthropicData.content?.[0]?.text || "";
       elements = parseElementsJson(responseText);
+      console.log(`[extract-elements] Anthropic returned ${elements.length} layers`);
     } else if (geminiKey) {
       // Fallback to Gemini
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`;
@@ -2100,6 +2308,7 @@ app.post("/api/projects/:id/extract-elements/:idx", async (req, res) => {
       const geminiData = await geminiResp.json();
       const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
       elements = parseElementsJson(responseText);
+      console.log(`[extract-elements] Gemini returned ${elements.length} layers`);
     } else {
       return res.status(400).json({ error: "ANTHROPIC_API_KEY または GEMINI_API_KEY を .env に設定してください" });
     }
@@ -2112,6 +2321,230 @@ app.post("/api/projects/:id/extract-elements/:idx", async (req, res) => {
   } catch (err) {
     console.error(`[extract-elements] Error: ${err.message}`);
     res.status(500).json({ error: `要素抽出エラー: ${err.message}` });
+  }
+});
+
+// POST /api/projects/:id/crop-layers/:idx - Crop each element from original image
+app.post("/api/projects/:id/crop-layers/:idx", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
+
+  const idx = parseInt(req.params.idx, 10);
+  const block = project.blocks[idx];
+  if (!block) return res.status(404).json({ error: "Block not found" });
+
+  const { elements } = req.body;
+  if (!elements || !elements.length) return res.status(400).json({ error: "elements required" });
+
+  // Get original image
+  const cheerio = await import("cheerio");
+  const $ = cheerio.load(block.html || "");
+  let imgSrc = $("img").attr("data-src") || $("img").attr("src") || $("source[data-srcset]").attr("data-srcset") || "";
+  if (!imgSrc) return res.status(400).json({ error: "No image in block" });
+
+  let imgBuffer;
+  try {
+    if (imgSrc.startsWith("/projects/") || imgSrc.startsWith("projects/")) {
+      const localPath = path.join(PROJECT_ROOT, "data", imgSrc.replace(/^\//, ""));
+      imgBuffer = await readFile(localPath);
+    } else if (imgSrc.startsWith("/api/projects/")) {
+      // generated-images or assets path
+      const match = imgSrc.match(/\/generated-images\/(.+)/) || imgSrc.match(/\/assets\/(.+)/);
+      if (match) {
+        const fname = match[1];
+        let localPath = path.join(project.dirs.images, fname);
+        if (!existsSync(localPath)) {
+          const assetEntry = project.assets?.find(a => a.localFile === fname);
+          if (assetEntry) localPath = assetEntry.localPath;
+        }
+        if (existsSync(localPath)) imgBuffer = await readFile(localPath);
+      }
+    } else if (imgSrc.startsWith("http")) {
+      const resp = await fetch(imgSrc);
+      if (resp.ok) imgBuffer = Buffer.from(await resp.arrayBuffer());
+    }
+  } catch {}
+
+  if (!imgBuffer) return res.status(400).json({ error: "Could not load image" });
+
+  try {
+    const sharp = (await import("sharp")).default;
+    const metadata = await sharp(imgBuffer).metadata();
+    const imgW = metadata.width;
+    const imgH = metadata.height;
+
+    const crops = [];
+    const cropDir = path.join(project.dirs.images, `layers_${idx}`);
+    await mkdir(cropDir, { recursive: true });
+
+    for (let i = 0; i < elements.length; i++) {
+      const el = elements[i];
+      const bb = el.boundingBox || {};
+      const left = Math.max(0, Math.round(bb.x / 100 * imgW));
+      const top = Math.max(0, Math.round(bb.y / 100 * imgH));
+      const width = Math.min(imgW - left, Math.max(1, Math.round(bb.width / 100 * imgW)));
+      const height = Math.min(imgH - top, Math.max(1, Math.round(bb.height / 100 * imgH)));
+
+      if (width < 2 || height < 2) {
+        crops.push({ index: i, url: null });
+        continue;
+      }
+
+      const cropPath = path.join(cropDir, `layer_${i}.png`);
+      await sharp(imgBuffer)
+        .extract({ left, top, width, height })
+        .png()
+        .toFile(cropPath);
+
+      crops.push({
+        index: i,
+        url: `/api/projects/${project.id}/generated-images/layers_${idx}/layer_${i}.png`,
+        width,
+        height,
+      });
+    }
+
+    console.log(`[crop-layers] Block ${idx}: cropped ${crops.filter(c => c.url).length}/${elements.length} layers`);
+    res.json({ ok: true, crops, imgWidth: imgW, imgHeight: imgH });
+  } catch (err) {
+    console.error(`[crop-layers] Error: ${err.message}`);
+    res.status(500).json({ error: `レイヤー切り出しエラー: ${err.message}` });
+  }
+});
+
+// POST /api/projects/:id/layer-edit/:idx - Per-layer AI edit
+app.post("/api/projects/:id/layer-edit/:idx", async (req, res) => {
+  trackAiUsage("layer-edit");
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
+
+  const idx = parseInt(req.params.idx, 10);
+  const block = project.blocks[idx];
+  if (!block) return res.status(404).json({ error: "Block not found" });
+
+  const { element, instruction, elementIndex, provider = "pixai" } = req.body;
+  if (!element || !instruction) {
+    return res.status(400).json({ error: "element and instruction are required" });
+  }
+
+  const elType = element.type || "text";
+
+  try {
+    // ── テキスト要素: AIでテキスト書き換え ──
+    if (elType === "text") {
+      const currentText = element.content || "";
+      const rewritePrompt = `以下のテキストを指示に従って書き換えてください。
+
+元テキスト: "${currentText}"
+指示: ${instruction}
+
+書き換え後のテキストのみを返してください。余計な説明は不要です。`;
+
+      // Use Anthropic first, then Gemini
+      let newText = currentText;
+      const anthropicKey = process.env.ANTHROPIC_API_KEY;
+      if (anthropicKey) {
+        const resp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": anthropicKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 1024,
+            messages: [{ role: "user", content: rewritePrompt }],
+          }),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          newText = (data.content?.[0]?.text || currentText).trim();
+        }
+      } else {
+        // Gemini fallback
+        let geminiKey;
+        for (let k = 1; k <= 3; k++) {
+          const kk = process.env[`GEMINI_API_KEY_${k}`];
+          if (kk) { geminiKey = kk; break; }
+        }
+        if (!geminiKey) geminiKey = process.env.GEMINI_API_KEY;
+        if (geminiKey) {
+          const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: rewritePrompt }] }],
+            }),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            newText = (data.candidates?.[0]?.content?.parts?.[0]?.text || currentText).trim();
+          }
+        }
+      }
+
+      // Remove quotes if AI wrapped the result
+      newText = newText.replace(/^["「『]|["」』]$/g, "");
+
+      return res.json({ ok: true, type: "text", content: newText });
+    }
+
+    // ── 画像系要素: AIで画像生成 ──
+    const bb = element.boundingBox || {};
+    // Get original image dimensions from block asset
+    const asset = block.assets?.[0];
+    const imgWidth = asset?.width || 580;
+    const imgHeight = asset?.height || 580;
+
+    // Calculate element pixel dimensions
+    const elW = Math.round((bb.width || 30) / 100 * imgWidth);
+    const elH = Math.round((bb.height || 30) / 100 * imgHeight);
+    // Min size 64px
+    const genW = Math.max(64, Math.min(1024, elW));
+    const genH = Math.max(64, Math.min(1024, elH));
+
+    // Build prompt based on element type + instruction
+    const typePrompts = {
+      photo: "写真・画像素材",
+      decoration: "装飾的なデザイン要素",
+      badge: "バッジ・ラベル",
+      background: "背景画像",
+      button: "CTA ボタン",
+      icon: "アイコン",
+      logo: "ロゴ",
+      separator: "区切り線・セパレーター",
+    };
+    const typeDesc = typePrompts[elType] || "画像要素";
+    const elementDesc = element.content || typeDesc;
+
+    const genPrompt = `${instruction}
+
+要件:
+- 元は${typeDesc}（${elementDesc}）
+- 広告LP用の高品質な画像
+- 背景は透過対応可能なシンプルな構成
+- ${genW}x${genH}px のサイズに適した構図`;
+
+    const outputPath = path.join(
+      project.dirs.images,
+      `block_${idx}_layer_${elementIndex}_${Date.now()}.png`
+    );
+
+    await generateImage(genPrompt, {
+      width: genW,
+      height: genH,
+      outputPath,
+      provider,
+    });
+
+    const generatedUrl = `/api/projects/${project.id}/generated-images/${path.basename(outputPath)}`;
+    return res.json({ ok: true, type: "image", imageUrl: generatedUrl, width: genW, height: genH });
+  } catch (err) {
+    console.error(`[layer-edit] Error: ${err.message}`);
+    res.status(500).json({ error: `レイヤー編集エラー: ${err.message}` });
   }
 });
 
@@ -2146,6 +2579,496 @@ function parseElementsJson(text) {
   }
 }
 
+// POST /api/projects/:id/remove-text/:idx - Remove text from image using AI
+app.post("/api/projects/:id/remove-text/:idx", async (req, res) => {
+  trackAiUsage("remove-text");
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const idx = parseInt(req.params.idx, 10);
+  const block = project.blocks[idx];
+  if (!block) return res.status(404).json({ error: "Block not found" });
+
+  // Collect image sources from block HTML (same as extract-elements)
+  const cheerio = await import("cheerio");
+  const $ = cheerio.load(block.html || "");
+  const imgSrcs = [];
+  $("img").each((_, el) => {
+    const src = $(el).attr("data-src") || $(el).attr("src") || "";
+    if (src) imgSrcs.push(src);
+  });
+  $("source[data-srcset]").each((_, el) => {
+    const src = $(el).attr("data-srcset") || "";
+    if (src) imgSrcs.push(src);
+  });
+
+  if (imgSrcs.length === 0) {
+    return res.status(400).json({ error: "ブロックに画像がありません" });
+  }
+
+  // Resolve local image path
+  let imgSrc = imgSrcs[0];
+  let localPath;
+  try {
+    if (imgSrc.startsWith("/projects/") || imgSrc.startsWith("projects/")) {
+      localPath = path.join(PROJECT_ROOT, "data", imgSrc.replace(/^\//, ""));
+    } else if (imgSrc.startsWith("/api/projects/") && imgSrc.includes("/assets/")) {
+      const fileName = imgSrc.split("/assets/").pop();
+      if (project.dirs?.assets) localPath = path.join(project.dirs.assets, fileName);
+    } else if (imgSrc.startsWith("http")) {
+      // Download remote image to temp
+      const imgResp = await fetch(imgSrc);
+      if (!imgResp.ok) return res.status(400).json({ error: "画像ダウンロード失敗" });
+      const buf = Buffer.from(await imgResp.arrayBuffer());
+      localPath = path.join(PROJECT_ROOT, "output", `tmp_remove_text_${Date.now()}.jpg`);
+      await writeFile(localPath, buf);
+    } else {
+      // Try as asset
+      const assetEntry = project.assets?.find(a => a.originalUrl === imgSrc || a.src === imgSrc);
+      if (assetEntry?.localPath) localPath = assetEntry.localPath;
+    }
+
+    if (!localPath || !existsSync(localPath)) {
+      return res.status(400).json({ error: "画像ファイルが見つかりません" });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: `画像取得エラー: ${err.message}` });
+  }
+
+  try {
+    // Ensure output directory exists
+    const imagesDir = path.join(PROJECT_ROOT, "output", "images", req.params.id);
+    await mkdir(imagesDir, { recursive: true });
+
+    const outputPath = path.join(imagesDir, `block_${idx}_clean_${Date.now()}.jpg`);
+    await removeTextFromImage(localPath, { outputPath });
+
+    // Cache in project
+    if (!project._cleanImages) project._cleanImages = {};
+    project._cleanImages[idx] = outputPath;
+
+    // Return URL that can be served
+    const relPath = path.relative(path.join(PROJECT_ROOT, "output"), outputPath);
+    const cleanImageUrl = `/output/${relPath.replace(/\\/g, "/")}`;
+
+    res.json({ ok: true, cleanImageUrl, outputPath: relPath });
+  } catch (err) {
+    console.error(`[remove-text] Error: ${err.message}`);
+    const isQuota = err.message.includes("クォータ") || err.message.includes("レートリミット") || err.message.includes("quota");
+    res.status(isQuota ? 429 : 500).json({
+      error: `テキスト除去エラー: ${err.message}`,
+      isQuota,
+      hint: isQuota ? "Gemini画像生成APIのクォータが超過しています。時間をおいて再試行するか、Google AI Studioでプランを確認してください。" : undefined,
+    });
+  }
+});
+
+// POST /api/projects/:id/decompose-layers/:idx - fal.ai RGBA layer decomposition
+app.post("/api/projects/:id/decompose-layers/:idx", async (req, res) => {
+  trackAiUsage("decompose-layers");
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
+
+  const idx = parseInt(req.params.idx, 10);
+  const block = project.blocks[idx];
+  if (!block) return res.status(404).json({ error: "Block not found" });
+
+  const { numLayers = 6 } = req.body;
+  const falKey = process.env.FAL_KEY;
+  if (!falKey) return res.status(400).json({ error: "FAL_KEY が .env に設定されていません" });
+
+  // Get image URL from block HTML
+  const cheerio = await import("cheerio");
+  const $ = cheerio.load(block.html || "");
+  let imgSrc = $("img").attr("data-src") || $("img").attr("src") || $("source[data-srcset]").attr("data-srcset") || "";
+  if (!imgSrc) return res.json({ elements: [], error: "No image in block" });
+
+  // Resolve to absolute URL for fal.ai
+  let imageUrl = imgSrc;
+  let imgBuffer = null;
+  try {
+    if (imgSrc.startsWith("/projects/") || imgSrc.startsWith("projects/")) {
+      const localPath = path.join(PROJECT_ROOT, "data", imgSrc.replace(/^\//, ""));
+      if (existsSync(localPath)) imgBuffer = await readFile(localPath);
+    } else if (imgSrc.startsWith("/api/projects/")) {
+      const match = imgSrc.match(/\/generated-images\/(.+)/) || imgSrc.match(/\/assets\/(.+)/);
+      if (match) {
+        const fname = match[1];
+        let localPath = path.join(project.dirs.images, fname);
+        if (!existsSync(localPath)) {
+          const assetEntry = project.assets?.find(a => a.localFile === fname);
+          if (assetEntry) localPath = assetEntry.localPath;
+        }
+        if (existsSync(localPath)) imgBuffer = await readFile(localPath);
+      }
+    } else if (imgSrc.startsWith("http")) {
+      // Already an absolute URL, fal.ai can use it directly
+    }
+  } catch {}
+
+  // If we have a local buffer, we need to upload it or convert to data URL
+  let falImageUrl = imageUrl;
+  if (imgBuffer) {
+    // Convert to base64 data URL for fal.ai
+    const sharp = (await import("sharp")).default;
+    const pngBuf = await sharp(imgBuffer).png().toBuffer();
+    falImageUrl = `data:image/png;base64,${pngBuf.toString("base64")}`;
+  } else if (!imageUrl.startsWith("http")) {
+    return res.status(400).json({ error: "画像URLを解決できません" });
+  }
+
+  try {
+    console.log(`[decompose-layers] Block ${idx}: Starting fal.ai Qwen-Image-Layered (${numLayers} layers)...`);
+    const startTime = Date.now();
+
+    // Call fal.ai Qwen-Image-Layered
+    const falResp = await fetch("https://queue.fal.run/fal-ai/qwen-image-layered", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Key ${falKey}`,
+      },
+      body: JSON.stringify({
+        image_url: falImageUrl,
+        num_layers: numLayers,
+        num_inference_steps: 28,
+        guidance_scale: 5,
+        resolution: 640,
+      }),
+    });
+
+    if (!falResp.ok) {
+      const errText = await falResp.text();
+      console.error(`[decompose-layers] fal.ai error: ${falResp.status} ${errText}`);
+      throw new Error(`fal.ai API error: ${falResp.status}`);
+    }
+
+    const falData = await falResp.json();
+
+    // fal.ai queue returns request_id for async jobs
+    let result = falData;
+    if (falData.request_id && !falData.images) {
+      // Poll for result
+      const reqId = falData.request_id;
+      console.log(`[decompose-layers] Queued: ${reqId}, polling...`);
+      let attempts = 0;
+      while (attempts < 60) {
+        await new Promise(r => setTimeout(r, 3000));
+        const statusResp = await fetch(`https://queue.fal.run/fal-ai/qwen-image-layered/requests/${reqId}/status`, {
+          headers: { "Authorization": `Key ${falKey}` },
+        });
+        const status = await statusResp.json();
+        if (status.status === "COMPLETED") {
+          const resultResp = await fetch(`https://queue.fal.run/fal-ai/qwen-image-layered/requests/${reqId}`, {
+            headers: { "Authorization": `Key ${falKey}` },
+          });
+          result = await resultResp.json();
+          break;
+        } else if (status.status === "FAILED") {
+          throw new Error("fal.ai job failed");
+        }
+        attempts++;
+      }
+      if (attempts >= 60) throw new Error("fal.ai job timed out");
+    }
+
+    // Process layer images
+    const layerImages = result.images || [];
+    if (layerImages.length === 0) {
+      throw new Error("fal.ai returned no layers");
+    }
+
+    console.log(`[decompose-layers] Got ${layerImages.length} layers in ${Date.now() - startTime}ms`);
+
+    // Download and save each layer as PNG
+    const sharpMod = (await import("sharp")).default;
+    const layersDir = path.join(project.dirs.images, `fal_layers_${idx}`);
+    await mkdir(layersDir, { recursive: true });
+
+    const elements = [];
+    for (let i = 0; i < layerImages.length; i++) {
+      const layerUrl = layerImages[i].url || layerImages[i];
+      const layerPath = path.join(layersDir, `layer_${i}.png`);
+
+      // Download layer image
+      const layerResp = await fetch(layerUrl);
+      if (!layerResp.ok) {
+        console.warn(`[decompose-layers] Failed to download layer ${i}`);
+        continue;
+      }
+      const layerBuf = Buffer.from(await layerResp.arrayBuffer());
+      await writeFile(layerPath, layerBuf);
+
+      // Get layer dimensions
+      const meta = await sharpMod(layerBuf).metadata();
+      const localUrl = `/api/projects/${project.id}/generated-images/fal_layers_${idx}/layer_${i}.png`;
+
+      elements.push({
+        id: `fal_${idx}_${i}_${Date.now()}`,
+        type: i === 0 ? "background" : "image",
+        label: i === 0 ? "背景レイヤー" : `レイヤー ${i + 1}`,
+        x: 0,
+        y: 0,
+        w: meta.width || 412,
+        h: meta.height || 0,
+        zIndex: i,
+        visible: true,
+        locked: false,
+        opacity: 1,
+        layerImageUrl: localUrl,
+      });
+    }
+
+    // Cache in project
+    if (!project._decomposedLayers) project._decomposedLayers = {};
+    project._decomposedLayers[idx] = elements;
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[decompose-layers] Block ${idx}: ${elements.length} layers processed in ${elapsed}ms`);
+
+    res.json({
+      elements,
+      meta: {
+        totalLayers: elements.length,
+        processingTimeMs: elapsed,
+        provider: "fal-ai/qwen-image-layered",
+      },
+    });
+  } catch (err) {
+    console.error(`[decompose-layers] Error: ${err.message}`);
+    res.status(500).json({ error: `レイヤー分解エラー: ${err.message}` });
+  }
+});
+
+// POST /api/projects/:id/ocr-layer - OCR text extraction from layer image
+app.post("/api/projects/:id/ocr-layer", async (req, res) => {
+  trackAiUsage("ocr-layer");
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const { imageUrl } = req.body;
+  if (!imageUrl) return res.status(400).json({ error: "imageUrl required" });
+
+  // Get image as base64
+  let base64, mimeType = "image/png";
+  try {
+    if (imageUrl.startsWith("/api/projects/")) {
+      const match = imageUrl.match(/\/generated-images\/(.+)/);
+      if (match && project.dirs) {
+        const localPath = path.join(project.dirs.images, match[1]);
+        if (existsSync(localPath)) {
+          const buf = await readFile(localPath);
+          base64 = buf.toString("base64");
+        }
+      }
+    } else if (imageUrl.startsWith("http")) {
+      const resp = await fetch(imageUrl);
+      if (resp.ok) {
+        const buf = Buffer.from(await resp.arrayBuffer());
+        base64 = buf.toString("base64");
+        mimeType = resp.headers.get("content-type") || "image/png";
+      }
+    }
+  } catch {}
+
+  if (!base64) return res.status(400).json({ error: "画像を取得できません" });
+
+  // Use Anthropic Vision for OCR (better quality), fallback to Gemini
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  let geminiKey;
+  for (let k = 1; k <= 3; k++) {
+    const kk = process.env[`GEMINI_API_KEY_${k}`];
+    if (kk) { geminiKey = kk; break; }
+  }
+  if (!geminiKey) geminiKey = process.env.GEMINI_API_KEY;
+
+  const ocrPrompt = `この画像内のテキストを全て検出してください。各テキストについて以下のJSON配列形式で返してください：
+[
+  {
+    "text": "検出されたテキスト",
+    "bounds": { "x": 左上X(px), "y": 左上Y(px), "w": 幅(px), "h": 高さ(px) },
+    "estimatedFontSize": フォントサイズ推定(px),
+    "isBold": true/false,
+    "dominantColor": "#hex色コード"
+  }
+]
+
+ルール：
+1. JSON配列のみ返す（他のテキスト不要）
+2. テキストが無い場合は空配列 [] を返す
+3. 近接するテキストは1行ごとにまとめる
+4. bounds座標は画像のピクセル座標`;
+
+  try {
+    let texts = [];
+
+    if (anthropicKey) {
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4096,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } },
+              { type: "text", text: ocrPrompt },
+            ],
+          }],
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const responseText = data.content?.[0]?.text || "";
+        const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          try { texts = JSON.parse(jsonMatch[0]); } catch {}
+        }
+      }
+    } else if (geminiKey) {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: ocrPrompt },
+              { inline_data: { mime_type: mimeType, data: base64 } },
+            ],
+          }],
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          try { texts = JSON.parse(jsonMatch[0]); } catch {}
+        }
+      }
+    }
+
+    // Merge nearby texts (same line)
+    const merged = mergeNearbyTexts(texts);
+    console.log(`[ocr-layer] Found ${merged.length} text regions`);
+    res.json({ texts: merged });
+  } catch (err) {
+    console.error(`[ocr-layer] Error: ${err.message}`);
+    res.status(500).json({ error: `OCRエラー: ${err.message}` });
+  }
+});
+
+function mergeNearbyTexts(texts) {
+  if (!texts || !texts.length) return [];
+  const sorted = [...texts].sort((a, b) => (a.bounds?.y || 0) - (b.bounds?.y || 0));
+  const merged = [];
+  let current = null;
+
+  for (const t of sorted) {
+    if (!t.bounds) continue;
+    if (!current) {
+      current = { ...t };
+      continue;
+    }
+    const yDiff = Math.abs((t.bounds.y || 0) - (current.bounds.y || 0));
+    if (yDiff < 10) {
+      current.text = (current.text || "") + (t.text || "");
+      current.bounds.w = Math.max(current.bounds.x + current.bounds.w, t.bounds.x + t.bounds.w) - current.bounds.x;
+      current.bounds.h = Math.max(current.bounds.h, t.bounds.h);
+    } else {
+      merged.push(current);
+      current = { ...t };
+    }
+  }
+  if (current) merged.push(current);
+  return merged;
+}
+
+// POST /api/projects/:id/export-layers/:idx - Composite layers into final image
+app.post("/api/projects/:id/export-layers/:idx", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  if (!project.dirs) return res.status(400).json({ error: "Project not initialized" });
+
+  const idx = parseInt(req.params.idx, 10);
+  const { elements, width, height } = req.body;
+  if (!elements || !width || !height) return res.status(400).json({ error: "elements, width, height required" });
+
+  try {
+    const sharp = (await import("sharp")).default;
+
+    // Sort visible elements by zIndex
+    const sorted = [...elements]
+      .filter(e => e.visible !== false)
+      .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+
+    const compositeInputs = [];
+
+    for (const el of sorted) {
+      if (!el.layerImageUrl) continue;
+
+      let layerBuf;
+      if (el.layerImageUrl.startsWith("/api/projects/")) {
+        const match = el.layerImageUrl.match(/\/generated-images\/(.+)/);
+        if (match) {
+          const localPath = path.join(project.dirs.images, match[1]);
+          if (existsSync(localPath)) layerBuf = await readFile(localPath);
+        }
+      } else if (el.layerImageUrl.startsWith("http")) {
+        const resp = await fetch(el.layerImageUrl);
+        if (resp.ok) layerBuf = Buffer.from(await resp.arrayBuffer());
+      }
+
+      if (!layerBuf) continue;
+
+      // Resize layer if needed and apply position
+      let input = sharp(layerBuf);
+      if (el.w && el.h) {
+        input = input.resize(Math.round(el.w), Math.round(el.h), { fit: "fill" });
+      }
+      if (el.opacity !== undefined && el.opacity < 1) {
+        // Apply opacity via alpha channel
+        const { data, info } = await input.ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        for (let p = 3; p < data.length; p += 4) {
+          data[p] = Math.round(data[p] * el.opacity);
+        }
+        input = sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } });
+      }
+
+      const buf = await input.png().toBuffer();
+      compositeInputs.push({
+        input: buf,
+        left: Math.max(0, Math.round(el.x || 0)),
+        top: Math.max(0, Math.round(el.y || 0)),
+      });
+    }
+
+    const result = await sharp({
+      create: { width: Math.round(width), height: Math.round(height), channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
+    })
+      .composite(compositeInputs)
+      .png()
+      .toBuffer();
+
+    // Save to file
+    const outputPath = path.join(project.dirs.images, `block_${idx}_composite_${Date.now()}.png`);
+    await writeFile(outputPath, result);
+    const outputUrl = `/api/projects/${project.id}/generated-images/${path.basename(outputPath)}`;
+
+    console.log(`[export-layers] Block ${idx}: composited ${compositeInputs.length} layers -> ${outputUrl}`);
+    res.json({ ok: true, imageUrl: outputUrl, width, height });
+  } catch (err) {
+    console.error(`[export-layers] Error: ${err.message}`);
+    res.status(500).json({ error: `レイヤー合成エラー: ${err.message}` });
+  }
+});
+
 // GET /api/projects/:id/images - List all project images
 app.get("/api/projects/:id/images", (req, res) => {
   const project = projects.get(req.params.id);
@@ -2173,6 +3096,25 @@ app.get("/api/projects/:id/images", (req, res) => {
     });
   }
   res.json({ images });
+});
+
+// GET /api/proxy-image - Proxy external images for Canvas (CORS workaround)
+app.get("/api/proxy-image", async (req, res) => {
+  const imageUrl = req.query.url;
+  if (!imageUrl) return res.status(400).send("url required");
+  try {
+    const resp = await fetch(imageUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; ArticleCloner/1.0)" },
+    });
+    if (!resp.ok) return res.status(resp.status).send("Upstream error");
+    const ct = resp.headers.get("content-type") || "image/jpeg";
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    res.set("Content-Type", ct);
+    res.set("Cache-Control", "public, max-age=3600");
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
 });
 
 // POST /api/search-images - Image search proxy
@@ -2343,6 +3285,16 @@ JSONのみを返してください。`;
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, projects: projects.size, uptime: process.uptime() });
+});
+
+// GET /api/models - 利用可能なAIモデル一覧（動的取得）
+app.get("/api/models", async (req, res) => {
+  try {
+    const models = await discoverModels(req.query.refresh === "1");
+    res.json({ ok: true, models });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Status check - API key configuration
@@ -2694,6 +3646,107 @@ app.get("/api/usage-stats", (req, res) => {
 
 // ── 広告入稿ルート ────────────────────────────────
 app.use(createAdRoutes((id) => projects.get(id)));
+
+// 画像分解エディタ スタンドアロンページ
+app.get("/image-decomposer", (req, res) => {
+  res.sendFile(path.join(PROJECT_ROOT, "public", "decomposer.html"));
+});
+
+// POST /api/decompose-image - Claude Vision で画像を分解
+app.post("/api/decompose-image", async (req, res) => {
+  const { image, mediaType } = req.body;
+  if (!image || !mediaType) {
+    return res.status(400).json({ error: "image と mediaType が必要です" });
+  }
+
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!anthropicKey) {
+    return res.status(400).json({ error: "ANTHROPIC_API_KEY を .env に設定してください" });
+  }
+
+  const decomposePrompt = `この広告画像を分析し、HTML/CSSで再構成するために全要素を分解してください。
+
+以下のJSON形式で返してください（JSONのみ、他のテキスト不要）：
+{
+  "width": 画像の推定幅(px),
+  "height": 画像の推定高さ(px),
+  "background": "背景色(#hex)またはCSS gradient",
+  "elements": [
+    {
+      "id": "el_1",
+      "type": "text" | "price" | "badge" | "decoration" | "photo" | "button" | "icon" | "logo" | "background-area",
+      "content": "テキスト内容（テキスト系の場合）または要素の説明",
+      "x": X位置(px),
+      "y": Y位置(px),
+      "width": 幅(px),
+      "height": 高さ(px),
+      "fontSize": フォントサイズ(px),
+      "fontWeight": "normal" | "bold" | "900",
+      "color": "#hex文字色",
+      "backgroundColor": "#hex背景色 or transparent",
+      "textAlign": "left" | "center" | "right",
+      "borderRadius": 角丸(px),
+      "rotation": 回転角度(deg),
+      "opacity": 0-1,
+      "zIndex": レイヤー順序
+    }
+  ]
+}
+
+重要ルール：
+- 画像サイズは600x800を基準にpx値で指定
+- テキスト要素は文字を正確に読み取り、type="text"、"price"（価格）、"badge"（バッジ/ラベル）に分類
+- 背景領域はtype="background-area"でplaceholder表示
+- 写真部分はtype="photo"でplaceholder表示
+- 装飾（線、枠、影など）はtype="decoration"
+- 全要素にユニークなid（el_1, el_2, ...）を付与
+- zIndexは0始まり（背景が0、前面要素ほど大きく）
+- テキストのfontSize, fontWeight, colorをできるだけ正確に推定`;
+
+  try {
+    const anthropicResp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": anthropicKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 8192,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: mediaType, data: image } },
+            { type: "text", text: decomposePrompt },
+          ],
+        }],
+      }),
+    });
+
+    if (!anthropicResp.ok) {
+      const errText = await anthropicResp.text();
+      console.error(`[decompose-image] Anthropic error: ${anthropicResp.status} ${errText}`);
+      return res.status(500).json({ error: "AI分析エラー" });
+    }
+
+    const data = await anthropicResp.json();
+    const responseText = data.content?.[0]?.text || "";
+
+    // JSONを抽出
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return res.status(500).json({ error: "AI応答のパースに失敗しました" });
+    }
+
+    const result = JSON.parse(jsonMatch[0]);
+    console.log(`[decompose-image] ${result.elements?.length || 0} elements extracted`);
+    res.json(result);
+  } catch (err) {
+    console.error(`[decompose-image] Error: ${err.message}`);
+    res.status(500).json({ error: `分解エラー: ${err.message}` });
+  }
+});
 
 // 広告マネージャー スタンドアロンページ
 app.get("/ad-manager", (req, res) => {

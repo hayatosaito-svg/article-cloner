@@ -10,6 +10,7 @@
     "build": "node src/html-builder.js"
   },
   "dependencies": {
+    "@fal-ai/client": "^1.9.4",
     "cheerio": "^1.0.0",
     "express": "^4.22.1",
     "form-data": "^4.0.5",

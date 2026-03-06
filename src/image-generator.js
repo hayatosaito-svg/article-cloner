@@ -11,9 +11,134 @@ import { writeFile, readFile } from "fs/promises";
 import path from "path";
 import { sleep } from "./utils.js";
 
-const GEMINI_IMAGE_GEN_MODEL = "gemini-3-pro-image-preview";
-const GEMINI_FLASH_MODEL = "gemini-2.5-flash";
-const GEMINI_IMAGEN_MODEL = "imagen-3.0-generate-002";
+// ── 動的モデル発見（ハードコードせず、APIから最新モデルを自動取得） ──
+// フォールバック用のみハードコード（API取得が完全失敗した時のみ使用）
+const FALLBACK_IMAGE_MODELS = ["gemini-2.5-flash-image", "gemini-3-pro-image-preview"];
+const FALLBACK_FLASH_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash"];
+const FALLBACK_IMAGEN_MODELS = ["imagen-3.0-generate-002"];
+
+// キャッシュ
+let _cachedModels = null;
+let _cachedAt = 0;
+let _isFallback = false;
+const MODEL_CACHE_TTL = 60 * 60 * 1000; // 1時間（成功時）
+const FALLBACK_RETRY_TTL = 30 * 1000;   // 30秒（fallback時は早くリトライ）
+
+/**
+ * Gemini APIから利用可能なモデル一覧を取得し、用途別に分類
+ * → モデル名が変わっても自動追従。期限切れゼロ。
+ */
+export async function discoverModels(forceRefresh = false) {
+  const ttl = _isFallback ? FALLBACK_RETRY_TTL : MODEL_CACHE_TTL;
+  if (_cachedModels && !forceRefresh && Date.now() - _cachedAt < ttl) {
+    return _cachedModels;
+  }
+
+  // グローバルkeyRotatorを使用（envロード後は動く）
+  let apiKey;
+  try {
+    apiKey = keyRotator.getKey();
+  } catch {
+    console.warn("[model-discovery] No API key available, using fallbacks");
+    return _buildFallbackResult();
+  }
+
+  try {
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+      { signal: AbortSignal.timeout(10000) }
+    );
+    if (!resp.ok) {
+      console.warn(`[model-discovery] API returned ${resp.status}, using fallbacks`);
+      return _buildFallbackResult();
+    }
+
+    const data = await resp.json();
+    const allModels = (data.models || []).map(m => m.name.replace("models/", ""));
+
+    // ── 画像生成モデル（"image" を含むgeminiモデル）
+    const imageModels = allModels
+      .filter(n => n.includes("gemini") && n.includes("image") && !n.includes("tts") && !n.includes("audio"))
+      .sort((a, b) => _imageModelPriority(a) - _imageModelPriority(b));
+
+    // ── Flashモデル（テキスト/Vision用、image/tts/audio/lite除外）
+    const flashModels = allModels
+      .filter(n => n.match(/^gemini-\d.*flash/) && !n.includes("image") && !n.includes("tts") && !n.includes("audio") && !n.includes("lite"))
+      .sort((a, b) => _versionScore(b) - _versionScore(a));
+
+    // ── Imagenモデル
+    const imagenModels = allModels
+      .filter(n => n.startsWith("imagen"))
+      .sort((a, b) => _versionScore(b) - _versionScore(a));
+
+    _cachedModels = {
+      image: imageModels.length > 0 ? imageModels : FALLBACK_IMAGE_MODELS,
+      flash: flashModels.length > 0 ? flashModels.slice(0, 3) : FALLBACK_FLASH_MODELS,
+      imagen: imagenModels.length > 0 ? imagenModels.slice(0, 2) : FALLBACK_IMAGEN_MODELS,
+      all: allModels,
+      discoveredAt: new Date().toISOString(),
+    };
+    _cachedAt = Date.now();
+    _isFallback = false;
+
+    console.log(`[model-discovery] Image models (${imageModels.length}): ${imageModels.join(", ")}`);
+    console.log(`[model-discovery] Flash: ${_cachedModels.flash[0]}, Imagen: ${_cachedModels.imagen[0]}`);
+    return _cachedModels;
+  } catch (err) {
+    console.warn(`[model-discovery] Error: ${err.message}, using fallbacks`);
+    return _buildFallbackResult();
+  }
+}
+
+function _buildFallbackResult() {
+  _cachedModels = {
+    image: FALLBACK_IMAGE_MODELS,
+    flash: FALLBACK_FLASH_MODELS,
+    imagen: FALLBACK_IMAGEN_MODELS,
+    all: [],
+    discoveredAt: "fallback",
+  };
+  _cachedAt = Date.now();
+  _isFallback = true; // 30秒後にリトライ
+  return _cachedModels;
+}
+
+// 画像モデルの優先度（低い方が優先）
+function _imageModelPriority(name) {
+  let score = 50;
+  // 新しいバージョンほど優先
+  const ver = name.match(/gemini-(\d+(?:\.\d+)?)/);
+  if (ver) score -= parseFloat(ver[1]) * 8;
+  // flash-image > pro-image（flashの方が速くて安定）
+  if (name.includes("flash")) score -= 5;
+  if (name.includes("pro")) score -= 3;
+  // preview/exp は少し下げる
+  if (name.includes("-exp")) score += 3;
+  return score;
+}
+
+function _versionScore(name) {
+  const m = name.match(/(\d+(?:\.\d+)?)/);
+  return m ? parseFloat(m[1]) : 0;
+}
+
+// 画像生成モデル一覧を取得
+async function getImageModels() {
+  const m = await discoverModels();
+  return m.image;
+}
+
+// Flashモデル名を取得
+async function getFlashModel() {
+  const m = await discoverModels();
+  return m.flash[0];
+}
+
+// Imagenモデル名を取得
+async function getImagenModel() {
+  const m = await discoverModels();
+  return m.imagen[0];
+}
 
 /**
  * Gemini APIキーをローテーション（遅延読み込み対応）
@@ -162,7 +287,8 @@ async function describeImageGemini(imagePath, context = "") {
     ? `この画像を詳しく説明してください。この画像は以下のテキストの近くに配置されています: "${context}". 画像の内容、構図、色使い、雰囲気を具体的に説明してください。日本語で200文字以内で。`
     : `この画像を詳しく説明してください。内容、構図、色使い、雰囲気を具体的に説明してください。日本語で200文字以内で。`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_FLASH_MODEL}:generateContent?key=${key}`;
+  const flashModel = await getFlashModel();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${flashModel}:generateContent?key=${key}`;
 
   try {
     const resp = await fetch(url, {
@@ -242,8 +368,9 @@ async function generateImageGemini(prompt, options = {}) {
   const width = options.width || 580;
   const height = options.height || 580;
 
-  // 1) Try Imagen 3.0
-  const imagenUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGEN_MODEL}:predict?key=${key}`;
+  // 1) Try Imagen (動的モデル)
+  const imagenModel = await getImagenModel();
+  const imagenUrl = `https://generativelanguage.googleapis.com/v1beta/models/${imagenModel}:predict?key=${key}`;
 
   try {
     const resp = await fetch(imagenUrl, {
@@ -290,7 +417,7 @@ async function generateImageGeminiNative(prompt, options = {}) {
   const height = options.height || 580;
 
   // Try multiple models for native image generation
-  for (const model of [GEMINI_IMAGE_GEN_MODEL, "gemini-2.5-flash-preview-image", "gemini-2.0-flash-exp"]) {
+  for (const model of await getImageModels()) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
     try {
@@ -305,10 +432,15 @@ async function generateImageGeminiNative(prompt, options = {}) {
 
       if (!resp.ok) {
         console.warn(`[image-gen] ${model} native failed: ${resp.status}`);
+        if (resp.status === 429) return null; // レートリミット → 呼び出し元でリトライ
         continue;
       }
 
       const data = await resp.json();
+      if (data.candidates?.[0]?.finishReason === "SAFETY" || data.promptFeedback?.blockReason) {
+        console.warn(`[image-gen] ${model} native blocked: ${data.promptFeedback?.blockReason || data.candidates?.[0]?.finishReason}`);
+        continue;
+      }
       const parts = data.candidates?.[0]?.content?.parts || [];
       for (const part of parts) {
         if (part.inline_data?.mime_type?.startsWith("image/")) {
@@ -568,7 +700,7 @@ async function generateImageFromReferenceGemini(imagePath, options = {}) {
     if (triedKeys.has(key)) break;
     triedKeys.add(key);
 
-    for (const model of [GEMINI_IMAGE_GEN_MODEL, "gemini-2.5-flash-preview-image", "gemini-2.0-flash-exp"]) {
+    for (const model of await getImageModels()) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
       try {
@@ -588,8 +720,9 @@ async function generateImageFromReferenceGemini(imagePath, options = {}) {
           console.warn(`[image-gen] ${model} reference failed (key ${attempt + 1}): ${resp.status}`);
           if (resp.status === 403 || resp.status === 401) {
             keyRotator.reportError(key);
-            break; // この鍵で別モデル試しても無駄、次の鍵へ
+            break;
           }
+          if (resp.status === 429) break; // レートリミット → 次のキー
           continue;
         }
 
@@ -699,7 +832,8 @@ ${designContext}
 元テキスト:
 ${sourceText}`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_FLASH_MODEL}:generateContent?key=${key}`;
+  const flashModel = await getFlashModel();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${flashModel}:generateContent?key=${key}`;
   const resp = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -830,6 +964,101 @@ function buildReferencePrompt(nuance, style, options, designRequirements) {
 
 export function videoToImagePrompt(videoContext) {
   return `Create a still image that represents: ${videoContext}. Style: Japanese advertisement, professional photography, clean layout. No text in the image.`;
+}
+
+// ── removeTextFromImage ──
+
+/**
+ * 画像からテキストを除去し、背景で埋めたクリーン画像を生成
+ * @param {string} imagePath - 元画像のファイルパス
+ * @param {object} options - { outputPath, textRegions }
+ * @returns {string} クリーン画像のファイルパス
+ */
+export async function removeTextFromImage(imagePath, options = {}) {
+  const outputPath = options.outputPath || `clean_${Date.now()}.jpg`;
+  const imageData = await readFile(imagePath);
+  const base64 = imageData.toString("base64");
+  const mimeType = getMimeType(imagePath);
+
+  // Get original dimensions for output
+  const metadata = await sharp(imageData).metadata();
+  const width = metadata.width || 580;
+  const height = metadata.height || 580;
+
+  const prompt = `この画像に含まれるすべてのテキスト・文字・数字・記号を完全に除去してください。
+テキストがあった場所は、周囲の背景パターン・色・テクスチャで自然に埋めてください。
+テキスト以外の要素（写真、イラスト、装飾、グラデーション、ロゴマーク等）はそのまま維持してください。
+画像の品質・解像度・サイズを維持してください。
+文字が一切ない、クリーンな画像を返してください。`;
+
+  const imageModels = await getImageModels();
+
+  // リトライ戦略: 全モデル × 全キー × 最大3ラウンド（429待機あり）
+  for (let round = 0; round < 3; round++) {
+    if (round > 0) {
+      const waitSec = round * 10;
+      console.log(`[image-gen] removeText round ${round + 1}: waiting ${waitSec}s for rate limit cooldown...`);
+      await sleep(waitSec * 1000);
+    }
+
+    for (const model of imageModels) {
+      let key;
+      try { key = keyRotator.getKey(); } catch { break; }
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+
+      try {
+        console.log(`[image-gen] removeText trying ${model} (round ${round + 1})...`);
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mimeType, data: base64 } },
+            ] }],
+            generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+          }),
+        });
+
+        if (!resp.ok) {
+          const status = resp.status;
+          let errBody = "";
+          try { errBody = (await resp.text()).slice(0, 200); } catch {}
+          console.warn(`[image-gen] removeText ${model} HTTP ${status}: ${errBody}`);
+          if (status === 403 || status === 401) {
+            keyRotator.reportError(key);
+          }
+          // 429/500/503 → 次のモデルを試す（breakしない）
+          continue;
+        }
+
+        const data = await resp.json();
+        // ブロック理由チェック
+        if (data.candidates?.[0]?.finishReason === "SAFETY" || data.promptFeedback?.blockReason) {
+          console.warn(`[image-gen] removeText ${model} blocked: ${data.promptFeedback?.blockReason || data.candidates?.[0]?.finishReason}`);
+          continue;
+        }
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        for (const part of parts) {
+          if (part.inline_data?.mime_type?.startsWith("image/")) {
+            const buffer = Buffer.from(part.inline_data.data, "base64");
+            const resized = await sharp(buffer).resize(width, height, { fit: "cover" }).jpeg({ quality: 90 }).toBuffer();
+            await writeFile(outputPath, resized);
+            console.log(`[image-gen] Text removed OK (${model}): ${outputPath} (${width}x${height})`);
+            return outputPath;
+          }
+        }
+        // 画像なしレスポンス
+        const textParts = parts.filter(p => p.text).map(p => p.text.slice(0, 80));
+        console.warn(`[image-gen] removeText ${model}: no image in response (${parts.length} parts, text: ${textParts.join("; ") || "none"})`);
+      } catch (err) {
+        console.warn(`[image-gen] removeText ${model} error: ${err.message}`);
+      }
+    }
+  }
+
+  throw new Error("テキスト除去に失敗（全モデル×全キー）。レートリミットの可能性あり。少し時間をおいて再試行してください。");
 }
 
 // ── composeImages ──

@@ -572,13 +572,11 @@ window.addEventListener("message", (e) => {
     const idx = e.data.blockIndex;
     const newHtml = e.data.html;
     const newText = e.data.text;
+    const silent = e.data.silent || false;
 
     if (state.projectId != null && idx != null) {
-      // Find the full block html wrapper by rebuilding from the block's original wrapper
       const block = state.projectData?.blocks?.[idx];
       if (block) {
-        // The inline edit changes the inner content; we need to wrap it back in the block's outer tag
-        // Since the block.html is the full outer element, we replace its inner content
         const parser = new DOMParser();
         const doc = parser.parseFromString(block.html, "text/html");
         const root = doc.body.firstChild;
@@ -589,23 +587,22 @@ window.addEventListener("message", (e) => {
             html: updatedHtml,
             text: newText,
           }).then(() => {
-            // Update local state
             block.html = updatedHtml;
             block.text = newText;
-            // Update block list preview text
             const item = document.querySelector(`#block-list [data-index="${idx}"] .block-preview-text`);
             if (item) item.textContent = (newText || "").slice(0, 80);
-            // Update panel if open for this block
             if (window._currentPanelData?.blockIndex === idx) {
               const codeArea = document.querySelector("#edit-panel-body .panel-code");
               if (codeArea) codeArea.value = updatedHtml;
               const textArea = document.querySelector("#edit-panel-body .panel-textarea");
               if (textArea) textArea.value = newText || "";
             }
-            showToast("インライン編集を保存しました", "success");
-            pushHistory("inline_edit", `ブロック ${idx} インライン編集`);
+            if (!silent) {
+              showToast("インライン編集を保存しました", "success");
+              pushHistory("inline_edit", `ブロック ${idx} インライン編集`);
+            }
           }).catch((err) => {
-            showToast(`保存エラー: ${err.message}`, "error");
+            if (!silent) showToast(`保存エラー: ${err.message}`, "error");
           });
         }
       }
@@ -1121,6 +1118,49 @@ document.getElementById("btn-export").addEventListener("click", async () => {
     }
   } else {
     openExportModal(null);
+  }
+});
+
+// ── ワンクリックコピーボタン（ツールバー直結） ──
+document.getElementById("btn-copy-sb")?.addEventListener("click", async () => {
+  if (!state.projectId) return;
+  const btn = document.getElementById("btn-copy-sb");
+  btn.disabled = true;
+  btn.textContent = "ビルド中...";
+  try {
+    // まずビルドしてからコピー
+    const result = await window.API.build(state.projectId);
+    if (!result.ok) throw new Error(result.error);
+    const res = await fetch(window.API.getExportUrl(state.projectId));
+    const html = await res.text();
+    await navigator.clipboard.writeText(html);
+    btn.textContent = "コピー完了!";
+    showToast("SB互換HTMLをコピーしました", "success");
+    setTimeout(() => { btn.textContent = "HTMLコピー"; }, 2000);
+  } catch (err) {
+    showToast(`コピーエラー: ${err.message}`, "error");
+    btn.textContent = "HTMLコピー";
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById("btn-copy-editor")?.addEventListener("click", async () => {
+  if (!state.projectId) return;
+  const btn = document.getElementById("btn-copy-editor");
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/projects/${state.projectId}/editor-html`);
+    const html = await res.text();
+    await navigator.clipboard.writeText(html);
+    btn.textContent = "コピー完了!";
+    showToast("エディターHTMLをコピーしました", "success");
+    setTimeout(() => { btn.textContent = "エディターコピー"; }, 2000);
+  } catch (err) {
+    showToast(`コピーエラー: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { btn.textContent = "エディターコピー"; }, 2000);
   }
 });
 

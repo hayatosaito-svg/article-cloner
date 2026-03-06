@@ -253,6 +253,54 @@ export const API = {
     });
   },
 
+  async cropLayers(projectId, idx, data) {
+    return fetchJson(`/api/projects/${projectId}/crop-layers/${idx}`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      timeout: 60000,
+    });
+  },
+
+  async layerEdit(projectId, idx, data) {
+    return fetchJson(`/api/projects/${projectId}/layer-edit/${idx}`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      timeout: 120000,
+    });
+  },
+
+  async removeText(projectId, idx, textRegions) {
+    return fetchJson(`/api/projects/${projectId}/remove-text/${idx}`, {
+      method: "POST",
+      body: JSON.stringify({ textRegions }),
+      timeout: 120000,
+    });
+  },
+
+  async decomposeLayers(projectId, idx, data = {}) {
+    return fetchJson(`/api/projects/${projectId}/decompose-layers/${idx}`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      timeout: 300000,
+    });
+  },
+
+  async ocrLayer(projectId, imageUrl) {
+    return fetchJson(`/api/projects/${projectId}/ocr-layer`, {
+      method: "POST",
+      body: JSON.stringify({ imageUrl }),
+      timeout: 60000,
+    });
+  },
+
+  async exportLayers(projectId, idx, data) {
+    return fetchJson(`/api/projects/${projectId}/export-layers/${idx}`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      timeout: 120000,
+    });
+  },
+
   async searchImages(query, source) {
     return fetchJson("/api/search-images", {
       method: "POST",

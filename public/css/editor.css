@@ -4232,3 +4232,29 @@
 .auto-saved-indicator.show {
   opacity: 1;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   One-Click Copy Buttons (Toolbar)
+   ═══════════════════════════════════════════════════════════ */
+
+.btn-copy-sb {
+  background: rgba(34, 197, 94, 0.12) !important;
+  border-color: rgba(34, 197, 94, 0.3) !important;
+  color: #16a34a !important;
+  font-weight: 600 !important;
+}
+
+.btn-copy-sb:hover {
+  background: rgba(34, 197, 94, 0.2) !important;
+}
+
+.btn-copy-editor {
+  background: rgba(59, 130, 246, 0.12) !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+  color: #2563eb !important;
+  font-weight: 600 !important;
+}
+
+.btn-copy-editor:hover {
+  background: rgba(59, 130, 246, 0.2) !important;
+}
