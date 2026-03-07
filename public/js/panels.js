@@ -7503,73 +7503,13 @@ function build3PanePanel(projectId, blockIndex, block) {
     sizeSection.appendChild(presetRow);
     frag.appendChild(sizeSection);
 
-    // 画像差し替え（アップロード）
+    // 画像差し替え（Beyond風アップロードモーダル）
     const uploadSection = createSection("画像差し替え");
-    const uploadZone = document.createElement("div");
-    uploadZone.className = "upload-drop-zone";
-    uploadZone.innerHTML = '<div class="upload-drop-icon">📁</div><div class="upload-drop-text">画像をドラッグ＆ドロップ<br>またはクリックして選択</div>';
-    const uploadInput = document.createElement("input");
-    uploadInput.type = "file";
-    uploadInput.accept = "image/*,video/*";
-    uploadInput.style.display = "none";
-    uploadZone.appendChild(uploadInput);
-    uploadZone.addEventListener("click", () => uploadInput.click());
-    uploadZone.addEventListener("dragover", (e) => { e.preventDefault(); uploadZone.classList.add("dragover"); });
-    uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("dragover"));
-    uploadZone.addEventListener("drop", (e) => {
-      e.preventDefault();
-      uploadZone.classList.remove("dragover");
-      const file = e.dataTransfer?.files?.[0];
-      if (file && file.type.startsWith("image/")) handle3PaneUpload(file);
-    });
-    const uploadPreview = document.createElement("div");
-    uploadPreview.className = "upload-preview-area";
-
-    function handle3PaneUpload(file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        uploadPreview.innerHTML = "";
-        const card = document.createElement("div");
-        card.className = "oneclick-variant-card";
-        const uImg = document.createElement("img");
-        uImg.src = reader.result;
-        card.appendChild(uImg);
-        const applyBtn = document.createElement("button");
-        applyBtn.className = "oneclick-apply-btn";
-        applyBtn.textContent = "この画像を適用";
-        applyBtn.addEventListener("click", async () => {
-          applyBtn.disabled = true;
-          applyBtn.innerHTML = '<span class="spinner"></span> アップロード中...';
-          try {
-            const uploadResult = await window.API.uploadImage(projectId, blockIndex, {
-              imageData: reader.result,
-              fileName: file.name,
-            });
-            if (uploadResult.ok) {
-              await window.API.applyImage(projectId, blockIndex, { imageUrl: uploadResult.imageUrl });
-              window.showToast("画像を適用しました", "success");
-              window.loadPreview(true);
-              window.pushHistory?.("image_upload", `ブロック ${blockIndex} 画像アップロード`);
-            }
-          } catch (err) {
-            window.showToast(`エラー: ${err.message}`, "error");
-          } finally {
-            applyBtn.disabled = false;
-            applyBtn.textContent = "この画像を適用";
-          }
-        });
-        card.appendChild(applyBtn);
-        uploadPreview.appendChild(card);
-      };
-      reader.readAsDataURL(file);
-    }
-
-    uploadInput.addEventListener("change", () => {
-      const file = uploadInput.files?.[0];
-      if (file) handle3PaneUpload(file);
-    });
-    uploadSection.appendChild(uploadZone);
-    uploadSection.appendChild(uploadPreview);
+    const pickerBtn = document.createElement("button");
+    pickerBtn.className = "beyond-upload-trigger-btn";
+    pickerBtn.textContent = "画像を選択・アップロード";
+    pickerBtn.addEventListener("click", () => openBeyondImagePicker(projectId, blockIndex));
+    uploadSection.appendChild(pickerBtn);
     frag.appendChild(uploadSection);
   }
 
@@ -8601,4 +8541,186 @@ function buildSaveRow(projectId, blockIndex, getData) {
   row.appendChild(btn);
   row.appendChild(indicator);
   return row;
+}
+
+// ── Beyond風 画像ピッカーモーダル ──
+
+function openBeyondImagePicker(projectId, blockIndex) {
+  // Overlay
+  const overlay = document.createElement("div");
+  overlay.className = "beyond-picker-overlay";
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+  const modal = document.createElement("div");
+  modal.className = "beyond-picker-modal";
+
+  // Header with drag handle
+  modal.innerHTML = `
+    <div class="beyond-picker-handle"></div>
+    <div class="beyond-picker-header">新しい画像をアップロード</div>
+  `;
+
+  // Upload button
+  const uploadBtn = document.createElement("button");
+  uploadBtn.className = "beyond-picker-upload-btn";
+  uploadBtn.textContent = "アップロードする画像を選択";
+  const fileInput = document.createElement("input");
+  fileInput.type = "file"; fileInput.accept = "image/*,video/*"; fileInput.multiple = true; fileInput.style.display = "none";
+  uploadBtn.addEventListener("click", () => fileInput.click());
+  modal.appendChild(uploadBtn);
+  modal.appendChild(fileInput);
+
+  // Upload description
+  const desc = document.createElement("div");
+  desc.className = "beyond-picker-desc";
+  desc.textContent = "画像をまとめてアップロード　※枚数制限なし";
+  modal.appendChild(desc);
+
+  // Batch upload button (drag & drop zone)
+  const batchZone = document.createElement("div");
+  batchZone.className = "beyond-picker-batch-btn";
+  batchZone.textContent = "まとめてアップロードする画像を選択";
+  batchZone.addEventListener("click", () => fileInput.click());
+  batchZone.addEventListener("dragover", (e) => { e.preventDefault(); batchZone.classList.add("dragover"); });
+  batchZone.addEventListener("dragleave", () => batchZone.classList.remove("dragover"));
+  batchZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    batchZone.classList.remove("dragover");
+    handlePickerFiles(e.dataTransfer.files);
+  });
+  modal.appendChild(batchZone);
+
+  // Upload preview area
+  const uploadPreview = document.createElement("div");
+  uploadPreview.className = "beyond-picker-upload-preview";
+  modal.appendChild(uploadPreview);
+
+  // Gallery section
+  const galleryLabel = document.createElement("div");
+  galleryLabel.className = "beyond-picker-gallery-label";
+  galleryLabel.textContent = "一覧から選択";
+  modal.appendChild(galleryLabel);
+
+  // Tab bar
+  const tabBar = document.createElement("div");
+  tabBar.className = "beyond-picker-tabs";
+  ["全て", "ブロック内", "生成済み"].forEach((label, i) => {
+    const tab = document.createElement("button");
+    tab.className = "beyond-picker-tab" + (i === 0 ? " active" : "");
+    tab.textContent = label;
+    tab.dataset.filter = ["all", "block", "generated"][i];
+    tab.addEventListener("click", () => {
+      tabBar.querySelectorAll(".beyond-picker-tab").forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      filterGallery(tab.dataset.filter);
+    });
+    tabBar.appendChild(tab);
+  });
+  modal.appendChild(tabBar);
+
+  // Image grid
+  const grid = document.createElement("div");
+  grid.className = "beyond-picker-grid";
+  grid.innerHTML = '<div class="beyond-picker-loading">読み込み中...</div>';
+  modal.appendChild(grid);
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  // Load images
+  let allImages = [];
+  fetch(`/api/projects/${projectId}/all-images`)
+    .then(r => r.json())
+    .then(data => {
+      allImages = data.images || [];
+      renderGallery(allImages);
+    })
+    .catch(() => {
+      grid.innerHTML = '<div class="beyond-picker-loading">画像の読み込みに失敗</div>';
+    });
+
+  function renderGallery(images) {
+    grid.innerHTML = "";
+    if (images.length === 0) {
+      grid.innerHTML = '<div class="beyond-picker-loading">画像がありません</div>';
+      return;
+    }
+    images.forEach(img => {
+      const card = document.createElement("div");
+      card.className = "beyond-picker-card";
+      card.dataset.source = img.source || "block";
+      const imgEl = document.createElement("img");
+      imgEl.src = img.url;
+      imgEl.loading = "lazy";
+      card.appendChild(imgEl);
+      card.addEventListener("click", () => applySelectedImage(img.url));
+      grid.appendChild(card);
+    });
+  }
+
+  function filterGallery(filter) {
+    if (filter === "all") {
+      renderGallery(allImages);
+    } else {
+      renderGallery(allImages.filter(i => i.source === filter));
+    }
+  }
+
+  async function applySelectedImage(imageUrl) {
+    try {
+      await window.API.applyImage(projectId, blockIndex, { imageUrl });
+      window.showToast("画像を適用しました", "success");
+      window.loadPreview(true);
+      window.pushHistory?.("image_pick", `ブロック ${blockIndex} 画像選択`);
+      overlay.remove();
+    } catch (err) {
+      window.showToast(`エラー: ${err.message}`, "error");
+    }
+  }
+
+  function handlePickerFiles(files) {
+    uploadPreview.innerHTML = "";
+    Array.from(files).forEach(file => {
+      if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const card = document.createElement("div");
+        card.className = "beyond-picker-upload-card";
+        const thumb = document.createElement("img");
+        thumb.src = reader.result;
+        card.appendChild(thumb);
+        const applyBtn = document.createElement("button");
+        applyBtn.className = "beyond-picker-apply-btn";
+        applyBtn.textContent = "適用";
+        applyBtn.addEventListener("click", async () => {
+          applyBtn.disabled = true;
+          applyBtn.textContent = "...";
+          try {
+            const res = await window.API.uploadImage(projectId, blockIndex, {
+              imageData: reader.result,
+              fileName: file.name,
+            });
+            if (res.ok) {
+              await window.API.applyImage(projectId, blockIndex, { imageUrl: res.imageUrl });
+              window.showToast("画像を適用しました", "success");
+              window.loadPreview(true);
+              window.pushHistory?.("image_upload", `ブロック ${blockIndex} 画像アップロード`);
+              overlay.remove();
+            }
+          } catch (err) {
+            window.showToast(`エラー: ${err.message}`, "error");
+            applyBtn.disabled = false;
+            applyBtn.textContent = "適用";
+          }
+        });
+        card.appendChild(applyBtn);
+        uploadPreview.appendChild(card);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files.length) handlePickerFiles(fileInput.files);
+  });
 }

@@ -443,8 +443,10 @@ async function generateImageGeminiNative(prompt, options = {}) {
       }
       const parts = data.candidates?.[0]?.content?.parts || [];
       for (const part of parts) {
-        if (part.inline_data?.mime_type?.startsWith("image/")) {
-          const buffer = Buffer.from(part.inline_data.data, "base64");
+        const idata = part.inline_data || part.inlineData;
+        const imime = idata?.mime_type || idata?.mimeType || "";
+        if (imime.startsWith("image/")) {
+          const buffer = Buffer.from(idata.data, "base64");
           const resized = await sharp(buffer).resize(width, height, { fit: "cover" }).jpeg({ quality: 85 }).toBuffer();
           await writeFile(outputPath, resized);
           console.log(`[image-gen] Generated (${model} native): ${outputPath}`);

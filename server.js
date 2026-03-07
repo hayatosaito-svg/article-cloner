@@ -7,7 +7,7 @@
 import express from "express";
 import path from "path";
 import { readFile, writeFile, mkdir } from "fs/promises";
-import { existsSync } from "fs";
+import { existsSync, readdirSync } from "fs";
 import fetch from "node-fetch";
 import { scrape } from "./src/scraper.js";
 import { parseHtml } from "./src/parser.js";
@@ -1925,6 +1925,42 @@ app.post("/api/projects/:id/upload-video/:idx", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// List all project images (for image picker gallery)
+app.get("/api/projects/:id/all-images", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Not found" });
+
+  const images = [];
+
+  // Collect images from all blocks' assets
+  (project.blocks || []).forEach((block, idx) => {
+    if (block.assets) {
+      block.assets.forEach(asset => {
+        if (asset.type === "video") return;
+        const src = asset.src || asset.webpSrc || "";
+        if (src) images.push({ url: src, blockIndex: idx, source: "block" });
+      });
+    }
+  });
+
+  // Collect generated images from the images directory
+  if (project.dirs?.images && existsSync(project.dirs.images)) {
+    try {
+      const files = readdirSync(project.dirs.images);
+      files.forEach(f => {
+        if (/\.(jpg|jpeg|png|webp|gif)$/i.test(f)) {
+          const url = `/api/projects/${project.id}/generated-images/${f}`;
+          if (!images.find(i => i.url === url)) {
+            images.push({ url, source: "generated" });
+          }
+        }
+      });
+    } catch {}
+  }
+
+  res.json({ ok: true, images });
 });
 
 // Serve generated images
