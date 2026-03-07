@@ -285,34 +285,48 @@ GEMINI_API_KEY_1=your_key_here<br><br>
         <div class="tool-section" id="image-tools-section">
           <div class="tool-section-title">画像作成ツール</div>
           <div class="image-tool-grid">
-            <a href="https://app.leonardo.ai/" target="_blank" class="image-tool-card">
-              <div class="image-tool-icon">L</div>
-              <div class="image-tool-name">Leonardo.ai</div>
-              <div class="image-tool-desc">Loveartで画像生成</div>
-            </a>
-            <a href="https://www.proai.co/" target="_blank" class="image-tool-card">
-              <div class="image-tool-icon">P</div>
-              <div class="image-tool-name">Pro AI</div>
-              <div class="image-tool-desc">動画・画像生成AI</div>
-            </a>
-            <a href="https://nanobanana.com/" target="_blank" class="image-tool-card">
-              <div class="image-tool-icon">N</div>
-              <div class="image-tool-name">Nano Banana Pro</div>
-              <div class="image-tool-desc">Gemini画像生成</div>
-            </a>
+            <div class="image-tool-card-wrap">
+              <a href="https://app.leonardo.ai/" target="_blank" class="image-tool-card">
+                <div class="image-tool-icon">L</div>
+                <div class="image-tool-name">Leonardo.ai</div>
+                <div class="image-tool-desc">Loveartで画像生成</div>
+              </a>
+              <button class="manual-btn" data-manual="leonardo">使い方</button>
+            </div>
+            <div class="image-tool-card-wrap">
+              <a href="https://www.proai.co/" target="_blank" class="image-tool-card">
+                <div class="image-tool-icon">P</div>
+                <div class="image-tool-name">Pro AI</div>
+                <div class="image-tool-desc">動画・画像生成AI</div>
+              </a>
+              <button class="manual-btn" data-manual="proai">使い方</button>
+            </div>
+            <div class="image-tool-card-wrap">
+              <a href="https://nanobanana.com/" target="_blank" class="image-tool-card">
+                <div class="image-tool-icon">N</div>
+                <div class="image-tool-name">Nano Banana Pro</div>
+                <div class="image-tool-desc">Gemini画像生成</div>
+              </a>
+              <button class="manual-btn" data-manual="nanobanana">使い方</button>
+            </div>
           </div>
 
           <!-- 漫画フロー -->
-          <div class="tool-section-subtitle">漫画LP作成フロー</div>
+          <div class="tool-section-subtitle" style="display:flex;align-items:center;justify-content:space-between">
+            漫画LP作成フロー
+            <button class="manual-btn" data-manual="manga">マニュアル</button>
+          </div>
           <div class="manga-flow">
             <div class="manga-flow-step">
               <span class="flow-num">1</span>
               <a href="https://pixai.art/" target="_blank" class="flow-link">PixAI で画像作成</a>
+              <button class="manual-btn mini" data-manual="pixai">?</button>
             </div>
             <div class="manga-flow-arrow"></div>
             <div class="manga-flow-step">
               <span class="flow-num">2</span>
               <a href="https://www.canva.com/" target="_blank" class="flow-link">Canva で吹き出し作成</a>
+              <button class="manual-btn mini" data-manual="canva">?</button>
             </div>
             <div class="manga-flow-arrow"></div>
             <div class="manga-flow-step">
@@ -320,6 +334,13 @@ GEMINI_API_KEY_1=your_key_here<br><br>
               <span class="flow-text">画像アップロード</span>
             </div>
           </div>
+        </div>
+
+        <!-- このツールのマニュアル -->
+        <div class="tool-section">
+          <button class="tool-manual-btn" data-manual="article-cloner">
+            📖 このツール（Article Cloner）の使い方
+          </button>
         </div>
 
         <!-- 画像アップロードセクション -->
@@ -1137,5 +1158,311 @@ GEMINI_API_KEY_1=your_key_here<br><br>
 <script src="/js/widget-editor.js"></script>
 <script src="/js/ad-manager.js"></script>
 <script type="module" src="/js/app.js"></script>
+
+<!-- マニュアルモーダル -->
+<div id="manual-modal" class="manual-modal" style="display:none">
+  <div class="manual-backdrop"></div>
+  <div class="manual-content">
+    <div class="manual-header">
+      <span class="manual-title" id="manual-title"></span>
+      <button class="manual-close" id="manual-close">&times;</button>
+    </div>
+    <div class="manual-body" id="manual-body"></div>
+  </div>
+</div>
+
+<script>
+// マニュアルデータ
+const MANUALS = {
+  "leonardo": {
+    title: "Leonardo.ai（Loveart）の使い方",
+    body: `
+<h3>Leonardo.ai で LP用画像を作成する</h3>
+<p>Leonardo.ai（旧Loveart）は高品質なAI画像生成ツールです。LP用のビフォーアフター写真、施術イメージ、バナー素材などを作成できます。</p>
+
+<h4>基本的な使い方</h4>
+<ol>
+  <li><a href="https://app.leonardo.ai/" target="_blank">Leonardo.ai</a> にログイン</li>
+  <li>左メニューの「AI Image Generation」をクリック</li>
+  <li>プロンプト欄に生成したい画像の説明を入力<br>
+    <em>例: 「30代日本人女性、美容クリニック、糸リフト施術後、自然な笑顔、白い背景、プロ撮影風」</em></li>
+  <li>モデルを選択（おすすめ: Phoenix / Kino XL）</li>
+  <li>アスペクト比を設定（LP用は縦長 3:4 or 正方形 1:1）</li>
+  <li>「Generate」で画像生成</li>
+</ol>
+
+<h4>LP画像制作のコツ</h4>
+<ul>
+  <li><strong>ビフォーアフター:</strong> 同じ構図で「before」「after」をそれぞれ生成し、Canvaで左右に並べる</li>
+  <li><strong>施術イメージ:</strong> 「medical aesthetic, clinic, professional」などのキーワードを追加</li>
+  <li><strong>バナー:</strong> 「advertisement banner, clean design, Japanese style」で広告風に</li>
+  <li><strong>Negative Prompt:</strong> 「text, watermark, low quality, blurry」を設定してクリーンな画像に</li>
+</ul>
+
+<h4>生成後の流れ</h4>
+<ol>
+  <li>生成した画像をダウンロード</li>
+  <li>必要に応じてCanvaでテキスト追加・レイアウト調整</li>
+  <li>Article Clonerの「画像アップロード」から保存</li>
+</ol>
+`
+  },
+
+  "proai": {
+    title: "Pro AI の使い方",
+    body: `
+<h3>Pro AI で動画・画像を生成する</h3>
+<p>Pro AIは動画生成にも対応したAIツールです。LP用の動画素材やアニメーション付き画像を作成できます。</p>
+
+<h4>基本的な使い方</h4>
+<ol>
+  <li><a href="https://www.proai.co/" target="_blank">Pro AI</a> にアクセス・ログイン</li>
+  <li>「Create」から画像 or 動画生成を選択</li>
+  <li>プロンプトを入力して生成</li>
+  <li>生成結果をダウンロード</li>
+</ol>
+
+<h4>LP制作での活用法</h4>
+<ul>
+  <li><strong>動画バナー:</strong> 施術のイメージ動画をLP上部に配置して注目を集める</li>
+  <li><strong>スライドショー風:</strong> 複数画像から短い動画を自動生成</li>
+  <li><strong>テキストアニメーション:</strong> キャンペーン情報を動くテキストで訴求</li>
+</ul>
+
+<h4>動画をLPに使う場合</h4>
+<ol>
+  <li>Pro AIで動画を生成・ダウンロード（MP4形式）</li>
+  <li>Article Clonerの画像アップロードから動画をアップ</li>
+  <li>自動でSB互換のvideoタグに変換されます</li>
+</ol>
+`
+  },
+
+  "nanobanana": {
+    title: "Nano Banana Pro の使い方",
+    body: `
+<h3>Nano Banana Pro（Gemini）で画像生成</h3>
+<p>Nano Banana ProはGoogle Gemini APIを使った画像生成ツールです。テキストプロンプトから高品質な画像を生成します。</p>
+
+<h4>基本的な使い方</h4>
+<ol>
+  <li><a href="https://nanobanana.com/" target="_blank">Nano Banana Pro</a> にアクセス</li>
+  <li>プロンプト欄に生成したい画像の説明を日本語で入力</li>
+  <li>スタイル・サイズを選択</li>
+  <li>「Generate」で画像生成</li>
+</ol>
+
+<h4>おすすめプロンプト例（美容LP）</h4>
+<ul>
+  <li>「美容クリニックの清潔な受付カウンター、白とゴールドの内装、高級感」</li>
+  <li>「30代女性、透明感のある肌、自然光、ポートレート写真」</li>
+  <li>「糸リフト施術のイメージイラスト、医療的で信頼感のあるデザイン」</li>
+</ul>
+
+<h4>Article Clonerとの連携</h4>
+<p>生成した画像をダウンロード → Article Clonerの「画像アップロード」から保存してLPに適用します。</p>
+`
+  },
+
+  "manga": {
+    title: "漫画記事LP 制作マニュアル",
+    body: `
+<h3>漫画記事LP 制作の全体フロー</h3>
+<p>漫画形式のLPは、ストーリーで商品・サービスの魅力を伝える手法です。以下の3ステップで制作します。</p>
+
+<div class="manual-flow-big">
+  <div class="manual-flow-step">
+    <div class="manual-flow-num">STEP 1</div>
+    <div class="manual-flow-title">PixAI で漫画キャラ・コマを作成</div>
+    <p>PixAIのアニメ特化モデルで漫画キャラクターやコマ画像を生成します。</p>
+    <ul>
+      <li>キャラクター設定（年齢・性別・悩み）を決める</li>
+      <li>ストーリーに沿って各コマの画像を生成</li>
+      <li>表情違い・アングル違いも複数パターン作成</li>
+      <li>背景は「white background」で生成するとCanvaで編集しやすい</li>
+    </ul>
+  </div>
+
+  <div class="manual-flow-step">
+    <div class="manual-flow-num">STEP 2</div>
+    <div class="manual-flow-title">Canva で吹き出し・テキストを追加</div>
+    <p>PixAIで作った画像をCanvaに取り込み、漫画形式に仕上げます。</p>
+    <ul>
+      <li>Canvaのテンプレートから「漫画」「コミック」で検索</li>
+      <li>吹き出し素材を配置し、セリフを入力</li>
+      <li>コマ割り（枠線）を追加して漫画感を演出</li>
+      <li>効果線・集中線の素材を使ってインパクトを出す</li>
+      <li>完成したらPNG/JPGでエクスポート</li>
+    </ul>
+  </div>
+
+  <div class="manual-flow-step">
+    <div class="manual-flow-num">STEP 3</div>
+    <div class="manual-flow-title">Article Cloner で LP に組み込み</div>
+    <p>完成した漫画画像をLPに配置して公開します。</p>
+    <ul>
+      <li>「画像アップロード」から漫画画像をアップ</li>
+      <li>プレビューで表示確認</li>
+      <li>リンク置換でCTAリンクを設定</li>
+      <li>HTMLコピーでSB互換コードを取得</li>
+    </ul>
+  </div>
+</div>
+
+<h4>漫画LP構成の例</h4>
+<table class="manual-table">
+  <tr><th>セクション</th><th>内容</th></tr>
+  <tr><td>導入（1-2コマ）</td><td>主人公の悩みを描写「最近シワが気になる...」</td></tr>
+  <tr><td>問題提起（2-3コマ）</td><td>悩みが深刻化「鏡を見るのが怖い」</td></tr>
+  <tr><td>解決策提示（2-3コマ）</td><td>友人からクリニックを紹介される</td></tr>
+  <tr><td>体験描写（3-4コマ）</td><td>施術を受ける様子「痛くない！」</td></tr>
+  <tr><td>結果・感動（2-3コマ）</td><td>ビフォーアフター、喜びの声</td></tr>
+  <tr><td>CTA</td><td>キャンペーン情報＋予約ボタン</td></tr>
+</table>
+`
+  },
+
+  "pixai": {
+    title: "PixAI の使い方（漫画キャラ作成）",
+    body: `
+<h3>PixAI で漫画キャラクター画像を作成</h3>
+<p>PixAIはアニメ・漫画特化のAI画像生成ツールです。漫画LPのキャラクター画像作成に最適です。</p>
+
+<h4>基本手順</h4>
+<ol>
+  <li><a href="https://pixai.art/" target="_blank">PixAI</a> にログイン</li>
+  <li>「Generate」をクリック</li>
+  <li>モデルを選択（おすすめ: Anything V5 / Counterfeit）</li>
+  <li>プロンプトを入力</li>
+  <li>サイズ: LP用は 512x768（縦長）or 768x512（横長）</li>
+</ol>
+
+<h4>漫画LP用プロンプト例</h4>
+<ul>
+  <li><strong>悩む女性:</strong> 「1girl, japanese, 30s, worried expression, looking at mirror, manga style, simple background」</li>
+  <li><strong>笑顔の女性:</strong> 「1girl, japanese, 30s, happy smile, beautiful skin, manga style, sparkle effect」</li>
+  <li><strong>医師キャラ:</strong> 「1man, japanese doctor, white coat, gentle smile, professional, manga style」</li>
+</ul>
+
+<h4>コツ</h4>
+<ul>
+  <li>同じキャラを使い回すには seed値を固定する</li>
+  <li>表情だけ変えたい場合は表情部分のプロンプトだけ変更</li>
+  <li>白背景で生成 → Canvaで切り抜いてコマに配置</li>
+</ul>
+`
+  },
+
+  "canva": {
+    title: "Canva の使い方（吹き出し・コマ割り）",
+    body: `
+<h3>Canva で漫画の吹き出し・コマ割りを作成</h3>
+
+<h4>基本手順</h4>
+<ol>
+  <li><a href="https://www.canva.com/" target="_blank">Canva</a> にログイン</li>
+  <li>「カスタムサイズ」で 580×任意の高さ（LP幅に合わせる）</li>
+  <li>PixAIで作った画像をアップロード</li>
+  <li>「素材」から「吹き出し」で検索して配置</li>
+  <li>テキストツールでセリフを入力</li>
+</ol>
+
+<h4>漫画風にするテクニック</h4>
+<ul>
+  <li><strong>コマ割り:</strong> 「フレーム」素材を使って画像を区切る。または四角形で枠線を作成</li>
+  <li><strong>吹き出し:</strong> 素材検索「speech bubble」「吹き出し」→ サイズ調整してセリフ入力</li>
+  <li><strong>効果線:</strong> 「集中線」「効果線」「manga lines」で検索</li>
+  <li><strong>フォント:</strong> 漫画感のあるフォント「M PLUS Rounded」「Kosugi Maru」がおすすめ</li>
+  <li><strong>オノマトペ:</strong> テキストを大きく太くして「ドキッ！」「キラーン」などを追加</li>
+</ul>
+
+<h4>エクスポート設定</h4>
+<ul>
+  <li>形式: PNG（透過不要ならJPG）</li>
+  <li>品質: 最高画質</li>
+  <li>1コマずつ別ページにして一括ダウンロードすると管理しやすい</li>
+</ul>
+`
+  },
+
+  "article-cloner": {
+    title: "Article Cloner 使い方マニュアル",
+    body: `
+<h3>Article Cloner とは</h3>
+<p>競合のアフィリエイト記事LP（ランディングページ）を自動でクローンし、テキスト・画像・リンクを差し替えて、Squad Beyond互換のHTMLを出力するツールです。</p>
+
+<h3>基本的な使い方</h3>
+
+<h4>STEP 1: LPをスクレイピング</h4>
+<ol>
+  <li>トップ画面のURL入力欄に競合LPのURLを貼り付け</li>
+  <li>「スクレイピング開始」をクリック</li>
+  <li>自動で画像・テキスト・構造を解析してプロジェクト作成</li>
+</ol>
+
+<h4>STEP 2: リンク置換</h4>
+<ol>
+  <li>左パネルの「リンク置換」セクションでLP内の全リンクが一覧表示</li>
+  <li>差し替えたいリンクにチェック</li>
+  <li>新しいURLを入力して「置換」ボタン</li>
+  <li>一括でリンクが差し替わります</li>
+</ol>
+
+<h4>STEP 3: 画像差し替え</h4>
+<ol>
+  <li>外部ツール（Leonardo.ai / Pro AI / Nano Banana Pro）で新しい画像を作成</li>
+  <li>「画像アップロード」から作成した画像をアップ</li>
+  <li>プレビューでブロックをクリック → 画像を適用</li>
+</ol>
+
+<h4>STEP 4: HTMLコピー＆公開</h4>
+<ol>
+  <li>上部ツールバーの「HTMLコピー」でSB互換HTMLをコピー</li>
+  <li>Squad Beyondのエディターに貼り付けて公開</li>
+  <li>「エディターコピー」でテキストのみコピーも可能</li>
+</ol>
+
+<h3>各機能の説明</h3>
+<table class="manual-table">
+  <tr><th>機能</th><th>説明</th></tr>
+  <tr><td>リンク置換</td><td>LP内の全リンクを一括検索・置換</td></tr>
+  <tr><td>画像アップロード</td><td>画像ファイルをプロジェクトに保存</td></tr>
+  <tr><td>HTMLコピー</td><td>SB互換HTMLをクリップボードにコピー</td></tr>
+  <tr><td>エディターコピー</td><td>LP原稿テキストをプレーンテキストでコピー</td></tr>
+  <tr><td>ビルド</td><td>最終的なSB互換HTMLファイルを生成</td></tr>
+  <tr><td>プレビュー</td><td>編集内容をリアルタイムプレビュー</td></tr>
+</table>
+
+<h3>画像作成ツール比較</h3>
+<table class="manual-table">
+  <tr><th>ツール</th><th>得意な用途</th><th>おすすめシーン</th></tr>
+  <tr><td>Leonardo.ai</td><td>写真風リアル画像</td><td>ビフォーアフター、施術写真、人物写真</td></tr>
+  <tr><td>Pro AI</td><td>動画生成</td><td>動画バナー、アニメーション素材</td></tr>
+  <tr><td>Nano Banana Pro</td><td>汎用画像生成</td><td>バナー、イラスト、プロダクト画像</td></tr>
+  <tr><td>PixAI</td><td>アニメ・漫画風</td><td>漫画LP用キャラクター</td></tr>
+  <tr><td>Canva</td><td>デザイン編集</td><td>テキスト追加、吹き出し、コマ割り</td></tr>
+</table>
+`
+  }
+};
+
+// マニュアルモーダル制御
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-manual]");
+  if (!btn) return;
+  const key = btn.dataset.manual;
+  const manual = MANUALS[key];
+  if (!manual) return;
+  document.getElementById("manual-title").textContent = manual.title;
+  document.getElementById("manual-body").innerHTML = manual.body;
+  document.getElementById("manual-modal").style.display = "flex";
+});
+document.getElementById("manual-close")?.addEventListener("click", () => {
+  document.getElementById("manual-modal").style.display = "none";
+});
+document.querySelector(".manual-backdrop")?.addEventListener("click", () => {
+  document.getElementById("manual-modal").style.display = "none";
+});
+</script>
 </body>
 </html>
