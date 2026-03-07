@@ -638,6 +638,7 @@ ${headTagsBlock}
     box-shadow: inset 0 0 0 2px rgba(236, 72, 153, 0.7);
   }
   .block-type-badge {
+    display: none !important;
     position: absolute;
     top: 4px; right: 4px;
     font-size: 10px;

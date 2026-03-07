@@ -598,34 +598,19 @@ async function openEditPanel(projectId, blockIndex, blockType) {
 
   body.innerHTML = "";
 
-  // モードボタンのアクティブ状態を更新（ユーザー選択をそのまま尊重）
-  document.querySelectorAll(".mode-btn").forEach((b) => {
-    b.classList.toggle("active", b.dataset.mode === currentMode);
-  });
-
   // widgetでも画像を含んでいれば画像ブロックとして扱う
   const blockHtmlLower = (block.html || "").toLowerCase();
   const widgetHasImage = blockType === "widget" && (blockHtmlLower.includes("<img") || blockHtmlLower.includes("<picture"));
   const widgetHasVideo = blockType === "widget" && !widgetHasImage && blockHtmlLower.includes("<video");
 
-  if (currentMode === "ai") {
-    // ── AI利用カウント表示 ──
-    const usageBadgeContainer = document.createElement("div");
-    usageBadgeContainer.style.cssText = "display:flex;justify-content:flex-end;padding:4px 0 8px";
-    const usageBadge = document.createElement("span");
-    usageBadge.className = "ai-usage-badge";
-    usageBadge.textContent = "AI: ...";
-    usageBadgeContainer.appendChild(usageBadge);
-    body.appendChild(usageBadgeContainer);
-    window.API.getUsageStats().then(data => {
-      usageBadge.textContent = `AI: ${data.total || 0}回`;
-    }).catch(() => { usageBadge.textContent = "AI: -"; });
-
-    // ── AI編集モード: 全体編集 / 要素編集 の分岐 ──
-    body.appendChild(buildAiModeSwitcher(projectId, blockIndex, block, blockType, widgetHasImage, widgetHasVideo));
+  // ── AI編集のみ表示（全体編集ウィザード直接表示） ──
+  if (blockType === "video" || widgetHasVideo) {
+    body.appendChild(buildVideoWizard(projectId, blockIndex, block));
   } else {
-    // ── 手動編集モード（プレビュー→要素抽出→詳細編集→3パネル） ──
-    body.appendChild(buildBlockEditContent(projectId, blockIndex, block, blockType, widgetHasImage, widgetHasVideo));
+    body.appendChild(buildAiImageWizard(projectId, blockIndex, block));
+    if (blockType === "cta_link") {
+      body.appendChild(buildCtaUrlEditor(projectId, blockIndex, block));
+    }
   }
 
   panel.classList.add("open");
