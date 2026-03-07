@@ -1205,13 +1205,6 @@ document.getElementById("btn-copy-editor")?.addEventListener("click", async () =
   }
 });
 
-// ── 左パネル大きいコピーボタン ──
-document.getElementById("btn-copy-sb-big")?.addEventListener("click", () => {
-  document.getElementById("btn-copy-sb")?.click();
-});
-document.getElementById("btn-copy-editor-big")?.addEventListener("click", () => {
-  document.getElementById("btn-copy-editor")?.click();
-});
 
 // ── 画像一覧・コピー ──
 document.getElementById("btn-show-images")?.addEventListener("click", async () => {

@@ -202,24 +202,7 @@ GEMINI_API_KEY_1=your_key_here<br><br>
         <span>リンク差替</span>
       </button>
     </div>
-    <div class="toolbar-right">
-      <button class="toolbar-btn btn-copy-sb" id="btn-copy-sb" title="SB互換HTMLをワンクリックコピー">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="4" y="4" width="8" height="10" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M6 4V3a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-1" stroke="currentColor" stroke-width="1.3"/></svg>
-        <span>HTMLコピー</span>
-      </button>
-      <button class="toolbar-btn btn-copy-editor" id="btn-copy-editor" title="エディターHTMLをワンクリックコピー">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="4" y="4" width="8" height="10" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M6 4V3a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-1" stroke="currentColor" stroke-width="1.3"/></svg>
-        <span>エディターコピー</span>
-      </button>
-      <button class="toolbar-btn btn-accent" id="btn-build" title="SB互換HTMLを生成">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8l3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span>ビルド</span>
-      </button>
-      <button class="toolbar-btn btn-accent" id="btn-publish" title="Cloudflare Pagesに公開">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v6m0 0l2.5-2.5M8 7L5.5 4.5M2 10v3h12v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span>公開</span>
-      </button>
-    </div>
+    <div class="toolbar-right"></div>
   </div>
 
   <div class="split-pane">
@@ -228,12 +211,12 @@ GEMINI_API_KEY_1=your_key_here<br><br>
         <span class="pane-label" style="font-weight:700">ツール</span>
       </div>
       <div class="pane-body" style="padding:12px;overflow-y:auto">
-        <!-- コピーボタン -->
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <button id="btn-copy-sb-big" style="flex:1;padding:12px;background:#ec4899;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">HTMLコピー</button>
-          <button id="btn-copy-editor-big" style="flex:1;padding:12px;background:#8b5cf6;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">エディターコピー</button>
+        <!-- メインアクション -->
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+          <button id="btn-copy-sb" style="width:100%;padding:14px;background:#ec4899;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">HTMLコピー（Beyond貼り付け用）</button>
+          <button id="btn-copy-editor" style="width:100%;padding:14px;background:#8b5cf6;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">テキストコピー</button>
+          <button id="btn-show-images" style="width:100%;padding:14px;background:#0ea5e9;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">画像一覧・コピー</button>
         </div>
-        <button id="btn-show-images" style="width:100%;padding:12px;background:#0ea5e9;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:16px">画像一覧・コピー</button>
         <div id="image-gallery" style="display:none;margin-bottom:16px"></div>
         <!-- リンク置換セクション (折りたたみ) -->
         <div class="tool-section" id="link-replace-section">
