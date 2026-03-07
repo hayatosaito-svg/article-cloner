@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Article Cloner - LP自動クローン</title>
-<link rel="stylesheet" href="/css/app.css?v=20260307c">
-<link rel="stylesheet" href="/css/editor.css?v=20260307c">
+<link rel="stylesheet" href="/css/app.css?v=20260307d">
+<link rel="stylesheet" href="/css/editor.css?v=20260307d">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 </head>
@@ -215,10 +215,133 @@ GEMINI_API_KEY_1=your_key_here<br><br>
       <div class="pane-body" style="padding:12px;overflow-y:auto">
         <!-- メインアクション -->
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-          <button id="btn-copy-all" style="width:100%;padding:16px;background:#ec4899;color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:1px">全体コピー</button>
-          <button id="btn-copy-html" style="width:100%;padding:12px;background:#64748b;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">HTMLコピー</button>
+          <button id="btn-copy-all" onclick="window.__copyAll(this)" style="width:100%;padding:16px;background:#ec4899;color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:1px">全体コピー</button>
+          <button id="btn-copy-html" onclick="window.__copyHtml(this)" style="width:100%;padding:12px;background:#64748b;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">HTMLコピー</button>
           <button id="btn-show-images" style="width:100%;padding:12px;background:#0ea5e9;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">画像一覧・コピー</button>
         </div>
+        <script>
+        // コピー機能（inline script - app.jsに依存しない）
+        window.__copyAll = async function(btn) {
+          const projectId = window.__state?.projectId || document.body.dataset.projectId;
+          if (!projectId) { alert("先にプロジェクトを読み込んでください"); return; }
+          btn.disabled = true; btn.style.background = "#be185d"; btn.textContent = "HTML取得中...";
+          try {
+            const res = await fetch("/api/projects/" + projectId + "/editor-html");
+            if (!res.ok) throw new Error("HTML取得失敗: " + res.status);
+            const rawHtml = await res.text();
+            btn.textContent = "画像変換中...";
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(rawHtml, "text/html");
+            doc.querySelectorAll("picture").forEach(function(pic) {
+              const img = pic.querySelector("img");
+              if (img) {
+                var src = img.getAttribute("data-src") || img.getAttribute("src") || "";
+                var newImg = doc.createElement("img");
+                newImg.setAttribute("src", src);
+                newImg.setAttribute("style", "max-width:100%;height:auto;display:block;");
+                pic.replaceWith(newImg);
+              }
+            });
+            var imgs = doc.querySelectorAll("img");
+            await Promise.all([].slice.call(imgs).map(async function(img) {
+              var src = img.getAttribute("data-src") || img.getAttribute("src") || "";
+              if (!src || src.startsWith("data:")) return;
+              try {
+                var image = new Image();
+                image.crossOrigin = "anonymous";
+                await new Promise(function(ok, fail) { image.onload = ok; image.onerror = fail; image.src = src; });
+                var c = document.createElement("canvas");
+                c.width = image.naturalWidth || 300;
+                c.height = image.naturalHeight || 300;
+                c.getContext("2d").drawImage(image, 0, 0);
+                img.setAttribute("src", c.toDataURL("image/png"));
+              } catch(e) {
+                try {
+                  var r = await fetch(src);
+                  var b = await r.blob();
+                  var d = await new Promise(function(ok) { var fr = new FileReader(); fr.onload = function() { ok(fr.result); }; fr.readAsDataURL(b); });
+                  img.setAttribute("src", d);
+                } catch(e2) { console.warn("skip:", src); }
+              }
+              img.removeAttribute("data-src");
+              img.removeAttribute("data-srcset");
+              img.className = "";
+              if (!img.getAttribute("style")) img.setAttribute("style", "max-width:100%;height:auto;display:block;");
+            }));
+            var finalHtml = doc.body.innerHTML;
+            btn.textContent = "コピー中...";
+            var ok = false;
+            if (typeof ClipboardItem !== "undefined") {
+              try {
+                var hb = new Blob([finalHtml], {type:"text/html"});
+                var tb = new Blob([finalHtml], {type:"text/plain"});
+                await navigator.clipboard.write([new ClipboardItem({"text/html":hb,"text/plain":tb})]);
+                ok = true;
+              } catch(e) { console.warn("ClipboardItem failed", e); }
+            }
+            if (!ok) {
+              var ta = document.createElement("textarea");
+              ta.value = finalHtml;
+              ta.style.cssText = "position:fixed;left:-9999px";
+              document.body.appendChild(ta);
+              ta.select();
+              ok = document.execCommand("copy");
+              document.body.removeChild(ta);
+            }
+            if (ok) {
+              btn.style.background = "#10b981";
+              btn.textContent = "コピーしました!";
+              alert("コピー完了!\nBeyondやGoogleドキュメントにCmd+Vで貼り付けてください");
+            } else {
+              btn.style.background = "#ef4444";
+              btn.textContent = "コピー失敗";
+              alert("コピーに失敗しました");
+            }
+          } catch(err) {
+            console.error("copyAll error:", err);
+            btn.style.background = "#ef4444";
+            btn.textContent = "エラー";
+            alert("エラー: " + err.message);
+          } finally {
+            btn.disabled = false;
+            setTimeout(function() { btn.style.background = "#ec4899"; btn.textContent = "全体コピー"; }, 3000);
+          }
+        };
+        window.__copyHtml = async function(btn) {
+          var projectId = window.__state?.projectId || document.body.dataset.projectId;
+          if (!projectId) { alert("先にプロジェクトを読み込んでください"); return; }
+          btn.disabled = true; btn.style.background = "#475569"; btn.textContent = "取得中...";
+          try {
+            await fetch("/api/projects/" + projectId + "/build", {method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+            var r = await fetch("/api/projects/" + projectId + "/export");
+            var html = await r.text();
+            var ta = document.createElement("textarea");
+            ta.value = html;
+            ta.style.cssText = "position:fixed;left:-9999px";
+            document.body.appendChild(ta);
+            ta.select();
+            var ok = document.execCommand("copy");
+            document.body.removeChild(ta);
+            if (!ok) { try { await navigator.clipboard.writeText(html); ok = true; } catch(e){} }
+            if (ok) {
+              btn.style.background = "#10b981";
+              btn.textContent = "コピーしました!";
+              alert("HTMLコピー完了!");
+            } else {
+              btn.style.background = "#ef4444";
+              btn.textContent = "コピー失敗";
+              alert("コピーに失敗しました");
+            }
+          } catch(err) {
+            btn.style.background = "#ef4444";
+            btn.textContent = "エラー";
+            alert("エラー: " + err.message);
+          } finally {
+            btn.disabled = false;
+            setTimeout(function() { btn.style.background = "#64748b"; btn.textContent = "HTMLコピー"; }, 3000);
+          }
+        };
+        </script>
         <div id="image-gallery" style="display:none;margin-bottom:16px"></div>
         <!-- リンク置換セクション (折りたたみ) -->
         <div class="tool-section" id="link-replace-section">
@@ -1007,7 +1130,7 @@ GEMINI_API_KEY_1=your_key_here<br><br>
 <script src="/js/color-picker.js"></script>
 <script src="/js/widget-editor.js"></script>
 <script src="/js/ad-manager.js"></script>
-<script type="module" src="/js/app.js?v=20260307c"></script>
+<script type="module" src="/js/app.js?v=20260307d"></script>
 
 <!-- マニュアルモーダル -->
 <div id="manual-modal" class="manual-modal" style="display:none">

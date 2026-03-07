@@ -8,6 +8,8 @@ const state = {
   currentScreen: "landing",
   sseConnection: null,
 };
+// inline scriptからアクセスできるようにグローバル公開
+window.__state = state;
 
 // ── Undo/Redo History ─────────────────────────────────────
 
