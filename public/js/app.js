@@ -1143,20 +1143,36 @@ document.getElementById("btn-export").addEventListener("click", async () => {
 });
 
 // ── ワンクリックコピーボタン（ツールバー直結） ──
+// クリップボードコピー（フォールバック付き）
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;left:-9999px;top:-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  }
+}
+
 document.getElementById("btn-copy-sb")?.addEventListener("click", async () => {
   if (!state.projectId) return;
   const btn = document.getElementById("btn-copy-sb");
   btn.disabled = true;
   btn.textContent = "ビルド中...";
   try {
-    // まずビルドしてからコピー
     const result = await window.API.build(state.projectId);
     if (!result.ok) throw new Error(result.error);
     const res = await fetch(window.API.getExportUrl(state.projectId));
     const html = await res.text();
-    await navigator.clipboard.writeText(html);
-    btn.textContent = "コピー完了!";
-    showToast("SB互換HTMLをコピーしました", "success");
+    const copied = await copyToClipboard(html);
+    btn.textContent = copied ? "コピー完了!" : "コピー失敗";
+    if (copied) showToast("SB互換HTMLをコピーしました", "success");
     setTimeout(() => { btn.textContent = "HTMLコピー"; }, 2000);
   } catch (err) {
     showToast(`コピーエラー: ${err.message}`, "error");
@@ -1170,13 +1186,17 @@ document.getElementById("btn-copy-editor")?.addEventListener("click", async () =
   if (!state.projectId) return;
   const btn = document.getElementById("btn-copy-editor");
   btn.disabled = true;
+  btn.textContent = "取得中...";
   try {
     const res = await fetch(`/api/projects/${state.projectId}/editor-text`);
     const text = await res.text();
-    await navigator.clipboard.writeText(text);
-    btn.textContent = "コピー完了!";
-    showToast("テキストコピーをコピーしました", "success");
-    setTimeout(() => { btn.textContent = "エディターコピー"; }, 2000);
+    const copied = await copyToClipboard(text);
+    if (copied) {
+      btn.textContent = "コピー完了!";
+      showToast("エディターテキストをコピーしました", "success");
+    } else {
+      showToast("コピーに失敗しました。手動でコピーしてください", "error");
+    }
   } catch (err) {
     showToast(`コピーエラー: ${err.message}`, "error");
   } finally {
