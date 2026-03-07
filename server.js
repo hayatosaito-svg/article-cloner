@@ -53,7 +53,7 @@ if (process.env.APP_MODE === "ad-manager") {
   });
 }
 
-app.use(express.static(path.join(PROJECT_ROOT, "public")));
+app.use(express.static(path.join(PROJECT_ROOT, "public"), { etag: false, maxAge: 0 }));
 app.use("/output", express.static(path.join(PROJECT_ROOT, "output")));
 
 // ── AI Usage Counter ──────────────────────────────────────
