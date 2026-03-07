@@ -1162,15 +1162,37 @@ async function copyToClipboard(text) {
 
 // リッチHTMLコピー（text/html MIME - Beyond貼り付け対応）
 async function copyRichHtml(html) {
-  try {
-    const blob = new Blob([html], { type: "text/html" });
-    const item = new ClipboardItem({ "text/html": blob, "text/plain": new Blob([html], { type: "text/plain" }) });
-    await navigator.clipboard.write([item]);
-    return true;
-  } catch (err) {
-    console.warn("Rich HTML copy failed, falling back to text:", err);
-    return copyToClipboard(html);
+  // 方法1: ClipboardItem API (Chrome/Edge)
+  if (typeof ClipboardItem !== "undefined") {
+    try {
+      const htmlBlob = new Blob([html], { type: "text/html" });
+      const textBlob = new Blob([html], { type: "text/plain" });
+      await navigator.clipboard.write([new ClipboardItem({ "text/html": htmlBlob, "text/plain": textBlob })]);
+      return "rich";
+    } catch (e) {
+      console.warn("ClipboardItem failed:", e);
+    }
   }
+  // 方法2: execCommand with rendered HTML in hidden div
+  try {
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    container.style.cssText = "position:fixed;left:-9999px;top:-9999px;opacity:0";
+    document.body.appendChild(container);
+    const range = document.createRange();
+    range.selectNodeContents(container);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    const ok = document.execCommand("copy");
+    sel.removeAllRanges();
+    document.body.removeChild(container);
+    if (ok) return "exec";
+  } catch (e) {
+    console.warn("execCommand rich copy failed:", e);
+  }
+  // 方法3: プレーンテキストフォールバック
+  return (await copyToClipboard(html)) ? "text" : false;
 }
 
 // SB HTMLをビルドして取得（base64埋め込み版）
@@ -1192,6 +1214,7 @@ async function fetchCopyHtml(projectId) {
 // 全体コピー: リッチHTMLとしてコピー（Beyond貼り付け対応）
 document.getElementById("btn-copy-all")?.addEventListener("click", async () => {
   const btn = document.getElementById("btn-copy-all");
+  console.log("[全体コピー] clicked, projectId:", state.projectId);
   if (!state.projectId) {
     alert("先にプロジェクトを読み込んでください");
     return;
@@ -1200,18 +1223,23 @@ document.getElementById("btn-copy-all")?.addEventListener("click", async () => {
   btn.style.background = "#be185d";
   btn.textContent = "ビルド中...";
   try {
+    console.log("[全体コピー] fetching...");
     const html = await fetchCopyHtml(state.projectId);
+    console.log("[全体コピー] HTML取得完了, length:", html.length);
     btn.textContent = "コピー中...";
-    const copied = await copyRichHtml(html);
-    if (copied) {
+    const result = await copyRichHtml(html);
+    console.log("[全体コピー] result:", result);
+    if (result) {
       btn.style.background = "#10b981";
-      btn.textContent = "コピーしました!";
+      btn.textContent = "コピー完了!";
+      alert("コピー完了! (" + result + "方式)\nBeyondにCtrl+Vで貼り付けてください");
     } else {
       btn.style.background = "#ef4444";
       btn.textContent = "コピー失敗";
       alert("コピーに失敗しました");
     }
   } catch (err) {
+    console.error("[全体コピー] error:", err);
     btn.style.background = "#ef4444";
     btn.textContent = "エラー";
     alert("コピーエラー: " + err.message);

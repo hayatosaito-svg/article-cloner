@@ -44,6 +44,9 @@ try {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Render等のリバースプロキシ対応（req.protocolが正しくhttpsを返すように）
+app.set("trust proxy", 1);
+
 app.use(express.json({ limit: "50mb" }));
 
 // APP_MODE=ad-manager → ルート(/)で広告マネージャーを返す（static より先に定義）
@@ -53,7 +56,16 @@ if (process.env.APP_MODE === "ad-manager") {
   });
 }
 
-app.use(express.static(path.join(PROJECT_ROOT, "public"), { etag: false, maxAge: 0 }));
+app.use(express.static(path.join(PROJECT_ROOT, "public"), { etag: false, maxAge: 0, lastModified: false }));
+// キャッシュ防止ヘッダー
+app.use((req, res, next) => {
+  if (req.path.endsWith(".js") || req.path.endsWith(".css") || req.path.endsWith(".html")) {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+  }
+  next();
+});
 app.use("/output", express.static(path.join(PROJECT_ROOT, "output")));
 
 // ── AI Usage Counter ──────────────────────────────────────
