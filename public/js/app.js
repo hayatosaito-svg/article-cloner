@@ -1205,6 +1205,14 @@ document.getElementById("btn-copy-editor")?.addEventListener("click", async () =
   }
 });
 
+// ── 左パネル大きいコピーボタン ──
+document.getElementById("btn-copy-sb-big")?.addEventListener("click", () => {
+  document.getElementById("btn-copy-sb")?.click();
+});
+document.getElementById("btn-copy-editor-big")?.addEventListener("click", () => {
+  document.getElementById("btn-copy-editor")?.click();
+});
+
 // ── Text Modify Modal ──────────────────────────────────────
 
 // Modal tab switching
