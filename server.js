@@ -979,8 +979,36 @@ ${html}
     + '<button data-cmd="justifyCenter" title="\u4E2D\u592E">\u2550</button>'
     + '<button data-cmd="justifyRight" title="\u53F3\u63C3\u3048">\u2261</button>'
     + '<div class="tb-sep"></div>'
-    + '<button data-action="insertImage" title="\u753B\u50CF\u633F\u5165">\uD83D\uDDBC</button>';
+    + '<button data-action="insertImage" title="\u753B\u50CF\u633F\u5165">\uD83D\uDDBC</button>'
+    + '<button data-action="uploadImage" title="\u753B\u50CF\u30A2\u30C3\u30D7\u30ED\u30FC\u30C9" style="font-size:18px;font-weight:bold">+</button>';
   document.body.appendChild(toolbar);
+
+  // Hidden file input for image upload
+  var uploadInput = document.createElement('input');
+  uploadInput.type = 'file';
+  uploadInput.accept = 'image/*';
+  uploadInput.multiple = true;
+  uploadInput.style.display = 'none';
+  document.body.appendChild(uploadInput);
+
+  uploadInput.addEventListener('change', function() {
+    if (!uploadInput.files || uploadInput.files.length === 0) return;
+    var blockIdx = editingWrapper ? parseInt(editingWrapper.dataset.blockIndex) : -1;
+    // Read files and send to parent for saving
+    Array.from(uploadInput.files).forEach(function(file) {
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        window.parent.postMessage({
+          type: 'uploadImageFromToolbar',
+          blockIndex: blockIdx,
+          fileName: file.name,
+          dataUrl: ev.target.result
+        }, '*');
+      };
+      reader.readAsDataURL(file);
+    });
+    uploadInput.value = '';
+  });
 
   // Image insert button
   var imgBtn = toolbar.querySelector('[data-action="insertImage"]');
@@ -989,6 +1017,15 @@ ${html}
       e.preventDefault();
       var blockIdx = editingWrapper ? parseInt(editingWrapper.dataset.blockIndex) : -1;
       window.parent.postMessage({ type: 'openImagePicker', blockIndex: blockIdx }, '*');
+    });
+  }
+
+  // Upload button
+  var uploadBtn = toolbar.querySelector('[data-action="uploadImage"]');
+  if (uploadBtn) {
+    uploadBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      uploadInput.click();
     });
   }
 

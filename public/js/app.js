@@ -617,6 +617,26 @@ window.addEventListener("message", (e) => {
       window.openImagePickerModal(state.projectId, bi);
     }
   }
+
+  // Upload image from inline toolbar + button
+  if (e.data?.type === "uploadImageFromToolbar" && state.projectId) {
+    const { fileName, dataUrl } = e.data;
+    fetch(`/api/projects/${state.projectId}/upload-free`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageData: dataUrl, fileName }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ok) {
+          showToast(`画像を保存しました: ${fileName}`, "success");
+          pushHistory("image_upload", `画像アップロード: ${fileName}`);
+        } else {
+          showToast(data.error || "画像の保存に失敗しました", "error");
+        }
+      })
+      .catch((err) => showToast(`アップロードエラー: ${err.message}`, "error"));
+  }
 });
 
 // ── Tabs ───────────────────────────────────────────────────
@@ -1827,63 +1847,3 @@ document.getElementById("link-replace-btn")?.addEventListener("click", async () 
   }
 });
 
-// ── 画像アップロード（ツールパネル） ──
-
-(function initToolUpload() {
-  const zone = document.getElementById("tool-upload-zone");
-  const input = document.getElementById("tool-upload-input");
-  const preview = document.getElementById("tool-upload-preview");
-  if (!zone || !input) return;
-
-  zone.addEventListener("click", () => input.click());
-  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
-  zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
-  zone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    zone.classList.remove("dragover");
-    handleToolUploadFiles(e.dataTransfer.files);
-  });
-  input.addEventListener("change", () => {
-    if (input.files.length) handleToolUploadFiles(input.files);
-  });
-
-  function handleToolUploadFiles(files) {
-    if (!preview) return;
-    preview.innerHTML = "";
-    Array.from(files).forEach(file => {
-      if (!file.type.startsWith("image/")) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const card = document.createElement("div");
-        card.style.cssText = "display:inline-block;width:80px;margin:4px;border-radius:6px;overflow:hidden;border:1px solid var(--border)";
-        const img = document.createElement("img");
-        img.src = reader.result;
-        img.style.cssText = "width:100%;height:60px;object-fit:cover;display:block";
-        card.appendChild(img);
-        const saveBtn = document.createElement("button");
-        saveBtn.textContent = "保存";
-        saveBtn.style.cssText = "width:100%;padding:3px;background:#f59e0b;color:#000;border:none;font-size:11px;font-weight:700;cursor:pointer";
-        saveBtn.addEventListener("click", async () => {
-          if (!state.projectId) return showToast("プロジェクトを先に読み込んでください", "error");
-          saveBtn.textContent = "...";
-          saveBtn.disabled = true;
-          try {
-            const res = await window.API.uploadFree(state.projectId, { imageData: reader.result, fileName: file.name });
-            if (res.ok) {
-              showToast(`画像を保存しました: ${file.name}`, "success");
-              card.style.borderColor = "#10b981";
-              saveBtn.textContent = "OK";
-            }
-          } catch (err) {
-            showToast(`保存エラー: ${err.message}`, "error");
-            saveBtn.textContent = "保存";
-            saveBtn.disabled = false;
-          }
-        });
-        card.appendChild(saveBtn);
-        preview.appendChild(card);
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-})();

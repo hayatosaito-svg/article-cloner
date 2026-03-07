@@ -197,14 +197,6 @@ GEMINI_API_KEY_1=your_key_here<br><br>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M13 8H5a3 3 0 000 6h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 5l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>進む</span>
       </button>
-      <button class="toolbar-btn" id="btn-add-block" title="ブロック追加">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        <span>+ブロック</span>
-      </button>
-      <button class="toolbar-btn" id="btn-upload-image" title="画像アップロード">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 10V2m-3 3l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 10v3h12v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span>画像UP</span>
-      </button>
       <button class="toolbar-btn" id="btn-text-modify" title="一括テキスト差し替え">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         <span>リンク差替</span>
@@ -348,16 +340,6 @@ GEMINI_API_KEY_1=your_key_here<br><br>
           </button>
         </div>
 
-        <!-- 画像アップロードセクション -->
-        <div class="tool-section" id="image-upload-section">
-          <div class="tool-section-title">画像アップロード</div>
-          <div class="upload-drop-zone" id="tool-upload-zone">
-            <div class="upload-drop-icon">📁</div>
-            <div class="upload-drop-text">画像をドラッグ＆ドロップ<br>またはクリックして選択</div>
-          </div>
-          <input type="file" id="tool-upload-input" accept="image/*" multiple style="display:none">
-          <div class="upload-preview-area" id="tool-upload-preview"></div>
-        </div>
 
         <!-- 非表示のblock-list (互換性) -->
         <div id="block-list" style="display:none"></div>
