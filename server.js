@@ -2005,6 +2005,54 @@ app.get("/api/projects/:id/text-blocks", (req, res) => {
   res.json({ textBlocks });
 });
 
+// GET /api/projects/:id/links - Extract all links from blocks
+app.get("/api/projects/:id/links", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const linkMap = new Map(); // url -> { count, blockIndices }
+  (project.blocks || []).forEach((block, idx) => {
+    const html = block.html || "";
+    const hrefMatches = html.match(/href=["']([^"']+)["']/gi) || [];
+    hrefMatches.forEach(m => {
+      const url = m.match(/href=["']([^"']+)["']/i)?.[1];
+      if (!url || url === "#" || url.startsWith("javascript:")) return;
+      if (!linkMap.has(url)) linkMap.set(url, { url, count: 0, blockIndices: [] });
+      const entry = linkMap.get(url);
+      entry.count++;
+      if (!entry.blockIndices.includes(idx)) entry.blockIndices.push(idx);
+    });
+  });
+
+  res.json({ ok: true, links: Array.from(linkMap.values()) });
+});
+
+// POST /api/projects/:id/replace-links - Replace links across all blocks
+app.post("/api/projects/:id/replace-links", (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const { oldUrls, newUrl, newTab } = req.body;
+  if (!oldUrls?.length || !newUrl) return res.status(400).json({ error: "oldUrls and newUrl required" });
+
+  let totalReplaced = 0;
+  (project.blocks || []).forEach(block => {
+    let html = block.html || "";
+    let changed = false;
+    oldUrls.forEach(oldUrl => {
+      const escaped = oldUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`href=["']${escaped}["']`, 'g');
+      const newHref = `href="${newUrl}"` + (newTab ? ' target="_blank"' : '');
+      const before = html;
+      html = html.replace(re, newHref);
+      if (html !== before) { changed = true; totalReplaced++; }
+    });
+    if (changed) block.html = html;
+  });
+
+  res.json({ ok: true, replaced: totalReplaced });
+});
+
 // POST /api/projects/:id/text-modify - Bulk text replacement
 app.post("/api/projects/:id/text-modify", (req, res) => {
   trackAiUsage("text-modify");

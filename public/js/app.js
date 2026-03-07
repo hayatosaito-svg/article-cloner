@@ -429,6 +429,7 @@ async function loadEditor(scrollToBlockIndex) {
     document.getElementById("toolbar-title").textContent = state.projectData.slug;
     document.getElementById("toolbar-block-count").textContent = `${state.projectData.blockCount} ブロック`;
     renderBlockList(state.projectData.blocks);
+    loadLinkList();
     // Preserve scroll position after initial load
     loadPreview(_editorLoaded);
     _editorLoaded = true;
@@ -1749,3 +1750,140 @@ checkStatus();
 window.addEventListener("hashchange", () => {
   handleHashRoute();
 });
+
+// ── リンク置換パネル ──
+
+async function loadLinkList() {
+  const list = document.getElementById("link-list");
+  if (!list || !state.projectId) return;
+  list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px">読み込み中...</div>';
+
+  try {
+    const res = await fetch(`/api/projects/${state.projectId}/links`);
+    const data = await res.json();
+    if (!data.ok || !data.links?.length) {
+      list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px">リンクが見つかりません</div>';
+      return;
+    }
+    list.innerHTML = "";
+    data.links.forEach(link => {
+      const item = document.createElement("div");
+      item.className = "link-item";
+      item.innerHTML = `
+        <input type="checkbox" class="link-cb" data-url="${escapeHtml(link.url)}">
+        <span class="link-item-url" title="${escapeHtml(link.url)}">${escapeHtml(link.url)}</span>
+        <span class="link-item-count">[${link.count}]</span>
+      `;
+      list.appendChild(item);
+    });
+  } catch (err) {
+    list.innerHTML = `<div style="color:var(--red);font-size:12px;padding:8px">エラー: ${err.message}</div>`;
+  }
+}
+
+// Select all / deselect all
+document.getElementById("link-select-all")?.addEventListener("click", () => {
+  document.querySelectorAll("#link-list .link-cb").forEach(cb => cb.checked = true);
+});
+document.getElementById("link-deselect-all")?.addEventListener("click", () => {
+  document.querySelectorAll("#link-list .link-cb").forEach(cb => cb.checked = false);
+});
+
+// Replace links
+document.getElementById("link-replace-btn")?.addEventListener("click", async () => {
+  const newUrl = document.getElementById("link-new-url")?.value?.trim();
+  if (!newUrl) return showToast("新しいURLを入力してください", "error");
+
+  const selectedUrls = [];
+  document.querySelectorAll("#link-list .link-cb:checked").forEach(cb => {
+    selectedUrls.push(cb.dataset.url);
+  });
+  if (!selectedUrls.length) return showToast("置換するリンクを選択してください", "error");
+
+  const newTab = document.getElementById("link-new-tab")?.checked || false;
+  const btn = document.getElementById("link-replace-btn");
+  btn.disabled = true;
+  btn.textContent = "置換中...";
+
+  try {
+    const res = await fetch(`/api/projects/${state.projectId}/replace-links`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ oldUrls: selectedUrls, newUrl, newTab }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`${data.replaced} 箇所のリンクを置換しました`, "success");
+      loadLinkList();
+      loadPreview(true);
+    } else {
+      showToast(`エラー: ${data.error}`, "error");
+    }
+  } catch (err) {
+    showToast(`エラー: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "置換";
+  }
+});
+
+// ── 画像アップロード（ツールパネル） ──
+
+(function initToolUpload() {
+  const zone = document.getElementById("tool-upload-zone");
+  const input = document.getElementById("tool-upload-input");
+  const preview = document.getElementById("tool-upload-preview");
+  if (!zone || !input) return;
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("dragover");
+    handleToolUploadFiles(e.dataTransfer.files);
+  });
+  input.addEventListener("change", () => {
+    if (input.files.length) handleToolUploadFiles(input.files);
+  });
+
+  function handleToolUploadFiles(files) {
+    if (!preview) return;
+    preview.innerHTML = "";
+    Array.from(files).forEach(file => {
+      if (!file.type.startsWith("image/")) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const card = document.createElement("div");
+        card.style.cssText = "display:inline-block;width:80px;margin:4px;border-radius:6px;overflow:hidden;border:1px solid var(--border)";
+        const img = document.createElement("img");
+        img.src = reader.result;
+        img.style.cssText = "width:100%;height:60px;object-fit:cover;display:block";
+        card.appendChild(img);
+        const saveBtn = document.createElement("button");
+        saveBtn.textContent = "保存";
+        saveBtn.style.cssText = "width:100%;padding:3px;background:#f59e0b;color:#000;border:none;font-size:11px;font-weight:700;cursor:pointer";
+        saveBtn.addEventListener("click", async () => {
+          if (!state.projectId) return showToast("プロジェクトを先に読み込んでください", "error");
+          saveBtn.textContent = "...";
+          saveBtn.disabled = true;
+          try {
+            const res = await window.API.uploadFree(state.projectId, { imageData: reader.result, fileName: file.name });
+            if (res.ok) {
+              showToast(`画像を保存しました: ${file.name}`, "success");
+              card.style.borderColor = "#10b981";
+              saveBtn.textContent = "OK";
+            }
+          } catch (err) {
+            showToast(`保存エラー: ${err.message}`, "error");
+            saveBtn.textContent = "保存";
+            saveBtn.disabled = false;
+          }
+        });
+        card.appendChild(saveBtn);
+        preview.appendChild(card);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+})();
