@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Article Cloner - 操作マニュアル</title>
+<style>
+:root {
+  --primary: #ec4899;
+  --primary-dark: #be185d;
+  --bg: #0f172a;
+  --bg-card: #1e293b;
+  --bg-card2: #334155;
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --border: rgba(255,255,255,0.08);
+  --blue: #3b82f6;
+  --green: #10b981;
+  --orange: #f59e0b;
+  --red: #ef4444;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+.header { background: linear-gradient(135deg, var(--primary-dark), #7c3aed); padding: 48px 24px; text-align: center; }
+.header h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+.header p { color: rgba(255,255,255,0.8); font-size: 15px; }
+.container { max-width: 800px; margin: 0 auto; padding: 32px 20px 80px; }
+
+/* TOC */
+.toc { background: var(--bg-card); border-radius: 12px; padding: 24px; margin-bottom: 40px; border: 1px solid var(--border); }
+.toc h2 { font-size: 16px; margin-bottom: 12px; color: var(--primary); }
+.toc-list { list-style: none; }
+.toc-list li { margin-bottom: 6px; }
+.toc-list a { color: var(--blue); text-decoration: none; font-size: 14px; }
+.toc-list a:hover { text-decoration: underline; }
+.toc-list .sub { padding-left: 20px; }
+
+/* Sections */
+.section { margin-bottom: 48px; }
+.section-title { font-size: 24px; font-weight: 700; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid var(--primary); }
+.subsection { margin-bottom: 24px; }
+.subsection h3 { font-size: 18px; font-weight: 600; color: var(--blue); margin-bottom: 8px; }
+.subsection h4 { font-size: 15px; font-weight: 600; color: var(--text); margin: 16px 0 8px; }
+p { margin-bottom: 12px; color: var(--text-muted); font-size: 14px; }
+ol, ul { margin: 8px 0 16px 24px; color: var(--text-muted); font-size: 14px; }
+li { margin-bottom: 6px; }
+li strong { color: var(--text); }
+
+/* Step cards */
+.step-card { background: var(--bg-card); border-radius: 10px; padding: 20px; margin-bottom: 12px; border-left: 4px solid var(--primary); }
+.step-card .step-num { font-size: 11px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+.step-card .step-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+
+/* Tip / Warning */
+.tip { background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.3); border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-size: 13px; color: var(--blue); }
+.tip a { color: var(--blue); font-weight: 600; }
+.warning { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-size: 13px; color: var(--red); }
+
+/* Table */
+table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 13px; }
+th { background: var(--bg-card2); color: var(--text); padding: 8px 12px; text-align: left; font-weight: 600; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-muted); }
+
+/* Flow */
+.flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 16px 0; }
+.flow-step { background: var(--bg-card); border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 600; color: var(--text); text-align: center; }
+.flow-arrow { color: var(--text-dim); font-size: 20px; }
+.flow-step.active { background: var(--primary); color: #fff; }
+
+/* Button link */
+.btn-link { display: inline-block; background: var(--primary); color: #fff; padding: 10px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; margin: 8px 0; transition: opacity 0.2s; }
+.btn-link:hover { opacity: 0.9; }
+
+/* Back to top */
+.back-top { position: fixed; bottom: 24px; right: 24px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-muted); padding: 8px 12px; border-radius: 8px; text-decoration: none; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Article Cloner 操作マニュアル</h1>
+  <p>競合LP自動クローン → 編集 → Squad Beyond互換HTML出力</p>
+</div>
+
+<div class="container">
+
+<!-- 目次 -->
+<div class="toc">
+  <h2>目次</h2>
+  <ol class="toc-list">
+    <li><a href="#overview">概要・全体フロー</a></li>
+    <li><a href="#scraping">STEP 1: LPスクレイピング</a></li>
+    <li><a href="#link-replace">STEP 2: リンク置換</a></li>
+    <li><a href="#image-edit">STEP 3: 画像差し替え</a>
+      <ol class="toc-list sub">
+        <li><a href="#img-ai">AI画像生成（PixAI / Nano Banana Pro）</a></li>
+        <li><a href="#img-upload">画像アップロード</a></li>
+      </ol>
+    </li>
+    <li><a href="#manga-flow">漫画LP制作フロー</a>
+      <ol class="toc-list sub">
+        <li><a href="#pixai">PixAI でキャラ作成</a></li>
+        <li><a href="#canva">Canva で吹き出し作成</a></li>
+      </ol>
+    </li>
+    <li><a href="#copy-export">STEP 4: コピー＆書き出し</a></li>
+    <li><a href="#tools-compare">画像作成ツール比較</a></li>
+  </ol>
+</div>
+
+<!-- 1. 概要 -->
+<div class="section" id="overview">
+  <h2 class="section-title">概要・全体フロー</h2>
+  <p>Article Clonerは、競合アフィリエイトLPを自動でスクレイピングし、テキスト・画像・リンクを差し替えて、Squad Beyond互換のHTMLを出力するツールです。</p>
+
+  <div class="flow">
+    <div class="flow-step active">1. スクレイピング</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">2. リンク置換</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">3. 画像差し替え</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">4. コピー＆公開</div>
+  </div>
+</div>
+
+<!-- 2. スクレイピング -->
+<div class="section" id="scraping">
+  <h2 class="section-title">STEP 1: LPスクレイピング</h2>
+
+  <div class="step-card">
+    <div class="step-num">手順</div>
+    <div class="step-title">競合LPをスクレイピングする</div>
+    <ol>
+      <li>トップ画面のURL入力欄に<strong>競合LPのURL</strong>を貼り付ける</li>
+      <li>「クローン開始」ボタンをクリック</li>
+      <li>自動でページを取得 → 画像・テキスト・HTML構造を解析</li>
+      <li>完了するとエディター画面に自動遷移</li>
+    </ol>
+  </div>
+
+  <div class="subsection">
+    <h4>スクレイピング対象</h4>
+    <table>
+      <tr><th>要素</th><th>取得内容</th></tr>
+      <tr><td>画像</td><td>全ての img / picture / source 要素（WebP, AVIF, PNG, JPG）</td></tr>
+      <tr><td>動画</td><td>video要素のMP4ソース</td></tr>
+      <tr><td>テキスト</td><td>全テキスト要素（見出し、本文、CTA等）</td></tr>
+      <tr><td>CSS</td><td>インラインstyle + styleブロック</td></tr>
+      <tr><td>リンク</td><td>全てのaタグのhref</td></tr>
+    </table>
+  </div>
+
+  <div class="tip">
+    Squad Beyond上のLPをスクレイピングする場合は、<strong>プレビューURL</strong>（sb-draft-preview...）を使用してください。公開URLでも動作しますが、プレビューURLの方がSB固有のウィジェット構造を正確に取得できます。
+  </div>
+
+  <div class="warning">
+    スクレイピングには10〜30秒かかります。ページが重い場合やアセットが多い場合はさらに時間がかかることがあります。処理中はブラウザを閉じないでください。
+  </div>
+</div>
+
+<!-- 3. リンク置換 -->
+<div class="section" id="link-replace">
+  <h2 class="section-title">STEP 2: リンク置換</h2>
+
+  <div class="step-card">
+    <div class="step-num">手順</div>
+    <div class="step-title">LP内のリンクを一括差し替え</div>
+    <ol>
+      <li>左パネルの「リンク置換」セクションを開く（▶ をクリック）</li>
+      <li>LP内の全リンクが一覧表示される</li>
+      <li>差し替えたいリンクにチェックを入れる（「全て選択」も可能）</li>
+      <li>下部の入力欄に<strong>新しいURL</strong>を入力</li>
+      <li>「置換」ボタンで一括差し替え</li>
+    </ol>
+  </div>
+
+  <div class="tip">「リンクを別タブで開く」にチェックを入れると、全てのリンクに <code>target="_blank"</code> が追加されます。</div>
+</div>
+
+<!-- 4. 画像差し替え -->
+<div class="section" id="image-edit">
+  <h2 class="section-title">STEP 3: 画像差し替え</h2>
+
+  <div class="subsection" id="img-ai">
+    <h3>AI画像生成で差し替え</h3>
+    <ol>
+      <li>エディター右側のプレビューで<strong>画像ブロックをクリック</strong></li>
+      <li>右パネルに「AI編集」が表示される</li>
+      <li>「AIプロバイダーを選択」でPixAI or Nano Banana Proを選択</li>
+      <li>プロンプトを入力して「生成」</li>
+      <li>生成結果をプレビューし「適用」</li>
+    </ol>
+
+    <table>
+      <tr><th>プロバイダー</th><th>特徴</th><th>おすすめ用途</th></tr>
+      <tr><td>PixAI</td><td>アニメ・イラスト系に強い</td><td>漫画LP、キャラクター</td></tr>
+      <tr><td>Nano Banana Pro</td><td>写真・リアル系に強い</td><td>施術写真、ビフォーアフター、バナー</td></tr>
+    </table>
+  </div>
+
+  <div class="subsection" id="img-upload">
+    <h3>画像アップロードで差し替え</h3>
+    <ol>
+      <li>外部ツール（Leonardo.ai / Canva等）で画像を作成</li>
+      <li>画像ブロックをクリック → 右パネル「AI編集」</li>
+      <li>「画像アップロード」エリアに画像をドラッグ or クリックで選択</li>
+      <li>アップロード後、自動でブロックに適用</li>
+    </ol>
+  </div>
+</div>
+
+<!-- 5. 漫画LP制作フロー -->
+<div class="section" id="manga-flow">
+  <h2 class="section-title">漫画LP制作フロー</h2>
+  <p>漫画形式のLPはストーリーで商品の魅力を伝える手法です。PixAI → Canva → アップロードの3ステップで制作します。</p>
+
+  <div class="flow">
+    <div class="flow-step">1. PixAI でキャラ作成</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">2. Canva で吹き出し作成</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">3. 画像アップロード</div>
+  </div>
+
+  <!-- PixAI -->
+  <div class="subsection" id="pixai">
+    <h3>PixAI でキャラクター作成</h3>
+    <ol>
+      <li><a href="https://pixai.art/" target="_blank" style="color:var(--blue)">PixAI</a> にログイン → 「Generate」をクリック</li>
+      <li>モデルを選択（おすすめ: Anything V5 / Counterfeit）</li>
+      <li>プロンプトを入力してキャラクター画像を生成</li>
+      <li>サイズ: LP用は 512x768（縦長）or 768x512（横長）</li>
+    </ol>
+
+    <h4>プロンプト例</h4>
+    <table>
+      <tr><th>シーン</th><th>プロンプト</th></tr>
+      <tr><td>悩む女性</td><td>1girl, japanese, 30s, worried expression, looking at mirror, manga style, simple background</td></tr>
+      <tr><td>笑顔の女性</td><td>1girl, japanese, 30s, happy smile, beautiful skin, manga style, sparkle effect</td></tr>
+      <tr><td>医師キャラ</td><td>1man, japanese doctor, white coat, gentle smile, professional, manga style</td></tr>
+    </table>
+
+    <div class="tip">同じキャラを使い回すには <strong>seed値を固定</strong> する。白背景で生成するとCanvaで編集しやすい。</div>
+  </div>
+
+  <!-- Canva -->
+  <div class="subsection" id="canva">
+    <h3>Canva で吹き出し作成</h3>
+
+    <div class="tip" style="margin-bottom:16px">
+      <strong>吹き出しテンプレート（すぐ使える）:</strong><br>
+      <a href="https://www.canva.com/design/DAHDQBswPpc/QWVh4QkjnhiHpatbm9YANA/edit" target="_blank" class="btn-link" style="margin-top:8px;display:inline-block">Canva テンプレートを開く</a><br>
+      <span style="font-size:12px;color:var(--text-muted)">「ファイル」→「コピーを作成」で複製してから編集してください</span>
+    </div>
+
+    <h4>テンプレートを使う方法（推奨）</h4>
+    <ol>
+      <li><a href="https://www.canva.com/design/DAHDQBswPpc/QWVh4QkjnhiHpatbm9YANA/edit" target="_blank" style="color:var(--blue)">吹き出しテンプレート</a> を開く</li>
+      <li>右上「ファイル」→「コピーを作成」でテンプレートを複製</li>
+      <li>PixAIで作った画像をアップロードして差し替え</li>
+      <li>吹き出し内のテキストを編集</li>
+      <li>PNG/JPGでエクスポート → Article Clonerにアップ</li>
+    </ol>
+
+    <h4>ゼロから作る方法</h4>
+    <ol>
+      <li><a href="https://www.canva.com/" target="_blank" style="color:var(--blue)">Canva</a> にログイン</li>
+      <li>「カスタムサイズ」で 580×任意の高さ（LP幅に合わせる）</li>
+      <li>PixAIで作った画像をアップロード</li>
+      <li>「素材」から「吹き出し」「speech bubble」で検索して配置</li>
+      <li>テキストツールでセリフを入力</li>
+    </ol>
+
+    <h4>漫画風テクニック</h4>
+    <ul>
+      <li><strong>コマ割り:</strong> 「フレーム」素材で画像を区切る / 四角形で枠線作成</li>
+      <li><strong>吹き出し:</strong> 素材検索「speech bubble」→ サイズ調整してセリフ入力</li>
+      <li><strong>効果線:</strong> 「集中線」「manga lines」で検索</li>
+      <li><strong>フォント:</strong> 「M PLUS Rounded」「Kosugi Maru」がおすすめ</li>
+      <li><strong>オノマトペ:</strong> 大きく太いテキストで「ドキッ！」「キラーン」を追加</li>
+    </ul>
+
+    <h4>エクスポート設定</h4>
+    <ul>
+      <li>形式: PNG（透過不要ならJPG）</li>
+      <li>品質: 最高画質</li>
+      <li>1コマずつ別ページにして一括ダウンロードすると管理しやすい</li>
+    </ul>
+  </div>
+</div>
+
+<!-- 6. コピー＆書き出し -->
+<div class="section" id="copy-export">
+  <h2 class="section-title">STEP 4: コピー＆書き出し</h2>
+
+  <table>
+    <tr><th>ボタン</th><th>用途</th><th>出力内容</th></tr>
+    <tr><td><strong>全体コピー</strong></td><td>Googleドキュメント・外部エディタに貼り付け</td><td>画像付きリッチHTML（外部CDN URLで画像表示）</td></tr>
+    <tr><td><strong>HTMLコピー</strong></td><td>Squad Beyondに貼り付け</td><td>SB互換HTML（picture/source/lazyload対応）</td></tr>
+    <tr><td><strong>画像一覧・コピー</strong></td><td>個別画像をコピー</td><td>クリックで画像をクリップボードにコピー</td></tr>
+  </table>
+
+  <div class="step-card">
+    <div class="step-num">全体コピー → Googleドキュメント</div>
+    <div class="step-title">画像付きでドキュメントに貼り付け</div>
+    <ol>
+      <li>左パネルの「全体コピー」ボタンをクリック</li>
+      <li>「コピー完了」のアラートが出たら、Googleドキュメントを開く</li>
+      <li>Cmd+V（Ctrl+V）で貼り付け</li>
+      <li>画像が自動で読み込まれて表示されます</li>
+    </ol>
+  </div>
+
+  <div class="step-card">
+    <div class="step-num">HTMLコピー → Squad Beyond</div>
+    <div class="step-title">SB互換HTMLで公開</div>
+    <ol>
+      <li>左パネルの「HTMLコピー」ボタンをクリック</li>
+      <li>Squad Beyondのエディターを開く</li>
+      <li>カスタムHTMLウィジェットに貼り付け</li>
+      <li>プレビューで表示確認 → 公開</li>
+    </ol>
+  </div>
+</div>
+
+<!-- 7. ツール比較 -->
+<div class="section" id="tools-compare">
+  <h2 class="section-title">画像作成ツール比較</h2>
+
+  <table>
+    <tr><th>ツール</th><th>得意分野</th><th>おすすめシーン</th><th>料金</th></tr>
+    <tr><td>PixAI</td><td>アニメ・漫画風</td><td>漫画LPキャラクター</td><td>無料枠あり</td></tr>
+    <tr><td>Leonardo.ai</td><td>写真風リアル画像</td><td>ビフォーアフター、施術写真</td><td>無料枠あり</td></tr>
+    <tr><td>Nano Banana Pro</td><td>汎用AI画像</td><td>バナー、イラスト、プロダクト</td><td>Gemini API（無料枠）</td></tr>
+    <tr><td>Pro AI</td><td>動画生成</td><td>動画バナー、アニメーション</td><td>有料</td></tr>
+    <tr><td>Canva</td><td>デザイン編集</td><td>吹き出し、コマ割り、テキスト追加</td><td>無料枠あり</td></tr>
+  </table>
+</div>
+
+</div>
+
+<a href="#" class="back-top">↑ トップへ</a>
+
+</body>
+</html>
