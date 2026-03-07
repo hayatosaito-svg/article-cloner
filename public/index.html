@@ -221,77 +221,37 @@ GEMINI_API_KEY_1=your_key_here<br><br>
         </div>
         <script>
         // コピー機能（inline script - app.jsに依存しない）
+        // サーバー側 /copy-html で画像base64埋め込み済みHTMLを取得してコピー
         window.__copyAll = async function(btn) {
           const projectId = window.__state?.projectId || document.body.dataset.projectId;
           if (!projectId) { alert("先にプロジェクトを読み込んでください"); return; }
-          btn.disabled = true; btn.style.background = "#be185d"; btn.textContent = "HTML取得中...";
+          btn.disabled = true; btn.style.background = "#be185d"; btn.textContent = "画像埋め込み中...";
           try {
-            const res = await fetch("/api/projects/" + projectId + "/editor-html");
+            var res = await fetch("/api/projects/" + projectId + "/copy-html");
             if (!res.ok) throw new Error("HTML取得失敗: " + res.status);
-            const rawHtml = await res.text();
-            btn.textContent = "画像変換中...";
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(rawHtml, "text/html");
-            doc.querySelectorAll("picture").forEach(function(pic) {
-              const img = pic.querySelector("img");
-              if (img) {
-                var src = img.getAttribute("data-src") || img.getAttribute("src") || "";
-                var newImg = doc.createElement("img");
-                newImg.setAttribute("src", src);
-                newImg.setAttribute("style", "max-width:100%;height:auto;display:block;");
-                pic.replaceWith(newImg);
-              }
-            });
-            var imgs = doc.querySelectorAll("img");
-            await Promise.all([].slice.call(imgs).map(async function(img) {
-              var src = img.getAttribute("data-src") || img.getAttribute("src") || "";
-              if (!src || src.startsWith("data:")) return;
-              try {
-                var image = new Image();
-                image.crossOrigin = "anonymous";
-                await new Promise(function(ok, fail) { image.onload = ok; image.onerror = fail; image.src = src; });
-                var c = document.createElement("canvas");
-                c.width = image.naturalWidth || 300;
-                c.height = image.naturalHeight || 300;
-                c.getContext("2d").drawImage(image, 0, 0);
-                img.setAttribute("src", c.toDataURL("image/png"));
-              } catch(e) {
-                try {
-                  var r = await fetch(src);
-                  var b = await r.blob();
-                  var d = await new Promise(function(ok) { var fr = new FileReader(); fr.onload = function() { ok(fr.result); }; fr.readAsDataURL(b); });
-                  img.setAttribute("src", d);
-                } catch(e2) { console.warn("skip:", src); }
-              }
-              img.removeAttribute("data-src");
-              img.removeAttribute("data-srcset");
-              img.className = "";
-              if (!img.getAttribute("style")) img.setAttribute("style", "max-width:100%;height:auto;display:block;");
-            }));
-            var finalHtml = doc.body.innerHTML;
-            btn.textContent = "コピー中...";
+            var finalHtml = await res.text();
+            var sizeMB = (finalHtml.length / 1024 / 1024).toFixed(1);
+            console.log("[copyAll] HTML size:", sizeMB, "MB");
+            btn.textContent = "コピー中... (" + sizeMB + "MB)";
+            // クリップボードにリッチHTML + プレーンテキストとして書き込み
+            // selection + execCommand("copy") 方式を使用（大容量対応）
             var ok = false;
-            if (typeof ClipboardItem !== "undefined") {
-              try {
-                var hb = new Blob([finalHtml], {type:"text/html"});
-                var tb = new Blob([finalHtml], {type:"text/plain"});
-                await navigator.clipboard.write([new ClipboardItem({"text/html":hb,"text/plain":tb})]);
-                ok = true;
-              } catch(e) { console.warn("ClipboardItem failed", e); }
-            }
-            if (!ok) {
-              var ta = document.createElement("textarea");
-              ta.value = finalHtml;
-              ta.style.cssText = "position:fixed;left:-9999px";
-              document.body.appendChild(ta);
-              ta.select();
-              ok = document.execCommand("copy");
-              document.body.removeChild(ta);
-            }
+            var tempDiv = document.createElement("div");
+            tempDiv.innerHTML = finalHtml;
+            tempDiv.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none";
+            document.body.appendChild(tempDiv);
+            var range = document.createRange();
+            range.selectNodeContents(tempDiv);
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            ok = document.execCommand("copy");
+            sel.removeAllRanges();
+            document.body.removeChild(tempDiv);
             if (ok) {
               btn.style.background = "#10b981";
               btn.textContent = "コピーしました!";
-              alert("コピー完了!\nBeyondやGoogleドキュメントにCmd+Vで貼り付けてください");
+              alert("コピー完了! (" + sizeMB + "MB)\nCmd+Vで貼り付けてください");
             } else {
               btn.style.background = "#ef4444";
               btn.textContent = "コピー失敗";

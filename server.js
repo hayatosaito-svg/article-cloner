@@ -2217,7 +2217,9 @@ app.get("/api/projects/:id/export", (req, res) => {
   res.send(html);
 });
 
-// GET /api/projects/:id/copy-html - シンプルHTML（base64画像埋め込み）をBeyondに貼り付け用
+// GET /api/projects/:id/copy-html - Googleドキュメント・外部エディタ貼り付け用HTML
+// 画像は元の外部CDN URLを使用（Googleのサーバーが直接フェッチ可能）
+// data: URIはGoogleドキュメントで非対応のため使わない
 app.get("/api/projects/:id/copy-html", async (req, res) => {
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
@@ -2227,54 +2229,65 @@ app.get("/api/projects/:id/copy-html", async (req, res) => {
     if (!sourceHtml) return res.status(400).json({ error: "No HTML to build" });
 
     const cheerio = await import("cheerio");
+
+    // ★ rewriteAssetsForPreviewを使わない — 元の外部URLをそのまま保持 ★
+    const $ = cheerio.load(sourceHtml, { decodeEntities: false });
+
+    // ローカルパス(/api/projects/...)を元の外部URLに逆引きするマップ
+    const localToOriginal = {};
+    for (const a of project.assets) {
+      if (a.originalUrl && a.localFile) {
+        const localPath = `/api/projects/${project.id}/assets/${a.localFile}`;
+        localToOriginal[localPath] = a.originalUrl;
+      }
+    }
+
+    // 画像URLを解決: ローカルパス→元URL、外部URLはそのまま
+    // AI生成画像（generated-images）は外部URLがないのでbase64化
     const fs = await import("fs");
     const pathMod = await import("path");
-
-    const $ = cheerio.load(sourceHtml, { decodeEntities: false });
+    const sharpMod = await import("sharp");
+    const sharp = sharpMod.default;
     const imagesDir = project.dirs?.images;
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const assetsDir = project.dirs?.assets;
 
-    // ローカル画像パスをbase64に変換するヘルパー
-    function resolveToBase64(url) {
+    function resolveImageUrl(url) {
       if (!url) return "";
-      // ローカルAPI画像パス → base64
-      if (url.startsWith("/api/projects/") && imagesDir) {
+      if (url.startsWith("data:")) return url;
+      if (url.startsWith("/api/projects/")) {
+        // まず元の外部URLがあるか確認
+        if (localToOriginal[url]) return localToOriginal[url];
+        // AI生成画像など外部URLがないもの → base64フォールバック
         const fileName = url.split("/").pop();
-        // imagesDir と generated-images の両方を検索
-        const candidates = [
-          pathMod.default.join(imagesDir, fileName),
-          pathMod.default.join(imagesDir, "..", "generated-images", fileName),
-        ];
+        const candidates = [];
+        if (assetsDir) candidates.push(pathMod.default.join(assetsDir, fileName));
+        if (imagesDir) {
+          candidates.push(pathMod.default.join(imagesDir, fileName));
+          candidates.push(pathMod.default.join(imagesDir, "..", "generated-images", fileName));
+        }
         for (const filePath of candidates) {
           if (fs.existsSync(filePath)) {
             try {
               const buf = fs.readFileSync(filePath);
+              const converted = sharp.cache(false);
+              // 同期的にbase64化（sharpなしでシンプルに）
               const ext = pathMod.default.extname(fileName).slice(1).toLowerCase();
-              const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg"
-                : ext === "png" ? "image/png"
-                : ext === "webp" ? "image/webp"
-                : ext === "gif" ? "image/gif"
-                : ext === "mp4" ? "video/mp4"
-                : "image/jpeg";
+              const mime = ext === "png" ? "image/png" : ext === "gif" ? "image/gif" : "image/jpeg";
               return `data:${mime};base64,${buf.toString("base64")}`;
-            } catch { /* skip */ }
+            } catch {}
           }
         }
-        // ファイルが見つからなければ絶対URLにフォールバック
-        return baseUrl + url;
+        return url; // 最終フォールバック
       }
-      // 相対URL → 絶対URL
-      if (url.startsWith("/")) return baseUrl + url;
       return url;
     }
 
-    // picture → シンプルなimg に変換
+    // picture → シンプルなimg に変換（外部URLを使用）
     $("picture").each((_, el) => {
       const $pic = $(el);
       const $img = $pic.find("img").first();
       const src = $img.attr("data-src") || $img.attr("src") || "";
-      const resolved = resolveToBase64(src);
-      // picture を img に置換
+      const resolved = resolveImageUrl(src);
       const width = $img.attr("width") || "";
       const height = $img.attr("height") || "";
       const alt = $img.attr("alt") || "";
@@ -2290,7 +2303,8 @@ app.get("/api/projects/:id/copy-html", async (req, res) => {
     $("img").each((_, el) => {
       const $img = $(el);
       const src = $img.attr("data-src") || $img.attr("src") || "";
-      const resolved = resolveToBase64(src);
+      if (src.startsWith("data:")) return;
+      const resolved = resolveImageUrl(src);
       $img.attr("src", resolved);
       $img.removeAttr("data-src");
       $img.removeAttr("data-srcset");
@@ -2300,17 +2314,17 @@ app.get("/api/projects/:id/copy-html", async (req, res) => {
       }
     });
 
-    // video source
-    $("video source").each((_, el) => {
-      const $source = $(el);
-      const src = $source.attr("data-src") || $source.attr("src") || "";
-      const resolved = resolveToBase64(src);
-      $source.attr("src", resolved);
-      $source.removeAttr("data-src");
+    // video要素を除去（Googleドキュメント非対応）
+    $("video").each((_, el) => {
+      $(el).remove();
+    });
+
+    // source要素を除去（pictureの残骸）
+    $("source").each((_, el) => {
+      $(el).remove();
     });
 
     let result = $.html();
-    // cheerioの自動 <html><head><body> を除去
     result = result.replace(/^<html><head><\/head><body>/, "").replace(/<\/body><\/html>$/, "").trim();
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -2325,7 +2339,8 @@ app.get("/api/projects/:id/copy-html", async (req, res) => {
 app.get("/api/projects/:id/editor-html", (req, res) => {
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
-  const html = project.modifiedHtml || project.blocks.map(b => b.html).join("\n") || project.html || "";
+  const rawHtml = project.modifiedHtml || project.blocks.map(b => b.html).join("\n") || project.html || "";
+  const html = rewriteAssetsForPreview(rawHtml, project);
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(html);
 });

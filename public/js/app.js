@@ -1276,14 +1276,11 @@ document.getElementById("btn-copy-all")?.addEventListener("click", async () => {
   btn.style.background = "#be185d";
   btn.textContent = "HTML取得中...";
   try {
-    // エディターの現在のHTMLを取得
-    const res = await fetch(`/api/projects/${state.projectId}/editor-html`);
-    if (!res.ok) throw new Error("HTML取得失敗");
-    const rawHtml = await res.text();
-
-    // ブラウザ側で画像をbase64に変換
+    // サーバー側で画像をbase64埋め込み済みHTMLを取得
     btn.textContent = "画像変換中...";
-    const htmlWithBase64 = await convertImagesToBase64(rawHtml);
+    const res = await fetch(`/api/projects/${state.projectId}/copy-html`);
+    if (!res.ok) throw new Error("HTML取得失敗");
+    const htmlWithBase64 = await res.text();
 
     // リッチHTMLとしてクリップボードにコピー
     btn.textContent = "コピー中...";
