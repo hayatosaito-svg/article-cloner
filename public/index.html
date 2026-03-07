@@ -260,9 +260,13 @@ GEMINI_API_KEY_1=your_key_here<br><br>
         <span class="pane-label" style="font-weight:700">ツール</span>
       </div>
       <div class="pane-body" style="padding:12px;overflow-y:auto">
-        <!-- リンク置換セクション -->
+        <!-- リンク置換セクション (折りたたみ) -->
         <div class="tool-section" id="link-replace-section">
-          <div class="tool-section-title">リンク置換</div>
+          <div class="tool-section-title collapsible" id="link-toggle">
+            <span>リンク置換</span>
+            <span class="collapse-arrow">▶</span>
+          </div>
+          <div class="collapsible-body" id="link-body" style="display:none">
           <div class="link-filter-tabs">
             <button class="link-filter-tab active" data-filter="all">全て</button>
             <button class="link-filter-tab" data-filter="external">外部</button>
@@ -279,6 +283,7 @@ GEMINI_API_KEY_1=your_key_here<br><br>
             <button class="link-replace-btn" id="link-replace-btn">置換</button>
           </div>
           <label class="link-option"><input type="checkbox" id="link-new-tab"> リンクを別タブで開く</label>
+          </div>
         </div>
 
         <!-- 画像ツールセクション -->
@@ -368,11 +373,11 @@ GEMINI_API_KEY_1=your_key_here<br><br>
         <iframe id="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
       </div>
     </div>
-    <!-- 編集パネル (flex child inside split-pane) -->
+    <!-- AI編集パネル (Nano Banana Pro のみ) -->
     <div id="edit-panel" class="edit-panel">
       <div class="edit-panel-header">
         <div class="edit-panel-title">
-          <span class="edit-panel-type" id="edit-panel-type">text</span>
+          <span class="edit-panel-type" id="edit-panel-type">image</span>
           <span>ブロック <span id="edit-panel-index">0</span></span>
         </div>
         <div style="display:flex;align-items:center;gap:4px">
@@ -381,10 +386,9 @@ GEMINI_API_KEY_1=your_key_here<br><br>
           </button>
         </div>
       </div>
-      <!-- 編集モード切替 (2モード: 手動/AI) -->
       <div class="edit-mode-toggle">
-        <button class="mode-btn active" data-mode="manual">手動編集</button>
-        <button class="mode-btn" data-mode="ai">AI編集</button>
+        <button class="mode-btn" data-mode="manual" style="display:none">手動編集</button>
+        <button class="mode-btn active" data-mode="ai">AI編集</button>
       </div>
       <div class="edit-panel-body" id="edit-panel-body"></div>
     </div>
@@ -395,112 +399,8 @@ GEMINI_API_KEY_1=your_key_here<br><br>
 
 <!-- Widget削除済み -->
 
-<!-- クイック編集バー -->
-<div id="quick-edit-bar" class="quick-edit-bar" style="display:none">
-  <button class="qe-btn" data-cmd="bold" title="太字"><b>B</b></button>
-  <button class="qe-btn" data-cmd="underline" title="下線"><u>U</u></button>
-  <button class="qe-btn" data-cmd="italic" title="斜体"><i>I</i></button>
-  <button class="qe-btn qe-color-btn" id="qe-fore-color" title="文字色" data-action="foreColor"><span class="color-dot" style="background:#ec4899"></span></button>
-  <button class="qe-btn qe-color-btn" id="qe-back-color" title="背景色" data-action="backColor"><span class="color-dot" style="background:#ffffff"></span></button>
-  <div class="qe-spacer"></div>
-  <button class="btn-secondary qe-cancel" id="qe-cancel">キャンセル</button>
-  <button class="btn-primary qe-save" id="qe-save">更新</button>
-</div>
+<!-- クイック編集バー・Widget関連 削除済み -->
 
-<!-- 3ペインWidget HTMLエディタ -->
-<div id="modal-widget-editor" class="modal fullscreen-modal">
-  <div class="modal-backdrop"></div>
-  <div class="modal-content modal-fullscreen">
-    <div class="we-header">
-      <button class="we-back-btn" id="we-back">← 戻る</button>
-      <span class="we-description" id="we-description">Widget説明</span>
-      <span class="we-category" id="we-category">カテゴリ</span>
-      <div class="we-header-actions">
-        <button class="btn-secondary" id="we-register">Widgetとして登録</button>
-        <button class="btn-secondary" id="we-split-toggle">分割</button>
-        <button class="btn-primary" id="we-update">更新</button>
-      </div>
-    </div>
-    <div class="we-body">
-      <div class="we-preview-pane" id="we-preview-pane">
-        <div class="we-toolbar" id="we-toolbar">
-          <button class="we-tool-btn" data-cmd="bold" title="太字"><b>B</b></button>
-          <button class="we-tool-btn" data-cmd="underline" title="下線"><u>U</u></button>
-          <button class="we-tool-btn" data-cmd="italic" title="斜体"><i>I</i></button>
-          <button class="we-tool-btn we-color-btn" data-action="foreColor" title="文字色"><span class="color-dot" style="background:#ec4899"></span></button>
-          <button class="we-tool-btn we-color-btn" data-action="backColor" title="背景色"><span class="color-dot" style="background:#ffffff"></span></button>
-        </div>
-        <iframe id="we-preview-iframe" class="we-preview-iframe"></iframe>
-      </div>
-      <div class="we-divider we-divider-v" id="we-divider-main"></div>
-      <div class="we-code-pane" id="we-code-pane">
-        <div class="we-code-section" id="we-html-section">
-          <div class="we-code-header">
-            <span>HTML(カスタム)</span>
-            <button class="we-expand-btn" data-target="html" title="展開">&lt;/&gt;</button>
-          </div>
-          <div id="we-html-editor" class="we-editor-container"></div>
-        </div>
-        <div class="we-divider we-divider-h" id="we-divider-code"></div>
-        <div class="we-code-section" id="we-css-section">
-          <div class="we-code-header">
-            <span>CSS(カスタム)</span>
-            <button class="we-expand-btn" data-target="css" title="展開">&lt;/&gt;</button>
-          </div>
-          <div id="we-css-editor" class="we-editor-container"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Widget登録モーダル -->
-<div id="modal-widget-register" class="modal">
-  <div class="modal-backdrop"></div>
-  <div class="modal-content" style="max-width:440px">
-    <div class="modal-header">
-      <h3>Widgetとして登録</h3>
-      <button class="modal-close" data-close-modal="modal-widget-register">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <div class="panel-section">
-        <div class="panel-section-title">Widget名 *</div>
-        <input type="text" id="wr-name" class="panel-input form-input" placeholder="例: キラキラ見出し">
-      </div>
-      <div class="panel-section">
-        <div class="panel-section-title">アイコン（絵文字）</div>
-        <input type="text" id="wr-icon" class="panel-input form-input" placeholder="例: ✨" maxlength="4">
-      </div>
-      <div class="panel-section">
-        <div class="panel-section-title">カテゴリ</div>
-        <select id="wr-category" class="form-input">
-          <option value="区切り">区切り</option>
-          <option value="CTA">CTA</option>
-          <option value="装飾">装飾</option>
-          <option value="インタラクティブ">インタラクティブ</option>
-          <option value="その他">その他</option>
-        </select>
-      </div>
-      <div class="panel-section">
-        <div class="panel-section-title">説明</div>
-        <input type="text" id="wr-description" class="panel-input form-input" placeholder="Widgetの簡単な説明...">
-      </div>
-      <div class="panel-section" style="display:flex;align-items:center;gap:10px">
-        <label class="toggle-switch">
-          <input type="checkbox" id="wr-favorite">
-          <span class="toggle-slider"></span>
-        </label>
-        <span style="font-size:13px;color:var(--text-secondary)">お気に入りに追加</span>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" data-close-modal="modal-widget-register">キャンセル</button>
-      <button class="btn-primary" id="btn-widget-register-save">登録</button>
-    </div>
-  </div>
-</div>
 
 <!-- テキスト一括差し替えモーダル -->
 <div id="modal-text-modify" class="modal">
@@ -1172,13 +1072,26 @@ GEMINI_API_KEY_1=your_key_here<br><br>
 </div>
 
 <script>
-// マニュアルデータ
+// リンク置換の折りたたみ
+document.getElementById("link-toggle")?.addEventListener("click", function() {
+  const body = document.getElementById("link-body");
+  const isOpen = body.style.display !== "none";
+  body.style.display = isOpen ? "none" : "block";
+  this.classList.toggle("open", !isOpen);
+});
+
+// マニュアルデータ（ビジュアル付き）
 const MANUALS = {
   "leonardo": {
     title: "Leonardo.ai（Loveart）の使い方",
     body: `
-<h3>Leonardo.ai で LP用画像を作成する</h3>
-<p>Leonardo.ai（旧Loveart）は高品質なAI画像生成ツールです。LP用のビフォーアフター写真、施術イメージ、バナー素材などを作成できます。</p>
+<div class="manual-visual">
+  <div class="manual-visual-icon">🎨</div>
+  <div class="manual-visual-label">Leonardo.ai（Loveart）</div>
+  <div class="manual-visual-desc">高品質AI画像生成 - LP用ビフォーアフター・施術写真・バナー素材</div>
+</div>
+
+<h3>LP用画像を作成する</h3>
 
 <h4>基本的な使い方</h4>
 <ol>
@@ -1211,7 +1124,13 @@ const MANUALS = {
   "proai": {
     title: "Pro AI の使い方",
     body: `
-<h3>Pro AI で動画・画像を生成する</h3>
+<div class="manual-visual">
+  <div class="manual-visual-icon">🎬</div>
+  <div class="manual-visual-label">Pro AI</div>
+  <div class="manual-visual-desc">動画・画像生成AI - LP用動画バナー・アニメーション素材</div>
+</div>
+
+<h3>動画・画像を生成する</h3>
 <p>Pro AIは動画生成にも対応したAIツールです。LP用の動画素材やアニメーション付き画像を作成できます。</p>
 
 <h4>基本的な使い方</h4>
@@ -1241,8 +1160,16 @@ const MANUALS = {
   "nanobanana": {
     title: "Nano Banana Pro の使い方",
     body: `
-<h3>Nano Banana Pro（Gemini）で画像生成</h3>
+<div class="manual-visual">
+  <div class="manual-visual-icon">🍌</div>
+  <div class="manual-visual-label">Nano Banana Pro（Gemini）</div>
+  <div class="manual-visual-desc">Google Gemini API画像生成 - テキストから高品質画像を生成</div>
+</div>
+
+<h3>画像生成の手順</h3>
 <p>Nano Banana ProはGoogle Gemini APIを使った画像生成ツールです。テキストプロンプトから高品質な画像を生成します。</p>
+
+<div class="manual-tip">このツールのAI編集タブからも直接Gemini画像生成が使えます。プレビューでブロックをクリック → AI編集</div>
 
 <h4>基本的な使い方</h4>
 <ol>
@@ -1267,7 +1194,13 @@ const MANUALS = {
   "manga": {
     title: "漫画記事LP 制作マニュアル",
     body: `
-<h3>漫画記事LP 制作の全体フロー</h3>
+<div class="manual-visual">
+  <div class="manual-visual-icon">📖</div>
+  <div class="manual-visual-label">漫画記事LP 制作マニュアル</div>
+  <div class="manual-visual-desc">PixAI → Canva → アップロード の3ステップ完全ガイド</div>
+</div>
+
+<h3>全体フロー</h3>
 <p>漫画形式のLPは、ストーリーで商品・サービスの魅力を伝える手法です。以下の3ステップで制作します。</p>
 
 <div class="manual-flow-big">
@@ -1325,7 +1258,13 @@ const MANUALS = {
   "pixai": {
     title: "PixAI の使い方（漫画キャラ作成）",
     body: `
-<h3>PixAI で漫画キャラクター画像を作成</h3>
+<div class="manual-visual">
+  <div class="manual-visual-icon">🎭</div>
+  <div class="manual-visual-label">PixAI</div>
+  <div class="manual-visual-desc">アニメ・漫画特化AI - 漫画LPキャラクター画像生成</div>
+</div>
+
+<h3>漫画キャラクター画像を作成</h3>
 <p>PixAIはアニメ・漫画特化のAI画像生成ツールです。漫画LPのキャラクター画像作成に最適です。</p>
 
 <h4>基本手順</h4>
@@ -1356,7 +1295,13 @@ const MANUALS = {
   "canva": {
     title: "Canva の使い方（吹き出し・コマ割り）",
     body: `
-<h3>Canva で漫画の吹き出し・コマ割りを作成</h3>
+<div class="manual-visual">
+  <div class="manual-visual-icon">✏️</div>
+  <div class="manual-visual-label">Canva</div>
+  <div class="manual-visual-desc">デザイン編集ツール - 吹き出し・コマ割り・テキスト追加</div>
+</div>
+
+<h3>漫画の吹き出し・コマ割りを作成</h3>
 
 <h4>基本手順</h4>
 <ol>
@@ -1388,6 +1333,12 @@ const MANUALS = {
   "article-cloner": {
     title: "Article Cloner 使い方マニュアル",
     body: `
+<div class="manual-visual">
+  <div class="manual-visual-icon">🔧</div>
+  <div class="manual-visual-label">Article Cloner</div>
+  <div class="manual-visual-desc">競合LP自動クローン → テキスト・画像・リンク差し替え → SB互換HTML出力</div>
+</div>
+
 <h3>Article Cloner とは</h3>
 <p>競合のアフィリエイト記事LP（ランディングページ）を自動でクローンし、テキスト・画像・リンクを差し替えて、Squad Beyond互換のHTMLを出力するツールです。</p>
 
