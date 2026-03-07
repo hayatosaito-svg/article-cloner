@@ -1161,9 +1161,13 @@ async function copyToClipboard(text) {
 }
 
 document.getElementById("btn-copy-sb")?.addEventListener("click", async () => {
-  if (!state.projectId) return;
   const btn = document.getElementById("btn-copy-sb");
+  if (!state.projectId) {
+    alert("先にプロジェクトを読み込んでください");
+    return;
+  }
   btn.disabled = true;
+  btn.style.background = "#be185d";
   btn.textContent = "ビルド中...";
   try {
     const result = await window.API.build(state.projectId);
@@ -1171,37 +1175,54 @@ document.getElementById("btn-copy-sb")?.addEventListener("click", async () => {
     const res = await fetch(window.API.getExportUrl(state.projectId));
     const html = await res.text();
     const copied = await copyToClipboard(html);
-    btn.textContent = copied ? "コピー完了!" : "コピー失敗";
-    if (copied) showToast("SB互換HTMLをコピーしました", "success");
-    setTimeout(() => { btn.textContent = "HTMLコピー"; }, 2000);
+    if (copied) {
+      btn.style.background = "#10b981";
+      btn.textContent = "コピーしました!";
+      showToast("HTMLをコピーしました", "success");
+    } else {
+      btn.style.background = "#ef4444";
+      btn.textContent = "コピー失敗";
+      alert("コピーに失敗しました");
+    }
   } catch (err) {
-    showToast(`コピーエラー: ${err.message}`, "error");
-    btn.textContent = "HTMLコピー";
+    btn.style.background = "#ef4444";
+    btn.textContent = "エラー";
+    alert(`コピーエラー: ${err.message}`);
   } finally {
     btn.disabled = false;
+    setTimeout(() => { btn.style.background = "#ec4899"; btn.textContent = "HTMLコピー（Beyond貼り付け用）"; }, 3000);
   }
 });
 
 document.getElementById("btn-copy-editor")?.addEventListener("click", async () => {
-  if (!state.projectId) return;
   const btn = document.getElementById("btn-copy-editor");
+  if (!state.projectId) {
+    alert("先にプロジェクトを読み込んでください");
+    return;
+  }
   btn.disabled = true;
+  btn.style.background = "#6d28d9";
   btn.textContent = "取得中...";
   try {
     const res = await fetch(`/api/projects/${state.projectId}/editor-text`);
     const text = await res.text();
     const copied = await copyToClipboard(text);
     if (copied) {
-      btn.textContent = "コピー完了!";
-      showToast("エディターテキストをコピーしました", "success");
+      btn.style.background = "#10b981";
+      btn.textContent = "コピーしました!";
+      showToast("テキストをコピーしました", "success");
     } else {
-      showToast("コピーに失敗しました。手動でコピーしてください", "error");
+      btn.style.background = "#ef4444";
+      btn.textContent = "コピー失敗";
+      alert("コピーに失敗しました。ブラウザの権限を確認してください。");
     }
   } catch (err) {
-    showToast(`コピーエラー: ${err.message}`, "error");
+    btn.style.background = "#ef4444";
+    btn.textContent = "エラー";
+    alert(`コピーエラー: ${err.message}`);
   } finally {
     btn.disabled = false;
-    setTimeout(() => { btn.textContent = "エディターコピー"; }, 2000);
+    setTimeout(() => { btn.style.background = "#8b5cf6"; btn.textContent = "テキストコピー"; }, 3000);
   }
 });
 
