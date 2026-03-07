@@ -51,6 +51,11 @@ export function buildSbHtml(html, config = {}) {
   // 4. lazyload属性の確認・修正
   ensureLazyload($);
 
+  // 4.5. 画像URLの絶対化 + src属性の補完（Beyond貼り付け対応）
+  if (config.baseUrl) {
+    absolutifyImageUrls($, config.baseUrl);
+  }
+
   // 5. 末尾にvideo margin resetウィジェット追加
   const videoResetWidget = buildVideoResetWidget();
 
@@ -272,6 +277,69 @@ function ensureLazyload($) {
     if (!$source.attr("data-src") && $source.attr("src")) {
       $source.attr("data-src", $source.attr("src"));
       $source.removeAttr("src");
+    }
+  });
+}
+
+/**
+ * 相対画像URLを絶対URLに変換 + data-srcをsrcにもコピー（Beyond互換）
+ */
+function absolutifyImageUrls($, baseUrl) {
+  // Remove trailing slash
+  const base = baseUrl.replace(/\/$/, "");
+
+  // img要素
+  $("img").each((_, el) => {
+    const $img = $(el);
+    // data-src → src にコピー（Beyondエディタ表示用）
+    const dataSrc = $img.attr("data-src") || "";
+    const src = $img.attr("src") || "";
+
+    // 相対URLを絶対化
+    if (dataSrc && dataSrc.startsWith("/")) {
+      $img.attr("data-src", base + dataSrc);
+    }
+    if (src && src.startsWith("/")) {
+      $img.attr("src", base + src);
+    }
+    // srcがなければdata-srcからコピー
+    if (!src || src === "about:blank" || src.endsWith("/")) {
+      $img.attr("src", $img.attr("data-src") || "");
+    }
+  });
+
+  // source要素（picture内）
+  $("source").each((_, el) => {
+    const $source = $(el);
+    const dataSrcset = $source.attr("data-srcset") || "";
+    const srcset = $source.attr("srcset") || "";
+
+    if (dataSrcset && dataSrcset.startsWith("/")) {
+      $source.attr("data-srcset", base + dataSrcset);
+    }
+    if (srcset && srcset.startsWith("/")) {
+      $source.attr("srcset", base + srcset);
+    }
+    // srcsetがなければdata-srcsetからコピー
+    if (!srcset) {
+      $source.attr("srcset", $source.attr("data-srcset") || "");
+    }
+  });
+
+  // video source
+  $("video source").each((_, el) => {
+    const $source = $(el);
+    const dataSrc = $source.attr("data-src") || "";
+    const src = $source.attr("src") || "";
+
+    if (dataSrc && dataSrc.startsWith("/")) {
+      $source.attr("data-src", base + dataSrc);
+    }
+    if (src && src.startsWith("/")) {
+      $source.attr("src", base + src);
+    }
+    if (!src) {
+      $source.attr("src", $source.attr("data-src") || "");
     }
   });
 }
