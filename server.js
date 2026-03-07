@@ -2217,7 +2217,7 @@ app.get("/api/projects/:id/export", (req, res) => {
   res.send(html);
 });
 
-// GET /api/projects/:id/copy-html - Build SB HTML with absolute URLs (for clipboard copy to Beyond)
+// GET /api/projects/:id/copy-html - シンプルHTML（base64画像埋め込み）をBeyondに貼り付け用
 app.get("/api/projects/:id/copy-html", async (req, res) => {
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
@@ -2226,22 +2226,97 @@ app.get("/api/projects/:id/copy-html", async (req, res) => {
     const sourceHtml = project.modifiedHtml || project.html;
     if (!sourceHtml) return res.status(400).json({ error: "No HTML to build" });
 
-    const config = {};
-    config.tagSettings = project.tagSettings;
-    config.exitPopup = project.exitPopup;
-    if (project.exitPopup?.enabled) {
-      const { generateExitPopupHtml } = await import("./src/exit-popup-builder.js");
-      config.exitPopupHtml = generateExitPopupHtml(project.exitPopup);
-    }
-    // 絶対URL使用（base64埋め込みしない）→ Beyondエディターがロードできる
-    config.baseUrl = `${req.protocol}://${req.get("host")}`;
-    config.imagesDir = project.dirs?.images;
-    config.embedBase64 = false;
+    const cheerio = await import("cheerio");
+    const fs = await import("fs");
+    const pathMod = await import("path");
 
-    const result = buildSbHtml(sourceHtml, config);
+    const $ = cheerio.load(sourceHtml, { decodeEntities: false });
+    const imagesDir = project.dirs?.images;
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+    // ローカル画像パスをbase64に変換するヘルパー
+    function resolveToBase64(url) {
+      if (!url) return "";
+      // ローカルAPI画像パス → base64
+      if (url.startsWith("/api/projects/") && imagesDir) {
+        const fileName = url.split("/").pop();
+        // imagesDir と generated-images の両方を検索
+        const candidates = [
+          pathMod.default.join(imagesDir, fileName),
+          pathMod.default.join(imagesDir, "..", "generated-images", fileName),
+        ];
+        for (const filePath of candidates) {
+          if (fs.existsSync(filePath)) {
+            try {
+              const buf = fs.readFileSync(filePath);
+              const ext = pathMod.default.extname(fileName).slice(1).toLowerCase();
+              const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg"
+                : ext === "png" ? "image/png"
+                : ext === "webp" ? "image/webp"
+                : ext === "gif" ? "image/gif"
+                : ext === "mp4" ? "video/mp4"
+                : "image/jpeg";
+              return `data:${mime};base64,${buf.toString("base64")}`;
+            } catch { /* skip */ }
+          }
+        }
+        // ファイルが見つからなければ絶対URLにフォールバック
+        return baseUrl + url;
+      }
+      // 相対URL → 絶対URL
+      if (url.startsWith("/")) return baseUrl + url;
+      return url;
+    }
+
+    // picture → シンプルなimg に変換
+    $("picture").each((_, el) => {
+      const $pic = $(el);
+      const $img = $pic.find("img").first();
+      const src = $img.attr("data-src") || $img.attr("src") || "";
+      const resolved = resolveToBase64(src);
+      // picture を img に置換
+      const width = $img.attr("width") || "";
+      const height = $img.attr("height") || "";
+      const alt = $img.attr("alt") || "";
+      const style = $img.attr("style") || "max-width:100%;height:auto;display:block;";
+      let imgTag = `<img src="${resolved}" alt="${alt}" style="${style}"`;
+      if (width) imgTag += ` width="${width}"`;
+      if (height) imgTag += ` height="${height}"`;
+      imgTag += ">";
+      $pic.replaceWith(imgTag);
+    });
+
+    // 残りの img 要素
+    $("img").each((_, el) => {
+      const $img = $(el);
+      const src = $img.attr("data-src") || $img.attr("src") || "";
+      const resolved = resolveToBase64(src);
+      $img.attr("src", resolved);
+      $img.removeAttr("data-src");
+      $img.removeAttr("data-srcset");
+      $img.removeClass("lazyload");
+      if (!$img.attr("style")) {
+        $img.attr("style", "max-width:100%;height:auto;display:block;");
+      }
+    });
+
+    // video source
+    $("video source").each((_, el) => {
+      const $source = $(el);
+      const src = $source.attr("data-src") || $source.attr("src") || "";
+      const resolved = resolveToBase64(src);
+      $source.attr("src", resolved);
+      $source.removeAttr("data-src");
+    });
+
+    let result = $.html();
+    // cheerioの自動 <html><head><body> を除去
+    result = result.replace(/^<html><head><\/head><body>/, "").replace(/<\/body><\/html>$/, "").trim();
+
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(result);
   } catch (err) {
+    console.error("[copy-html] Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
