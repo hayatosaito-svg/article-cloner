@@ -1160,7 +1160,23 @@ async function copyToClipboard(text) {
   }
 }
 
-// ブラウザ側で画像をbase64に変換（同一オリジンなのでCORS問題なし）
+// Canvas経由で画像をPNG base64に変換（WebP/SVG → PNG強制変換）
+async function convertImageToPng(imgSrc) {
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = reject;
+    img.src = imgSrc;
+  });
+  const canvas = document.createElement("canvas");
+  canvas.width = img.naturalWidth || img.width || 300;
+  canvas.height = img.naturalHeight || img.height || 300;
+  canvas.getContext("2d").drawImage(img, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
+// ブラウザ側で画像をPNG base64に変換
 async function convertImagesToBase64(html) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
@@ -1178,22 +1194,29 @@ async function convertImagesToBase64(html) {
     }
   });
 
-  // 全img要素のsrcをbase64に変換
+  // 全img要素をCanvas経由でPNG base64に変換
   const images = doc.querySelectorAll("img");
   await Promise.all([...images].map(async (img) => {
     const src = img.getAttribute("data-src") || img.getAttribute("src") || "";
-    if (!src || src.startsWith("data:")) return;
+    if (!src || src.startsWith("data:image/png")) return;
     try {
-      const response = await fetch(src);
-      const blob = await response.blob();
-      const base64 = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.readAsDataURL(blob);
-      });
-      img.setAttribute("src", base64);
+      const pngBase64 = await convertImageToPng(src);
+      img.setAttribute("src", pngBase64);
     } catch (e) {
-      console.warn("画像変換失敗:", src, e);
+      // Canvas変換失敗時はfetch+FileReaderフォールバック
+      console.warn("Canvas変換失敗、fetchフォールバック:", src, e);
+      try {
+        const response = await fetch(src);
+        const blob = await response.blob();
+        const base64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.readAsDataURL(blob);
+        });
+        img.setAttribute("src", base64);
+      } catch (e2) {
+        console.warn("画像変換完全失敗:", src, e2);
+      }
     }
     img.removeAttribute("data-src");
     img.removeAttribute("data-srcset");
