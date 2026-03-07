@@ -2084,55 +2084,32 @@ app.get("/api/projects/:id/editor-text", async (req, res) => {
   const project = projects.get(req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
 
-  const html = project.modifiedHtml || project.blocks.map(b => b.html).join("\n") || project.html || "";
-
-  // Use cheerio to extract clean text
   const cheerio = await import("cheerio");
-  const $ = cheerio.load(html, { decodeEntities: false });
 
-  // Remove script/style tags
-  $("script, style, noscript").remove();
-
-  // Process block by block for better formatting
+  // Extract text block by block, preserving visual reading order
   const textParts = [];
-  const processNode = (el) => {
-    const $el = $(el);
-    const tagName = (el.tagName || el.name || "").toLowerCase();
-
-    // Skip hidden elements
-    if (tagName === "script" || tagName === "style" || tagName === "noscript") return "";
-
-    // Block-level tags that should add line breaks
-    const blockTags = ["div", "p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "br", "hr", "section", "article", "header", "footer", "tr", "blockquote"];
-
+  for (const block of project.blocks) {
+    // Use block.text if available, otherwise extract from HTML
     let text = "";
-    if (el.type === "text") {
-      text = el.data || "";
-    } else if (el.children) {
-      for (const child of el.children) {
-        text += processNode(child);
-      }
+    if (block.text && block.text.trim()) {
+      text = block.text.trim();
+    } else if (block.html) {
+      const $ = cheerio.load(block.html, { decodeEntities: false });
+      $("script, style, noscript").remove();
+      // Replace <br> with newlines
+      $("br").replaceWith("\n");
+      // Get text content
+      text = $.text().trim();
     }
-
-    if (tagName === "br") return "\n";
-    if (tagName === "hr") return "\n---\n";
-    if (blockTags.includes(tagName) && text.trim()) {
-      return "\n" + text.trim() + "\n";
+    // Skip empty blocks and image-only blocks
+    if (text && text.length > 0) {
+      // Normalize whitespace within lines but keep intentional line breaks
+      text = text.split("\n").map(l => l.trim()).filter(l => l).join("\n");
+      textParts.push(text);
     }
-    return text;
-  };
+  }
 
-  // Process body children
-  const body = $("body").length ? $("body") : $.root();
-  body.children().each((_, el) => {
-    const text = processNode(el).trim();
-    if (text) textParts.push(text);
-  });
-
-  // Clean up: collapse multiple blank lines to max 2
-  let result = textParts.join("\n\n");
-  result = result.replace(/\n{3,}/g, "\n\n").trim();
-
+  const result = textParts.join("\n\n");
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.send(result);
 });
