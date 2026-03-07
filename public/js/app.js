@@ -1160,7 +1160,53 @@ async function copyToClipboard(text) {
   }
 }
 
-// リッチHTMLコピー（text/html MIME - Beyond貼り付け対応）
+// ブラウザ側で画像をbase64に変換（同一オリジンなのでCORS問題なし）
+async function convertImagesToBase64(html) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+
+  // picture → シンプルなimg に変換
+  doc.querySelectorAll("picture").forEach((pic) => {
+    const img = pic.querySelector("img");
+    if (img) {
+      const src = img.getAttribute("data-src") || img.getAttribute("src") || "";
+      const newImg = doc.createElement("img");
+      newImg.setAttribute("src", src);
+      newImg.setAttribute("style", "max-width:100%;height:auto;display:block;");
+      if (img.getAttribute("alt")) newImg.setAttribute("alt", img.getAttribute("alt"));
+      pic.replaceWith(newImg);
+    }
+  });
+
+  // 全img要素のsrcをbase64に変換
+  const images = doc.querySelectorAll("img");
+  await Promise.all([...images].map(async (img) => {
+    const src = img.getAttribute("data-src") || img.getAttribute("src") || "";
+    if (!src || src.startsWith("data:")) return;
+    try {
+      const response = await fetch(src);
+      const blob = await response.blob();
+      const base64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+      img.setAttribute("src", base64);
+    } catch (e) {
+      console.warn("画像変換失敗:", src, e);
+    }
+    img.removeAttribute("data-src");
+    img.removeAttribute("data-srcset");
+    img.classList.remove("lazyload");
+    if (!img.getAttribute("style")) {
+      img.setAttribute("style", "max-width:100%;height:auto;display:block;");
+    }
+  }));
+
+  return doc.body.innerHTML;
+}
+
+// リッチHTMLコピー（text/html MIME）
 async function copyRichHtml(html) {
   // 方法1: ClipboardItem API (Chrome/Edge)
   if (typeof ClipboardItem !== "undefined") {
@@ -1173,7 +1219,7 @@ async function copyRichHtml(html) {
       console.warn("ClipboardItem failed:", e);
     }
   }
-  // 方法2: execCommand with rendered HTML in hidden div
+  // 方法2: execCommand
   try {
     const container = document.createElement("div");
     container.innerHTML = html;
@@ -1189,50 +1235,38 @@ async function copyRichHtml(html) {
     document.body.removeChild(container);
     if (ok) return "exec";
   } catch (e) {
-    console.warn("execCommand rich copy failed:", e);
+    console.warn("execCommand failed:", e);
   }
-  // 方法3: プレーンテキストフォールバック
   return (await copyToClipboard(html)) ? "text" : false;
 }
 
-// SB HTMLをビルドして取得（base64埋め込み版）
-async function fetchBuiltHtml(projectId) {
-  const buildRes = await fetch(`/api/projects/${projectId}/build`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-  if (!buildRes.ok) throw new Error("ビルド失敗: " + (await buildRes.text()));
-  const htmlRes = await fetch(`/api/projects/${projectId}/export`);
-  if (!htmlRes.ok) throw new Error("HTML取得失敗");
-  return await htmlRes.text();
-}
-
-// コピー用HTML取得（絶対URL版 - Beyond貼り付け対応）
-async function fetchCopyHtml(projectId) {
-  const res = await fetch(`/api/projects/${projectId}/copy-html`);
-  if (!res.ok) throw new Error("コピー用HTML取得失敗: " + (await res.text()));
-  return await res.text();
-}
-
-// 全体コピー: リッチHTMLとしてコピー（Beyond貼り付け対応）
+// 全体コピー: エディターHTMLを取得 → 画像をbase64変換 → リッチHTMLコピー
 document.getElementById("btn-copy-all")?.addEventListener("click", async () => {
   const btn = document.getElementById("btn-copy-all");
-  console.log("[全体コピー] clicked, projectId:", state.projectId);
   if (!state.projectId) {
     alert("先にプロジェクトを読み込んでください");
     return;
   }
   btn.disabled = true;
   btn.style.background = "#be185d";
-  btn.textContent = "ビルド中...";
+  btn.textContent = "HTML取得中...";
   try {
-    console.log("[全体コピー] fetching...");
-    const html = await fetchCopyHtml(state.projectId);
-    console.log("[全体コピー] HTML取得完了, length:", html.length);
+    // エディターの現在のHTMLを取得
+    const res = await fetch(`/api/projects/${state.projectId}/editor-html`);
+    if (!res.ok) throw new Error("HTML取得失敗");
+    const rawHtml = await res.text();
+
+    // ブラウザ側で画像をbase64に変換
+    btn.textContent = "画像変換中...";
+    const htmlWithBase64 = await convertImagesToBase64(rawHtml);
+
+    // リッチHTMLとしてクリップボードにコピー
     btn.textContent = "コピー中...";
-    const result = await copyRichHtml(html);
-    console.log("[全体コピー] result:", result);
+    const result = await copyRichHtml(htmlWithBase64);
     if (result) {
       btn.style.background = "#10b981";
       btn.textContent = "コピー完了!";
-      alert("コピー完了! (" + result + "方式)\nBeyondにCtrl+Vで貼り付けてください");
+      alert("コピー完了!\nBeyondやGoogleドキュメントにCtrl+Vで貼り付けてください");
     } else {
       btn.style.background = "#ef4444";
       btn.textContent = "コピー失敗";
@@ -1611,13 +1645,18 @@ document.getElementById("btn-copy-html")?.addEventListener("click", async () => 
   }
   btn.disabled = true;
   btn.style.background = "#475569";
-  btn.textContent = "ビルド中...";
+  btn.textContent = "取得中...";
   try {
-    const html = await fetchCopyHtml(state.projectId);
+    // SBビルド済みHTMLを取得してテキストコピー
+    const buildRes = await fetch(`/api/projects/${state.projectId}/build`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    if (!buildRes.ok) throw new Error("ビルド失敗");
+    const exportRes = await fetch(`/api/projects/${state.projectId}/export`);
+    const html = await exportRes.text();
     const copied = await copyToClipboard(html);
     if (copied) {
       btn.style.background = "#10b981";
       btn.textContent = "コピーしました!";
+      alert("HTMLコピー完了!\nBeyondのHTMLソースエディタに貼り付けてください");
     } else {
       btn.style.background = "#ef4444";
       btn.textContent = "コピー失敗";
