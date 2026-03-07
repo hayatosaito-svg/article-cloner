@@ -49,6 +49,15 @@ app.set("trust proxy", 1);
 
 app.use(express.json({ limit: "50mb" }));
 
+// CORS許可（Beyond等の外部エディターから画像取得を許可）
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.sendStatus(200);
+  next();
+});
+
 // APP_MODE=ad-manager → ルート(/)で広告マネージャーを返す（static より先に定義）
 if (process.env.APP_MODE === "ad-manager") {
   app.get("/", (req, res) => {
