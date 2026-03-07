@@ -2170,27 +2170,53 @@ app.get("/api/projects/:id/editor-text", async (req, res) => {
 
   const cheerio = await import("cheerio");
 
-  // Extract text block by block, preserving visual reading order
+  // Block types that never contain meaningful readable text
+  const skipTypes = new Set(["spacer", "image", "video", "fv", "widget", "cta_link", "review"]);
+  // Block type names to filter out if they appear as the only text
+  const typeNames = new Set(["spacer", "image", "video", "fv", "widget", "cta_link", "review", "text", "heading", "comic"]);
+
   const textParts = [];
   for (const block of project.blocks) {
-    // Use block.text if available, otherwise extract from HTML
+    // Skip non-text block types entirely
+    if (skipTypes.has(block.type)) {
+      // But still try to extract text from widget/cta_link HTML if it has visible text
+      if ((block.type === "widget" || block.type === "cta_link" || block.type === "review") && block.html) {
+        const $ = cheerio.load(block.html, { decodeEntities: false });
+        $("script, style, noscript, svg, .sb-part-id").remove();
+        $("br").replaceWith("\n");
+        const wText = $.text().trim()
+          .split("\n").map(l => l.trim()).filter(l => l && l.length > 1).join("\n");
+        // Only include if it has actual readable content (not just CSS/code)
+        if (wText && wText.length > 3 && !wText.includes("{") && !wText.includes("sb-part")) {
+          textParts.push(wText);
+        }
+      }
+      continue;
+    }
+
     let text = "";
-    if (block.text && block.text.trim()) {
-      text = block.text.trim();
-    } else if (block.html) {
+    if (block.html) {
       const $ = cheerio.load(block.html, { decodeEntities: false });
-      $("script, style, noscript").remove();
-      // Replace <br> with newlines
+      $("script, style, noscript, svg").remove();
       $("br").replaceWith("\n");
-      // Get text content
       text = $.text().trim();
+    } else if (block.text && block.text.trim()) {
+      text = block.text.trim();
     }
-    // Skip empty blocks and image-only blocks
-    if (text && text.length > 0) {
-      // Normalize whitespace within lines but keep intentional line breaks
-      text = text.split("\n").map(l => l.trim()).filter(l => l).join("\n");
-      textParts.push(text);
-    }
+
+    if (!text || text.length === 0) continue;
+
+    // Normalize whitespace
+    text = text.split("\n").map(l => l.trim()).filter(l => l).join("\n");
+
+    // Skip if text is just a block type name
+    if (typeNames.has(text.toLowerCase())) continue;
+
+    // Skip CSS/code content that leaked through
+    if (text.includes("{") && text.includes("}") && text.includes(":")) continue;
+    if (text.startsWith("#sb-part") || text.startsWith(".sb-")) continue;
+
+    textParts.push(text);
   }
 
   const result = textParts.join("\n\n");
