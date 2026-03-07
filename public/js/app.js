@@ -1213,6 +1213,66 @@ document.getElementById("btn-copy-editor-big")?.addEventListener("click", () => 
   document.getElementById("btn-copy-editor")?.click();
 });
 
+// ── 画像一覧・コピー ──
+document.getElementById("btn-show-images")?.addEventListener("click", async () => {
+  const gallery = document.getElementById("image-gallery");
+  if (!state.projectId) return showToast("プロジェクトを読み込んでください", "error");
+
+  if (gallery.style.display !== "none") {
+    gallery.style.display = "none";
+    return;
+  }
+
+  gallery.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-muted);font-size:12px">読み込み中...</div>';
+  gallery.style.display = "block";
+
+  try {
+    const res = await fetch(`/api/projects/${state.projectId}/all-images`);
+    const data = await res.json();
+    const images = data.images || [];
+    if (images.length === 0) {
+      gallery.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-muted);font-size:12px">画像がありません</div>';
+      return;
+    }
+    gallery.innerHTML = "";
+    gallery.style.cssText = "display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:16px";
+    images.forEach((img, i) => {
+      const card = document.createElement("div");
+      card.style.cssText = "position:relative;border-radius:6px;overflow:hidden;border:1px solid var(--border);cursor:pointer;aspect-ratio:1;background:#f1f5f9";
+      const imgEl = document.createElement("img");
+      imgEl.src = img.url;
+      imgEl.style.cssText = "width:100%;height:100%;object-fit:cover;display:block";
+      imgEl.loading = "lazy";
+      card.appendChild(imgEl);
+
+      const label = document.createElement("div");
+      label.style.cssText = "position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.6);color:#fff;font-size:9px;padding:2px 4px;text-align:center";
+      label.textContent = `#${img.blockIndex}`;
+      card.appendChild(label);
+
+      card.addEventListener("click", async () => {
+        try {
+          const response = await fetch(img.url);
+          const blob = await response.blob();
+          await navigator.clipboard.write([
+            new ClipboardItem({ [blob.type]: blob })
+          ]);
+          label.textContent = "コピー済!";
+          showToast("画像をクリップボードにコピーしました", "success");
+          setTimeout(() => { label.textContent = `#${img.blockIndex}`; }, 2000);
+        } catch {
+          // Fallback: open in new tab
+          window.open(img.url, "_blank");
+          showToast("新しいタブで開きました（右クリック→コピーしてください）", "info");
+        }
+      });
+      gallery.appendChild(card);
+    });
+  } catch (err) {
+    gallery.innerHTML = `<div style="text-align:center;padding:12px;color:var(--red);font-size:12px">エラー: ${err.message}</div>`;
+  }
+});
+
 // ── Text Modify Modal ──────────────────────────────────────
 
 // Modal tab switching
