@@ -2145,8 +2145,9 @@ app.post("/api/projects/:id/build", async (req, res) => {
       return res.status(400).json({ error: "No HTML to build" });
     }
 
-    // Beyond貼り付け対応: 相対URLを絶対化
+    // Beyond貼り付け対応: 相対URLを絶対化 + ローカル画像base64埋め込み
     config.baseUrl = `${req.protocol}://${req.get("host")}`;
+    if (project.dirs?.images) config.imagesDir = project.dirs.images;
 
     const result = buildSbHtml(sourceHtml, config);
     const validation = validateSbHtml(result);
@@ -3670,7 +3671,7 @@ app.post("/api/projects/:id/publish", async (req, res) => {
   if (!html) {
     const sourceHtml = project.modifiedHtml || project.html;
     if (!sourceHtml) return res.status(400).json({ error: "公開するHTMLがありません" });
-    html = buildSbHtml(sourceHtml, { baseUrl: `${req.protocol}://${req.get("host")}` });
+    html = buildSbHtml(sourceHtml, { baseUrl: `${req.protocol}://${req.get("host")}`, imagesDir: project.dirs?.images });
     project.buildResult = html;
   }
 

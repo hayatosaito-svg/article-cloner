@@ -12,6 +12,7 @@
  */
 import * as cheerio from "cheerio";
 import { readFile, writeFile } from "fs/promises";
+import { readFileSync, existsSync } from "fs";
 import path from "path";
 import { generateSbId, generateSbPartNumber } from "./utils.js";
 
@@ -51,9 +52,9 @@ export function buildSbHtml(html, config = {}) {
   // 4. lazyload属性の確認・修正
   ensureLazyload($);
 
-  // 4.5. 画像URLの絶対化 + src属性の補完（Beyond貼り付け対応）
-  if (config.baseUrl) {
-    absolutifyImageUrls($, config.baseUrl);
+  // 4.5. 画像URLの絶対化 + ローカル画像base64埋め込み（Beyond貼り付け対応）
+  if (config.baseUrl || config.imagesDir) {
+    absolutifyImageUrls($, config.baseUrl, config.imagesDir);
   }
 
   // 5. 末尾にvideo margin resetウィジェット追加
@@ -282,29 +283,42 @@ function ensureLazyload($) {
 }
 
 /**
- * 相対画像URLを絶対URLに変換 + data-srcをsrcにもコピー（Beyond互換）
+ * 画像URLを処理: ローカル画像はbase64埋め込み、外部はそのまま + src属性を必ず設定
  */
-function absolutifyImageUrls($, baseUrl) {
-  // Remove trailing slash
-  const base = baseUrl.replace(/\/$/, "");
+function absolutifyImageUrls($, baseUrl, imagesDir) {
+  const base = (baseUrl || "").replace(/\/$/, "");
+
+  function resolveUrl(url) {
+    if (!url) return "";
+    // ローカル画像をbase64に変換
+    if (url.startsWith("/api/projects/") && imagesDir) {
+      const fileName = url.split("/").pop();
+      const filePath = path.join(imagesDir, fileName);
+      if (existsSync(filePath)) {
+        try {
+          const buf = readFileSync(filePath);
+          const ext = path.extname(fileName).slice(1).toLowerCase();
+          const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "gif" ? "image/gif" : "image/jpeg";
+          return `data:${mime};base64,${buf.toString("base64")}`;
+        } catch { /* fallback to absolute URL */ }
+      }
+      // ファイルが見つからなければ絶対URLにフォールバック
+      return base ? base + url : url;
+    }
+    // 他の相対URL
+    if (url.startsWith("/") && base) return base + url;
+    return url;
+  }
 
   // img要素
   $("img").each((_, el) => {
     const $img = $(el);
-    // data-src → src にコピー（Beyondエディタ表示用）
     const dataSrc = $img.attr("data-src") || "";
     const src = $img.attr("src") || "";
-
-    // 相対URLを絶対化
-    if (dataSrc && dataSrc.startsWith("/")) {
-      $img.attr("data-src", base + dataSrc);
-    }
-    if (src && src.startsWith("/")) {
-      $img.attr("src", base + src);
-    }
-    // srcがなければdata-srcからコピー
-    if (!src || src === "about:blank" || src.endsWith("/")) {
-      $img.attr("src", $img.attr("data-src") || "");
+    const resolved = resolveUrl(dataSrc) || resolveUrl(src);
+    if (resolved) {
+      $img.attr("src", resolved);
+      $img.attr("data-src", resolved);
     }
   });
 
@@ -313,16 +327,10 @@ function absolutifyImageUrls($, baseUrl) {
     const $source = $(el);
     const dataSrcset = $source.attr("data-srcset") || "";
     const srcset = $source.attr("srcset") || "";
-
-    if (dataSrcset && dataSrcset.startsWith("/")) {
-      $source.attr("data-srcset", base + dataSrcset);
-    }
-    if (srcset && srcset.startsWith("/")) {
-      $source.attr("srcset", base + srcset);
-    }
-    // srcsetがなければdata-srcsetからコピー
-    if (!srcset) {
-      $source.attr("srcset", $source.attr("data-srcset") || "");
+    const resolved = resolveUrl(dataSrcset) || resolveUrl(srcset);
+    if (resolved) {
+      $source.attr("srcset", resolved);
+      $source.attr("data-srcset", resolved);
     }
   });
 
@@ -331,15 +339,10 @@ function absolutifyImageUrls($, baseUrl) {
     const $source = $(el);
     const dataSrc = $source.attr("data-src") || "";
     const src = $source.attr("src") || "";
-
-    if (dataSrc && dataSrc.startsWith("/")) {
-      $source.attr("data-src", base + dataSrc);
-    }
-    if (src && src.startsWith("/")) {
-      $source.attr("src", base + src);
-    }
-    if (!src) {
-      $source.attr("src", $source.attr("data-src") || "");
+    const resolved = resolveUrl(dataSrc) || resolveUrl(src);
+    if (resolved) {
+      $source.attr("src", resolved);
+      $source.attr("data-src", resolved);
     }
   });
 }
