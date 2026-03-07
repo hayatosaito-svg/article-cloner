@@ -1160,6 +1160,36 @@ async function copyToClipboard(text) {
   }
 }
 
+// リッチHTMLコピー（text/html MIME - Beyond貼り付け対応）
+async function copyRichHtml(html) {
+  try {
+    const blob = new Blob([html], { type: "text/html" });
+    const item = new ClipboardItem({ "text/html": blob, "text/plain": new Blob([html], { type: "text/plain" }) });
+    await navigator.clipboard.write([item]);
+    return true;
+  } catch (err) {
+    console.warn("Rich HTML copy failed, falling back to text:", err);
+    return copyToClipboard(html);
+  }
+}
+
+// SB HTMLをビルドして取得（base64埋め込み版）
+async function fetchBuiltHtml(projectId) {
+  const buildRes = await fetch(`/api/projects/${projectId}/build`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  if (!buildRes.ok) throw new Error("ビルド失敗: " + (await buildRes.text()));
+  const htmlRes = await fetch(`/api/projects/${projectId}/export`);
+  if (!htmlRes.ok) throw new Error("HTML取得失敗");
+  return await htmlRes.text();
+}
+
+// コピー用HTML取得（絶対URL版 - Beyond貼り付け対応）
+async function fetchCopyHtml(projectId) {
+  const res = await fetch(`/api/projects/${projectId}/copy-html`);
+  if (!res.ok) throw new Error("コピー用HTML取得失敗: " + (await res.text()));
+  return await res.text();
+}
+
+// 全体コピー: リッチHTMLとしてコピー（Beyond貼り付け対応）
 document.getElementById("btn-copy-all")?.addEventListener("click", async () => {
   const btn = document.getElementById("btn-copy-all");
   if (!state.projectId) {
@@ -1168,11 +1198,11 @@ document.getElementById("btn-copy-all")?.addEventListener("click", async () => {
   }
   btn.disabled = true;
   btn.style.background = "#be185d";
-  btn.textContent = "取得中...";
+  btn.textContent = "ビルド中...";
   try {
-    const res = await fetch(`/api/projects/${state.projectId}/editor-text`);
-    const text = await res.text();
-    const copied = await copyToClipboard(text);
+    const html = await fetchCopyHtml(state.projectId);
+    btn.textContent = "コピー中...";
+    const copied = await copyRichHtml(html);
     if (copied) {
       btn.style.background = "#10b981";
       btn.textContent = "コピーしました!";
@@ -1545,15 +1575,33 @@ document.getElementById("btn-download-html").addEventListener("click", () => {
   if (state.projectId) window.location.href = window.API.getExportUrl(state.projectId);
 });
 
-document.getElementById("btn-copy-html").addEventListener("click", async () => {
-  if (!state.projectId) return;
+document.getElementById("btn-copy-html")?.addEventListener("click", async () => {
+  const btn = document.getElementById("btn-copy-html");
+  if (!state.projectId) {
+    alert("先にプロジェクトを読み込んでください");
+    return;
+  }
+  btn.disabled = true;
+  btn.style.background = "#475569";
+  btn.textContent = "ビルド中...";
   try {
-    const res = await fetch(window.API.getExportUrl(state.projectId));
-    const html = await res.text();
-    await navigator.clipboard.writeText(html);
-    showToast("クリップボードにコピーしました", "success");
-  } catch {
-    showToast("コピーに失敗しました", "error");
+    const html = await fetchCopyHtml(state.projectId);
+    const copied = await copyToClipboard(html);
+    if (copied) {
+      btn.style.background = "#10b981";
+      btn.textContent = "コピーしました!";
+    } else {
+      btn.style.background = "#ef4444";
+      btn.textContent = "コピー失敗";
+      alert("コピーに失敗しました");
+    }
+  } catch (err) {
+    btn.style.background = "#ef4444";
+    btn.textContent = "エラー";
+    alert("HTMLコピーエラー: " + err.message);
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { btn.style.background = "#64748b"; btn.textContent = "HTMLコピー"; }, 3000);
   }
 });
 

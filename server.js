@@ -2196,6 +2196,35 @@ app.get("/api/projects/:id/export", (req, res) => {
   res.send(html);
 });
 
+// GET /api/projects/:id/copy-html - Build SB HTML with absolute URLs (for clipboard copy to Beyond)
+app.get("/api/projects/:id/copy-html", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  try {
+    const sourceHtml = project.modifiedHtml || project.html;
+    if (!sourceHtml) return res.status(400).json({ error: "No HTML to build" });
+
+    const config = {};
+    config.tagSettings = project.tagSettings;
+    config.exitPopup = project.exitPopup;
+    if (project.exitPopup?.enabled) {
+      const { generateExitPopupHtml } = await import("./src/exit-popup-builder.js");
+      config.exitPopupHtml = generateExitPopupHtml(project.exitPopup);
+    }
+    // 絶対URL使用（base64埋め込みしない）→ Beyondエディターがロードできる
+    config.baseUrl = `${req.protocol}://${req.get("host")}`;
+    config.imagesDir = project.dirs?.images;
+    config.embedBase64 = false;
+
+    const result = buildSbHtml(sourceHtml, config);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/projects/:id/editor-html - Get current editor HTML (modifiedHtml, not built)
 app.get("/api/projects/:id/editor-html", (req, res) => {
   const project = projects.get(req.params.id);

@@ -214,7 +214,8 @@ GEMINI_API_KEY_1=your_key_here<br><br>
         <!-- メインアクション -->
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
           <button id="btn-copy-all" style="width:100%;padding:16px;background:#ec4899;color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:1px">全体コピー</button>
-          <button id="btn-show-images" style="width:100%;padding:14px;background:#0ea5e9;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">画像一覧・コピー</button>
+          <button id="btn-copy-html" style="width:100%;padding:12px;background:#64748b;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">HTMLコピー</button>
+          <button id="btn-show-images" style="width:100%;padding:12px;background:#0ea5e9;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">画像一覧・コピー</button>
         </div>
         <div id="image-gallery" style="display:none;margin-bottom:16px"></div>
         <!-- リンク置換セクション (折りたたみ) -->
@@ -313,7 +314,7 @@ GEMINI_API_KEY_1=your_key_here<br><br>
     <div class="split-divider" id="split-divider"><div class="divider-handle"></div></div>
     <div class="pane pane-right" id="pane-right">
       <div class="pane-header">
-        <span class="pane-label">プレビュー</span>
+        <span class="pane-label">エディター</span>
         <span class="preview-viewport">412px</span>
       </div>
       <div class="preview-container">
@@ -444,7 +445,7 @@ GEMINI_API_KEY_1=your_key_here<br><br>
       <div class="export-stats" id="export-stats"></div>
     </div>
     <div class="modal-footer">
-      <button class="btn-secondary" id="btn-copy-html">クリップボードにコピー</button>
+      <button class="btn-secondary" id="btn-copy-html-modal">クリップボードにコピー</button>
       <button class="btn-primary" id="btn-download-html">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m-3-3l3 3 3-3M3 12v1h10v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         HTMLをダウンロード

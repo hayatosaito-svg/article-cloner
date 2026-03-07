@@ -54,7 +54,8 @@ export function buildSbHtml(html, config = {}) {
 
   // 4.5. 画像URLの絶対化 + ローカル画像base64埋め込み（Beyond貼り付け対応）
   if (config.baseUrl || config.imagesDir) {
-    absolutifyImageUrls($, config.baseUrl, config.imagesDir);
+    const embedBase64 = config.embedBase64 !== false;
+    absolutifyImageUrls($, config.baseUrl, config.imagesDir, embedBase64);
   }
 
   // 5. 末尾にvideo margin resetウィジェット追加
@@ -285,24 +286,27 @@ function ensureLazyload($) {
 /**
  * 画像URLを処理: ローカル画像はbase64埋め込み、外部はそのまま + src属性を必ず設定
  */
-function absolutifyImageUrls($, baseUrl, imagesDir) {
+function absolutifyImageUrls($, baseUrl, imagesDir, embedBase64 = true) {
   const base = (baseUrl || "").replace(/\/$/, "");
 
   function resolveUrl(url) {
     if (!url) return "";
-    // ローカル画像をbase64に変換
+    // ローカル画像の処理
     if (url.startsWith("/api/projects/") && imagesDir) {
-      const fileName = url.split("/").pop();
-      const filePath = path.join(imagesDir, fileName);
-      if (existsSync(filePath)) {
-        try {
-          const buf = readFileSync(filePath);
-          const ext = path.extname(fileName).slice(1).toLowerCase();
-          const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "gif" ? "image/gif" : "image/jpeg";
-          return `data:${mime};base64,${buf.toString("base64")}`;
-        } catch { /* fallback to absolute URL */ }
+      // base64埋め込みモード
+      if (embedBase64) {
+        const fileName = url.split("/").pop();
+        const filePath = path.join(imagesDir, fileName);
+        if (existsSync(filePath)) {
+          try {
+            const buf = readFileSync(filePath);
+            const ext = path.extname(fileName).slice(1).toLowerCase();
+            const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "gif" ? "image/gif" : "image/jpeg";
+            return `data:${mime};base64,${buf.toString("base64")}`;
+          } catch { /* fallback to absolute URL */ }
+        }
       }
-      // ファイルが見つからなければ絶対URLにフォールバック
+      // 絶対URLにフォールバック（またはembedBase64=falseの場合）
       return base ? base + url : url;
     }
     // 他の相対URL
